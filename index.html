@@ -183,6 +183,7 @@
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
+    <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
   </nav>
 
@@ -227,6 +228,7 @@
         <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="finIncome">–</div></div>
         <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="finExpense">–</div></div>
         <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="finAuslagen">–</div></div>
+        <div class="card"><div class="label">Offene Rechnungen</div><div class="value orange" id="finOffen">–</div></div>
       </div>
       <div class="filterbar"><input id="txSearch" placeholder="🔍 In Buchungen suchen…" oninput="renderFinance()"></div>
 
@@ -278,6 +280,21 @@
       <div class="panel"><div id="eventsTable"></div></div>
     </section>
 
+    <!-- INVENTUR -->
+    <section class="view" id="inventur">
+      <div class="view-head"><h2>Inventur</h2>
+        <div class="actions"><button class="btn" onclick="openInv()">＋ Artikel</button></div></div>
+      <div class="cards">
+        <div class="card"><div class="label">Artikel</div><div class="value" id="invCount">–</div></div>
+        <div class="card"><div class="label">Niedriger Bestand</div><div class="value orange" id="invLow">–</div></div>
+      </div>
+      <div class="filterbar">
+        <input id="invSearch" placeholder="🔍 Suche nach Artikel…" oninput="renderInventur()">
+        <select id="invFilter" onchange="renderInventur()"><option value="">Alle Kategorien</option></select>
+      </div>
+      <div class="panel"><div id="inventurTable"></div></div>
+    </section>
+
     <!-- REPORT -->
     <section class="view" id="report">
       <div class="view-head"><h2>Kassenbericht</h2>
@@ -306,6 +323,7 @@ let me = null;
 let members = [], transactions = [], events = [];
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
+let inventar = [];
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -342,12 +360,14 @@ function pixelAvatar(seed,color,size,imageUrl){
 function balance(){
   const fin = transactions.reduce((s,t)=>{
     if(t.art==='in') return s + Number(t.betrag);
-    if(t.ausgelegt && !t.erstattet) return s;   // offene Auslage: noch nicht aus der Kasse
-    return s - Number(t.betrag);
+    // Ausgabe fließt aus der Kasse: bei Auslage erst wenn erstattet, sonst wenn bezahlt (nicht „offen")
+    const flows = t.ausgelegt ? t.erstattet : (t.bezahlt!==false);
+    return flows ? s - Number(t.betrag) : s;
   },0);
   return fin + postenIncomeTotal();             // bezahlte App-Posten fließen als Einnahmen in die Kasse
 }
 function offeneAuslagen(){ return transactions.filter(t=>t.art==='out' && t.ausgelegt && !t.erstattet).reduce((s,t)=>s+Number(t.betrag),0); }
+function offeneRechnungen(){ return transactions.filter(t=>t.art==='out' && !t.ausgelegt && t.bezahlt===false).reduce((s,t)=>s+Number(t.betrag),0); }
 function yearSum(art,jahr){ const y=jahr||new Date().getFullYear(); return transactions.filter(t=>t.art===art && yearOf(t.datum)===y).reduce((s,t)=>s+Number(t.betrag),0); }
 /* Bezahlte App-Posten als Einnahmequelle */
 function paidPosten(){ return postenBuchungen.filter(b=>b.bezahlt); }
@@ -400,17 +420,19 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO),
     sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
     sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
+    sb.from('inventar').select('*').order('name'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
   posten = pd.data||[]; postenBuchungen = pb.data||[];
+  inventar = (inv&&inv.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -428,7 +450,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderEvents(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderEvents(); renderInventur(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -521,6 +543,7 @@ function statusLine(t){
   const zp=zahlPill(t.zahlungsart); if(zp)s.push(zp);
   if(t.ausgelegt && !t.erstattet) s.push(`<span class="pill no mini">Auslage offen${t.ausgelegt_von?': '+esc(t.ausgelegt_von):''}</span>`);
   if(t.ausgelegt && t.erstattet) s.push(`<span class="pill ok mini">Auslage erstattet</span>`);
+  if(t.art==='out' && !t.ausgelegt && t.bezahlt===false) s.push('<span class="pill no mini">offen / unbezahlt</span>');
   if(t.beleg_pfad) s.push(`<a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" class="pill blue mini" style="text-decoration:none">📎 Beleg</a>`);
   return s.length?`<div class="statusline">${s.join('')}</div>`:'';
 }
@@ -536,6 +559,7 @@ function renderFinance(){
   document.getElementById('finIncome').textContent=eur(incomeYear());
   document.getElementById('finExpense').textContent=eur(yearSum('out'));
   document.getElementById('finAuslagen').textContent=eur(offeneAuslagen());
+  document.getElementById('finOffen').textContent=eur(offeneRechnungen());
 
   // Auslagen-Panel
   const ap=auslagenProPerson();
@@ -577,7 +601,8 @@ function renderFinance(){
       <td>${esc(t.kategorie)||'–'}</td>
       <td style="text-align:right">${amount(t)}</td>
       <td><div class="row-actions">
-        ${(t.ausgelegt&&!t.erstattet)?`<button class="icon-btn" title="Als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
+        ${(t.ausgelegt&&!t.erstattet)?`<button class="icon-btn" title="Auslage als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
+        ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
         <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
@@ -636,6 +661,69 @@ function renderEvents(){
       <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
     :'<div class="empty">Noch keine Veranstaltungen. Lege oben eine an.</div>';
 }
+
+/* ---- Inventur ---- */
+function renderInventur(){
+  const q=(val('invSearch')).toLowerCase(); const sel=document.getElementById('invFilter'); const cur=sel.value; const f=cur;
+  const cats=[...new Set(inventar.map(i=>i.kategorie).filter(Boolean))].sort();
+  sel.innerHTML='<option value="">Alle Kategorien</option>'+cats.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+  const low=inventar.filter(i=>i.min_menge!=null && Number(i.menge)<=Number(i.min_menge)).length;
+  document.getElementById('invCount').textContent=inventar.length;
+  document.getElementById('invLow').textContent=low;
+  const list=inventar.filter(i=>((i.name||'').toLowerCase().includes(q)||(i.kategorie||'').toLowerCase().includes(q)) && (!f||i.kategorie===f));
+  document.getElementById('inventurTable').innerHTML=list.length?`<table>
+    <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Ort</th><th></th></tr></thead>
+    <tbody>${list.map(i=>{ const lowB=i.min_menge!=null && Number(i.menge)<=Number(i.min_menge);
+      return `<tr>
+        <td><b>${esc(i.name)}</b>${i.notiz?`<div class="submuted">${esc(i.notiz)}</div>`:''}</td>
+        <td>${esc(i.kategorie)||'–'}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:6px">
+          <button class="icon-btn" title="−1" onclick="invAdjust('${i.id}',-1)">➖</button>
+          <b${lowB?' style="color:var(--accent)"':''}>${(+i.menge).toLocaleString('de-DE')}${i.einheit?' '+esc(i.einheit):''}</b>
+          <button class="icon-btn" title="+1" onclick="invAdjust('${i.id}',1)">➕</button>
+          ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}</td>
+        <td>${esc(i.ort)||'–'}</td>
+        <td><div class="row-actions"><button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
+    }).join('')}</tbody></table>`
+    :'<div class="empty">Noch keine Artikel. Lege oben einen an.</div>';
+}
+async function invAdjust(id,delta){
+  const i=inventar.find(x=>x.id===id); if(!i) return;
+  const menge=Math.max(0, Number(i.menge)+delta);
+  const {error}=await sb.from('inventar').update({menge}).eq('id',id);
+  if(error) alert('Fehler: '+error.message); else loadAll();
+}
+function openInv(id){
+  const i=id?inventar.find(x=>x.id===id):{name:'',kategorie:'',menge:0,einheit:'Stück',ort:'',min_menge:'',notiz:''};
+  openModal(`<h3>${id?'Artikel bearbeiten':'Neuer Artikel'}</h3>
+    <label class="field"><span>Bezeichnung *</span><input id="inv_name" value="${esc(i.name)}"></label>
+    <div class="grid2">
+      <label class="field"><span>Kategorie</span><input id="inv_kat" list="invcats" value="${esc(i.kategorie)}">
+        <datalist id="invcats"><option>Getränke</option><option>Deko</option><option>Technik</option><option>Geschirr</option><option>Werkzeug</option><option>Verbrauchsmaterial</option><option>Sonstiges</option></datalist></label>
+      <label class="field"><span>Lagerort</span><input id="inv_ort" value="${esc(i.ort)}"></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Bestand</span><input type="number" step="0.01" id="inv_menge" value="${i.menge}"></label>
+      <label class="field"><span>Einheit</span><input id="inv_einheit" list="invunits" value="${esc(i.einheit)}">
+        <datalist id="invunits"><option>Stück</option><option>Kisten</option><option>kg</option><option>Liter</option><option>Packungen</option></datalist></label>
+    </div>
+    <label class="field"><span>Mindestbestand (optional, für Warnung)</span><input type="number" step="0.01" id="inv_min" value="${i.min_menge??''}"></label>
+    <label class="field"><span>Notiz</span><textarea id="inv_notiz" rows="2">${esc(i.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveInv('${id||''}',this)">Speichern</button></div>`);
+}
+function saveInv(id,btn){
+  const name=val('inv_name'); if(!name){ alert('Bitte eine Bezeichnung eingeben.'); return; }
+  const minv=val('inv_min');
+  const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),notiz:val('inv_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('inventar').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('inventar').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
+  sb.from('inventar').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Bericht ---- */
 function catSums(art,jahr){
@@ -722,11 +810,14 @@ function fieldZahlung(t){return `<label class="field"><span>Zahlungsart</span><s
 function fieldVeranstaltung(t){return `<label class="field"><span>Zugehörige Veranstaltung (optional)</span><select id="f_event">
   <option value="">– keine –</option>
   ${events.map(e=>`<option value="${e.id}" ${t.veranstaltung_id===e.id?'selected':''}>${esc(e.titel)}${e.datum?' ('+fmtDate(e.datum)+')':''}</option>`).join('')}</select></label>`;}
-function fieldAuslage(t){return `
+function fieldAuslage(t){
+  const cur = t.ausgelegt ? 'auslage' : (t.bezahlt===false ? 'offen' : 'kasse');
+  return `
   <label class="field"><span>Bezahlt aus</span><select id="f_ausquelle" onchange="toggleAuslage()">
-    <option value="kasse" ${!t.ausgelegt?'selected':''}>Direkt aus Vereinskasse</option>
-    <option value="auslage" ${t.ausgelegt?'selected':''}>Ausgelegt (Person vorgestreckt)</option></select></label>
-  <div class="subfields" id="auslageBox" style="display:${t.ausgelegt?'block':'none'}">
+    <option value="kasse" ${cur==='kasse'?'selected':''}>Direkt aus Vereinskasse</option>
+    <option value="offen" ${cur==='offen'?'selected':''}>Noch offen / unbezahlt</option>
+    <option value="auslage" ${cur==='auslage'?'selected':''}>Ausgelegt (Person vorgestreckt)</option></select></label>
+  <div class="subfields" id="auslageBox" style="display:${cur==='auslage'?'block':'none'}">
     <div class="grid2">
       <label class="field"><span>Ausgelegt von</span><input id="f_von" list="memberNames" value="${esc(t.ausgelegt_von)}" placeholder="Name"></label>
       <label class="field"><span>Erstattet?</span><select id="f_erstattet">
@@ -737,7 +828,12 @@ function toggleAuslage(){document.getElementById('auslageBox').style.display = v
 function fieldBeleg(t){return `<label class="field"><span>Kassenzettel / Beleg (Foto oder PDF)</span>
   <input type="file" id="f_beleg" accept="image/*,application/pdf">
   ${t.beleg_pfad?`<div class="submuted" style="margin-top:6px"><a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" style="color:var(--accent2)">📎 Vorhandenen Beleg ansehen</a> · neue Datei ersetzt ihn</div>`:''}</label>`;}
-function readAuslage(){const on=val('f_ausquelle')==='auslage';return {ausgelegt:on,ausgelegt_von:on?(val('f_von')||null):null,erstattet:on?(val('f_erstattet')==='true'):false};}
+function readAuslage(){
+  const q=val('f_ausquelle');
+  if(q==='auslage') return {ausgelegt:true, ausgelegt_von:val('f_von')||null, erstattet:val('f_erstattet')==='true', bezahlt:true};
+  if(q==='offen')   return {ausgelegt:false, ausgelegt_von:null, erstattet:false, bezahlt:false};
+  return {ausgelegt:false, ausgelegt_von:null, erstattet:false, bezahlt:true}; // direkt aus Kasse
+}
 
 /* ---- Einnahme ---- */
 function openEinnahme(id){
@@ -859,6 +955,12 @@ async function markErstattet(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
   if(!confirm(`Auslage von ${t.ausgelegt_von||'—'} (${eur(t.betrag)}) als erstattet markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
   const {error}=await sb.from('finanzbuchungen').update({erstattet:true}).eq('id',id);
+  if(error) alert('Fehler: '+error.message); else loadAll();
+}
+async function markBezahlt(id){
+  const t=transactions.find(x=>x.id===id); if(!t) return;
+  if(!confirm(`„${t.beschreibung}" (${eur(t.betrag)}) als bezahlt markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
+  const {error}=await sb.from('finanzbuchungen').update({bezahlt:true}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 async function delTx(id){
