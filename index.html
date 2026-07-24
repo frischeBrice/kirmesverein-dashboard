@@ -663,6 +663,7 @@ function renderEvents(){
 }
 
 /* ---- Inventur ---- */
+const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
 function renderInventur(){
   const q=(val('invSearch')).toLowerCase(); const sel=document.getElementById('invFilter'); const cur=sel.value; const f=cur;
   const cats=[...new Set(inventar.map(i=>i.kategorie).filter(Boolean))].sort();
@@ -681,7 +682,7 @@ function renderInventur(){
           <button class="icon-btn" title="−1" onclick="invAdjust('${i.id}',-1)">➖</button>
           <b${lowB?' style="color:var(--accent)"':''}>${(+i.menge).toLocaleString('de-DE')}${i.einheit?' '+esc(i.einheit):''}</b>
           <button class="icon-btn" title="+1" onclick="invAdjust('${i.id}',1)">➕</button>
-          ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}</td>
+          ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}${isGetraenk(i.kategorie)?`<div style="margin-top:6px"><button class="btn ghost sm" onclick="invAngebrochen('${i.id}',1)">🍺 Angebrochen</button>${Number(i.angebrochen||0)>0?` <span class="pill warn mini">${(+i.angebrochen).toLocaleString('de-DE')} angebrochen</span> <button class="icon-btn" title="Angebrochen −1" onclick="invAngebrochen('${i.id}',-1)">↩️</button>`:''}</div>`:''}</td>
         <td>${esc(i.ort)||'–'}</td>
         <td><div class="row-actions"><button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
     }).join('')}</tbody></table>`
@@ -693,8 +694,14 @@ async function invAdjust(id,delta){
   const {error}=await sb.from('inventar').update({menge}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
+async function invAngebrochen(id,delta){
+  const i=inventar.find(x=>x.id===id); if(!i) return;
+  const angebrochen=Math.max(0, Number(i.angebrochen||0)+delta);
+  const {error}=await sb.from('inventar').update({angebrochen}).eq('id',id);
+  if(error) alert('Fehler: '+error.message); else loadAll();
+}
 function openInv(id){
-  const i=id?inventar.find(x=>x.id===id):{name:'',kategorie:'',menge:0,einheit:'Stück',ort:'',min_menge:'',notiz:''};
+  const i=id?inventar.find(x=>x.id===id):{name:'',kategorie:'',menge:0,einheit:'Stück',ort:'',min_menge:'',angebrochen:0,notiz:''};
   openModal(`<h3>${id?'Artikel bearbeiten':'Neuer Artikel'}</h3>
     <label class="field"><span>Bezeichnung *</span><input id="inv_name" value="${esc(i.name)}"></label>
     <div class="grid2">
@@ -707,7 +714,10 @@ function openInv(id){
       <label class="field"><span>Einheit</span><input id="inv_einheit" list="invunits" value="${esc(i.einheit)}">
         <datalist id="invunits"><option>Stück</option><option>Kisten</option><option>kg</option><option>Liter</option><option>Packungen</option></datalist></label>
     </div>
-    <label class="field"><span>Mindestbestand (optional, für Warnung)</span><input type="number" step="0.01" id="inv_min" value="${i.min_menge??''}"></label>
+    <div class="grid2">
+      <label class="field"><span>Mindestbestand (optional)</span><input type="number" step="0.01" id="inv_min" value="${i.min_menge??''}"></label>
+      <label class="field"><span>Angebrochen (Getränke)</span><input type="number" step="0.01" min="0" id="inv_ang" value="${i.angebrochen??0}"></label>
+    </div>
     <label class="field"><span>Notiz</span><textarea id="inv_notiz" rows="2">${esc(i.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveInv('${id||''}',this)">Speichern</button></div>`);
@@ -715,7 +725,7 @@ function openInv(id){
 function saveInv(id,btn){
   const name=val('inv_name'); if(!name){ alert('Bitte eine Bezeichnung eingeben.'); return; }
   const minv=val('inv_min');
-  const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),notiz:val('inv_notiz')||null};
+  const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),angebrochen:num('inv_ang'),notiz:val('inv_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('inventar').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('inventar').insert(row); if(error) throw error; }
