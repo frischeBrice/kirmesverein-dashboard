@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kirmesverein – Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171c22; --panel2:#1e252d; --line:#2a333d;
+    --text:#e8edf2; --muted:#95a3b2; --accent:#e8a13a; --accent2:#3a86e8;
+    --green:#3fb27f; --red:#e05c5c; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5}
+  #loginView{min-height:100vh;display:none;align-items:center;justify-content:center;padding:20px}
+  #loginView.show{display:flex}
+  .login-box{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:30px;width:100%;max-width:380px;text-align:center}
+  .login-box .logo{width:56px;height:56px;border-radius:15px;display:inline-grid;place-items:center;background:linear-gradient(135deg,var(--accent),#c47a1e);font-size:28px;margin-bottom:14px}
+  .login-box h1{font-size:20px;margin:0 0 4px}
+  .login-box p{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+  .login-box .field{text-align:left}
+  .login-msg{font-size:13px;margin-top:12px;min-height:18px}
+  .login-msg.err{color:var(--red)} .login-msg.ok{color:var(--green)}
+  #appView{display:none}
+  #appView.show{display:block}
+  header{display:flex;align-items:center;gap:14px;padding:14px 22px;background:linear-gradient(135deg,#1b222b,#12161b);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  header .logo{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),#c47a1e);font-size:20px}
+  header h1{font-size:18px;margin:0;font-weight:650}
+  header .sub{color:var(--muted);font-size:12px;margin-top:1px}
+  header .tools{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .whoami{color:var(--muted);font-size:12.5px;text-align:right}
+  .whoami b{color:var(--text)}
+  nav{display:flex;gap:4px;padding:10px 18px 0;background:#12161b;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:69px;z-index:19}
+  nav button{background:none;border:none;color:var(--muted);font-size:14.5px;font-weight:550;padding:10px 16px;border-radius:10px 10px 0 0;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+  nav button:hover{color:var(--text);background:#1a2028}
+  nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  main{max-width:1080px;margin:0 auto;padding:24px 18px 80px}
+  .view{display:none;animation:fade .25s}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h2{font-size:20px;margin:0 0 4px}
+  .view-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .view-head p{color:var(--muted);margin:0;font-size:13.5px}
+  .view-head .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .btn{background:var(--accent);color:#1a1206;border:none;padding:9px 15px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{filter:brightness(1.08)} .btn:disabled{opacity:.6;cursor:default}
+  .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  .btn.sm{padding:7px 12px;font-size:13px}
+  .btn.danger{background:var(--red);color:#fff}
+  .btn.block{width:100%;justify-content:center;padding:11px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .card .label{color:var(--muted);font-size:12.5px;font-weight:550;text-transform:uppercase;letter-spacing:.4px}
+  .card .value{font-size:26px;font-weight:700;margin-top:6px}
+  .card .value.green{color:var(--green)} .card .value.red{color:var(--red)} .card .value.orange{color:var(--accent)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:20px}
+  .panel h3{margin:0 0 14px;font-size:16px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#1a2028}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .pill.mini{font-size:11px;padding:2px 7px}
+  .pill.ok{background:rgba(63,178,127,.15);color:var(--green)}
+  .pill.warn{background:rgba(232,161,58,.15);color:var(--accent)}
+  .pill.no{background:rgba(224,92,92,.15);color:var(--red)}
+  .pill.blue{background:rgba(58,134,232,.15);color:var(--accent2)}
+  .pill.gray{background:rgba(149,163,178,.15);color:var(--muted)}
+  .amount.plus{color:var(--green);font-weight:600}
+  .amount.minus{color:var(--red);font-weight:600}
+  .submuted{color:var(--muted);font-size:12px;margin-top:3px}
+  .statusline{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+  .row-actions{display:flex;gap:6px;justify-content:flex-end}
+  .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:4px 6px;border-radius:7px}
+  .icon-btn:hover{background:#232b34;color:var(--text)}
+  .empty{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
+  .note{background:rgba(58,134,232,.08);border:1px solid rgba(58,134,232,.25);color:#b9d0f2;padding:10px 13px;border-radius:10px;font-size:12.5px;margin-bottom:16px}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:18px}
+  .overlay.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:460px;padding:22px;max-height:90vh;overflow:auto}
+  .modal.wide{max-width:620px}
+  .modal h3{margin:0 0 16px;font-size:18px}
+  label.field{display:block;margin-bottom:13px}
+  label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:550}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:9px 11px;border-radius:9px;font-size:14px;font-family:inherit}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  input[type=file]{padding:7px}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .filterbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .filterbar input,.filterbar select{width:auto;flex:1;min-width:140px}
+  .pos-head,.pos-row{display:grid;grid-template-columns:1fr 52px 84px 84px 28px;gap:6px;align-items:center}
+  .pos-head{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;padding:0 2px}
+  .pos-row{margin-bottom:6px}
+  .pos-row input{padding:7px 8px;font-size:13px}
+  .ek-total{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:var(--panel2);border-radius:10px;margin:12px 0;font-size:14px}
+  .ek-total b{font-size:17px}
+  .subfields{border-left:2px solid var(--line);padding-left:12px;margin:0 0 13px}
+  .spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media(max-width:600px){.grid2{grid-template-columns:1fr}nav{top:65px}.whoami{display:none}
+    .pos-head,.pos-row{grid-template-columns:1fr 44px 70px 70px 24px}}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="loginView">
+  <div class="login-box">
+    <div class="logo">🎡</div>
+    <h1>Kirmesverein</h1>
+    <p>Vorstands-Dashboard – bitte anmelden</p>
+    <label class="field"><span>E-Mail</span><input id="li_email" type="email" autocomplete="username"></label>
+    <label class="field"><span>Passwort</span><input id="li_pass" type="password" autocomplete="current-password"></label>
+    <button class="btn block" id="li_btn" onclick="doLogin()">Anmelden</button>
+    <div class="login-msg" id="li_msg"></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="appView">
+  <header>
+    <div class="logo">🎡</div>
+    <div><h1>Kirmesverein</h1><div class="sub">Vorstands-Dashboard</div></div>
+    <div class="tools">
+      <div class="whoami" id="whoami"></div>
+      <button class="btn ghost sm" onclick="logout()">Abmelden</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="active" data-view="dashboard" onclick="show('dashboard')">📊 Übersicht</button>
+    <button data-view="members" onclick="show('members')">👥 Mitglieder</button>
+    <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
+    <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
+  </nav>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section class="view active" id="dashboard">
+      <div class="view-head"><h2>Übersicht</h2><p id="todayLabel"></p></div>
+      <div class="cards">
+        <div class="card"><div class="label">Mitglieder</div><div class="value" id="statMembers">–</div></div>
+        <div class="card"><div class="label">Kassenstand</div><div class="value" id="statBalance">–</div></div>
+        <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="statIncome">–</div></div>
+        <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="statExpense">–</div></div>
+        <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="statAuslagen">–</div></div>
+      </div>
+      <div class="panel"><h3>🎪 Nächste Veranstaltungen</h3><div id="dashEvents"></div></div>
+      <div class="panel"><h3>💶 Letzte Buchungen</h3><div id="dashFinance"></div></div>
+    </section>
+
+    <!-- MEMBERS -->
+    <section class="view" id="members">
+      <div class="view-head"><h2>Mitglieder</h2></div>
+      <div class="note">Mitglieder werden aus der App (Supabase <b>profiles</b>) gespiegelt – hier nur Ansicht.</div>
+      <div class="filterbar">
+        <input id="memberSearch" placeholder="🔍 Suche nach Name…" oninput="renderMembers()">
+        <select id="memberFilter" onchange="renderMembers()">
+          <option value="">Alle Rollen</option>
+          <option value="admin">Admin</option><option value="vorstand">Vorstand</option><option value="member">Mitglied</option>
+        </select>
+      </div>
+      <div class="panel"><div id="membersTable"></div></div>
+    </section>
+
+    <!-- FINANCE -->
+    <section class="view" id="finance">
+      <div class="view-head"><h2>Finanzen</h2>
+        <div class="actions">
+          <button class="btn sm" onclick="openEinnahme()">＋ Einnahme</button>
+          <button class="btn sm" onclick="openEinkauf()">🛒 Einkauf</button>
+          <button class="btn sm" onclick="openExtern()">🏗 Externe Ausgabe</button>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="label">Kassenstand</div><div class="value" id="finBalance">–</div></div>
+        <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="finIncome">–</div></div>
+        <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="finExpense">–</div></div>
+        <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="finAuslagen">–</div></div>
+      </div>
+      <div class="filterbar">
+        <input id="txSearch" placeholder="🔍 Suche…" oninput="renderFinance()">
+        <select id="txFilter" onchange="renderFinance()">
+          <option value="">Alle Arten</option>
+          <option value="einnahme">Einnahmen</option>
+          <option value="einkauf">Einkäufe</option>
+          <option value="extern">Externe Ausgaben</option>
+          <option value="offen">Offene Auslagen</option>
+        </select>
+      </div>
+      <div class="panel"><div id="financeTable"></div></div>
+    </section>
+
+    <!-- EVENTS -->
+    <section class="view" id="events">
+      <div class="view-head"><h2>Veranstaltungen</h2>
+        <div class="actions"><button class="btn" onclick="openEvent()">＋ Veranstaltung</button></div></div>
+      <div class="panel"><div id="eventsTable"></div></div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<datalist id="memberNames"></datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ================= Konfiguration ================= */
+const SUPABASE_URL = 'https://cojfcepqdaooycjivmmv.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvamZjZXBxZGFvb3ljaml2bW12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMDI1MzMsImV4cCI6MjA5NDc3ODUzM30.jNb-k4yqU9KN14QBJUMJYdFF9ugbaJnnNN_CUwlbfBs';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ================= Zustand ================= */
+let me = null;
+let members = [], transactions = [], events = [];
+let posRows = [];   // temporäre Einkauf-Positionen im Modal
+
+/* ================= Helfer ================= */
+const eur = n => (Number(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const fmtDate = s => s ? new Date(s).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '–';
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const todayISO = () => new Date().toISOString().slice(0,10);
+const val = id => { const e=document.getElementById(id); return e ? (e.value==null?'':String(e.value).trim()) : ''; };
+const num = id => { const v=parseFloat(val(id)); return isNaN(v)?0:v; };
+function tbl(head,rows){return `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}
+function amount(t){return `<span class="amount ${t.art==='in'?'plus':'minus'}">${t.art==='in'?'+':'−'}${eur(t.betrag)}</span>`;}
+function rolePill(r){const m={admin:['Admin','blue'],vorstand:['Vorstand','blue'],member:['Mitglied','ok']}[r]||[r||'–','warn'];return `<span class="pill ${m[1]}">${esc(m[0])}</span>`;}
+function statusPill(s){const c={'geplant':'warn','bestätigt':'blue','abgeschlossen':'ok','abgesagt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'geplant')}</span>`;}
+function typOf(t){ return t.typ || (t.art==='in'?'einnahme':'ausgabe'); }
+function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['🏗 Extern','blue'],ausgabe:['Ausgabe','warn']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
+
+// Kassenstand: ausgelegte, noch nicht erstattete Ausgaben mindern die Kasse noch NICHT.
+function balance(){
+  return transactions.reduce((s,t)=>{
+    if(t.art==='in') return s + Number(t.betrag);
+    if(t.ausgelegt && !t.erstattet) return s;          // offene Auslage -> noch nicht aus der Kasse geflossen
+    return s - Number(t.betrag);
+  },0);
+}
+function offeneAuslagen(){
+  return transactions.filter(t=>t.art==='out' && t.ausgelegt && !t.erstattet).reduce((s,t)=>s+Number(t.betrag),0);
+}
+function yearSum(art){const y=new Date().getFullYear();return transactions.filter(t=>t.art===art && new Date(t.datum).getFullYear()===y).reduce((s,t)=>s+Number(t.betrag),0);}
+
+/* ================= Auth ================= */
+async function init(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){ showLogin(); return; }
+  await afterLogin(session);
+}
+function showLogin(msg,cls){
+  document.getElementById('appView').classList.remove('show');
+  document.getElementById('loginView').classList.add('show');
+  if(msg) setMsg(msg,cls);
+}
+function setMsg(t,cls){const el=document.getElementById('li_msg');el.textContent=t||'';el.className='login-msg '+(cls||'');}
+async function doLogin(){
+  const email=val('li_email'); const pass=document.getElementById('li_pass').value;
+  const btn=document.getElementById('li_btn');
+  if(!email||!pass){ setMsg('Bitte E-Mail und Passwort eingeben.','err'); return; }
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>'; setMsg('');
+  const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
+  btn.disabled=false; btn.textContent='Anmelden';
+  if(error){ setMsg('Anmeldung fehlgeschlagen: '+error.message,'err'); return; }
+  await afterLogin(data.session);
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Enter' && document.getElementById('loginView').classList.contains('show')) doLogin(); });
+
+async function afterLogin(session){
+  const { data:prof, error } = await sb.from('profiles').select('id,display_name,username,role,email').eq('id',session.user.id).single();
+  if(error || !prof){ showLogin('Profil konnte nicht geladen werden.','err'); await sb.auth.signOut(); return; }
+  if(!['admin','vorstand'].includes(prof.role)){ showLogin('Kein Zugriff – dieses Dashboard ist nur für Vorstand/Admin.','err'); await sb.auth.signOut(); return; }
+  me = prof;
+  document.getElementById('whoami').innerHTML = `<b>${esc(prof.display_name||prof.username)}</b><br>${rolePill(prof.role)}`;
+  document.getElementById('loginView').classList.remove('show');
+  document.getElementById('appView').classList.add('show');
+  await loadAll();
+}
+async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
+
+/* ================= Daten laden ================= */
+async function loadAll(){
+  const [m,t,e] = await Promise.all([
+    sb.from('profiles').select('id,display_name,username,role,email').order('display_name'),
+    sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
+    sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
+  ]);
+  if(m.error) console.warn('Mitglieder:',m.error.message);
+  if(t.error) console.warn('Finanzen:',t.error.message);
+  if(e.error) console.warn('Veranstaltungen:',e.error.message);
+  members = m.data||[]; transactions = t.data||[]; events = e.data||[];
+  document.getElementById('memberNames').innerHTML = members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('');
+  renderAll();
+}
+
+/* ================= Navigation ================= */
+function show(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id===v));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+}
+
+/* ================= Render ================= */
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderEvents(); }
+
+function renderDashboard(){
+  document.getElementById('todayLabel').textContent='Stand: '+new Date().toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  document.getElementById('statMembers').textContent=members.length;
+  document.getElementById('statBalance').textContent=eur(balance());
+  document.getElementById('statIncome').textContent=eur(yearSum('in'));
+  document.getElementById('statExpense').textContent=eur(yearSum('out'));
+  document.getElementById('statAuslagen').textContent=eur(offeneAuslagen());
+  const upcoming=events.filter(e=>e.datum && new Date(e.datum)>=new Date(new Date().toDateString())).sort((a,b)=>new Date(a.datum)-new Date(b.datum)).slice(0,5);
+  document.getElementById('dashEvents').innerHTML=upcoming.length?tbl(['Datum','Veranstaltung','Ort','Status'],
+    upcoming.map(e=>[fmtDate(e.datum),esc(e.titel),esc(e.ort)||'–',statusPill(e.status)])):'<div class="empty">Keine kommenden Veranstaltungen.</div>';
+  const last=transactions.slice(0,5);
+  document.getElementById('dashFinance').innerHTML=last.length?tbl(['Datum','Art','Beschreibung','Betrag'],
+    last.map(t=>[fmtDate(t.datum),typPill(t),esc(t.beschreibung),amount(t)])):'<div class="empty">Noch keine Buchungen.</div>';
+}
+
+function renderMembers(){
+  const q=(val('memberSearch')).toLowerCase(); const f=val('memberFilter');
+  const list=members.filter(m=>((m.display_name||m.username||'').toLowerCase().includes(q)) && (!f||m.role===f));
+  document.getElementById('membersTable').innerHTML=list.length?`<table>
+    <thead><tr><th>Name</th><th>Benutzername</th><th>Rolle</th><th>E-Mail</th></tr></thead>
+    <tbody>${list.map(m=>`<tr><td><b>${esc(m.display_name||m.username)}</b></td>
+      <td style="color:var(--muted)">${esc(m.username)||'–'}</td><td>${rolePill(m.role)}</td><td>${esc(m.email)||'–'}</td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">Keine Mitglieder gefunden.</div>';
+}
+
+function statusLine(t){
+  const s=[];
+  if(t.zahlungsart==='bar') s.push('<span class="pill gray mini">Bar</span>');
+  if(t.zahlungsart==='ueberweisung') s.push('<span class="pill gray mini">Überweisung</span>');
+  if(t.ausgelegt && !t.erstattet) s.push(`<span class="pill no mini">Auslage offen${t.ausgelegt_von?': '+esc(t.ausgelegt_von):''}</span>`);
+  if(t.ausgelegt && t.erstattet) s.push(`<span class="pill ok mini">Auslage erstattet</span>`);
+  if(t.beleg_pfad) s.push(`<a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" class="pill blue mini" style="text-decoration:none">📎 Beleg</a>`);
+  return s.length?`<div class="statusline">${s.join('')}</div>`:'';
+}
+function subLine(t){
+  if(typOf(t)==='einkauf' && Array.isArray(t.positionen) && t.positionen.length)
+    return `<div class="submuted">🛒 ${t.positionen.length} Position(en)${Number(t.pfand)>0?' · davon Pfand '+eur(t.pfand):''}</div>`;
+  if(typOf(t)==='extern' && (t.zeitraum_von||t.zeitraum_bis))
+    return `<div class="submuted">🗓 ${fmtDate(t.zeitraum_von)} – ${fmtDate(t.zeitraum_bis)}</div>`;
+  return '';
+}
+
+function renderFinance(){
+  document.getElementById('finBalance').textContent=eur(balance());
+  document.getElementById('finIncome').textContent=eur(yearSum('in'));
+  document.getElementById('finExpense').textContent=eur(yearSum('out'));
+  document.getElementById('finAuslagen').textContent=eur(offeneAuslagen());
+  const q=(val('txSearch')).toLowerCase(); const f=val('txFilter');
+  const list=transactions.filter(t=>{
+    const hit=(t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q);
+    if(!hit) return false;
+    if(!f) return true;
+    if(f==='offen') return t.art==='out' && t.ausgelegt && !t.erstattet;
+    return typOf(t)===f;
+  });
+  document.getElementById('financeTable').innerHTML=list.length?`<table>
+    <thead><tr><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Kategorie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
+    <tbody>${list.map(t=>`<tr>
+      <td>${fmtDate(t.datum)}</td>
+      <td>${typPill(t)}</td>
+      <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
+      <td>${esc(t.kategorie)||'–'}</td>
+      <td style="text-align:right">${amount(t)}</td>
+      <td><div class="row-actions">
+        ${(t.art==='out'&&t.ausgelegt&&!t.erstattet)?`<button class="icon-btn" title="Als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
+        <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button>
+        <button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">Noch keine Buchungen. Lege oben eine an.</div>';
+}
+
+function renderEvents(){
+  document.getElementById('eventsTable').innerHTML=events.length?`<table>
+    <thead><tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th><th>Status</th><th>Notiz</th><th></th></tr></thead>
+    <tbody>${events.map(e=>`<tr><td>${fmtDate(e.datum)}</td><td><b>${esc(e.titel)}</b></td>
+      <td>${esc(e.ort)||'–'}</td><td>${statusPill(e.status)}</td>
+      <td style="color:var(--muted);max-width:220px">${esc(e.notiz)||''}</td>
+      <td><div class="row-actions">
+        <button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button>
+        <button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">Noch keine Veranstaltungen. Lege oben eine an.</div>';
+}
+
+/* ================= Modal-Grundgerüst ================= */
+function openModal(html,wide){document.getElementById('modal').className='modal'+(wide?' wide':'');document.getElementById('modal').innerHTML=html;document.getElementById('overlay').classList.add('open');}
+function closeModal(){document.getElementById('overlay').classList.remove('open');}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+async function withBtn(btn,fn){const o=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{await fn();}catch(err){alert('Fehler: '+(err.message||err));}btn.disabled=false;btn.textContent=o;}
+
+/* ================= Belege (Storage) ================= */
+async function uploadBeleg(file){
+  if(!file) return null;
+  const ext=(file.name.split('.').pop()||'dat').toLowerCase();
+  const path=`${me.id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.${ext}`;
+  const {error}=await sb.storage.from('finanzbelege').upload(path,file,{upsert:false});
+  if(error) throw error;
+  return path;
+}
+async function viewBeleg(path){
+  const {data,error}=await sb.storage.from('finanzbelege').createSignedUrl(path,120);
+  if(error){ alert('Beleg konnte nicht geladen werden: '+error.message); return; }
+  window.open(data.signedUrl,'_blank');
+}
+
+/* ================= Gemeinsame Formularblöcke ================= */
+function fieldZahlung(t){return `<label class="field"><span>Zahlungsart</span><select id="f_zahlung">
+  <option value="" ${!t.zahlungsart?'selected':''}>– keine Angabe –</option>
+  <option value="bar" ${t.zahlungsart==='bar'?'selected':''}>Bar</option>
+  <option value="ueberweisung" ${t.zahlungsart==='ueberweisung'?'selected':''}>Überweisung</option></select></label>`;}
+
+function fieldAuslage(t){return `
+  <label class="field"><span>Bezahlt aus</span><select id="f_ausquelle" onchange="toggleAuslage()">
+    <option value="kasse" ${!t.ausgelegt?'selected':''}>Direkt aus Vereinskasse</option>
+    <option value="auslage" ${t.ausgelegt?'selected':''}>Ausgelegt (Person vorgestreckt)</option></select></label>
+  <div class="subfields" id="auslageBox" style="display:${t.ausgelegt?'block':'none'}">
+    <div class="grid2">
+      <label class="field"><span>Ausgelegt von</span><input id="f_von" list="memberNames" value="${esc(t.ausgelegt_von)}" placeholder="Name"></label>
+      <label class="field"><span>Erstattet?</span><select id="f_erstattet">
+        <option value="false" ${!t.erstattet?'selected':''}>Noch offen</option>
+        <option value="true" ${t.erstattet?'selected':''}>Bereits erstattet</option></select></label>
+    </div>
+  </div>`;}
+function toggleAuslage(){document.getElementById('auslageBox').style.display = val('f_ausquelle')==='auslage'?'block':'none';}
+
+function fieldBeleg(t){return `<label class="field"><span>Kassenzettel / Beleg (Foto oder PDF)</span>
+  <input type="file" id="f_beleg" accept="image/*,application/pdf">
+  ${t.beleg_pfad?`<div class="submuted" style="margin-top:6px"><a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" style="color:var(--accent2)">📎 Vorhandenen Beleg ansehen</a> · neue Datei ersetzt ihn</div>`:''}</label>`;}
+
+function readAuslage(){const on=val('f_ausquelle')==='auslage';return {ausgelegt:on,ausgelegt_von:on?(val('f_von')||null):null,erstattet:on?(val('f_erstattet')==='true'):false};}
+
+/* ================= Einnahme ================= */
+function openEinnahme(id){
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',betrag:'',kategorie:'',datum:todayISO(),zahlungsart:''};
+  openModal(`<h3>${id?'Einnahme bearbeiten':'Neue Einnahme'}</h3>
+    <label class="field"><span>Beschreibung *</span><input id="i_desc" value="${esc(t.beschreibung)}"></label>
+    <div class="grid2">
+      <label class="field"><span>Betrag (€) *</span><input type="number" step="0.01" min="0" id="i_betrag" value="${t.betrag}"></label>
+      <label class="field"><span>Datum</span><input type="date" id="i_datum" value="${t.datum||todayISO()}"></label>
+    </div>
+    <label class="field"><span>Kategorie</span><input id="i_kat" list="inccats" value="${esc(t.kategorie)}">
+      <datalist id="inccats"><option>Mitgliedsbeitrag</option><option>Spende</option><option>Standgebühr</option><option>Getränkeverkauf</option><option>Eintritt</option><option>Sonstiges</option></datalist></label>
+    ${fieldZahlung(t)}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveEinnahme('${id||''}',this)">Speichern</button></div>`);
+}
+function saveEinnahme(id,btn){
+  const beschreibung=val('i_desc'); const betrag=num('i_betrag');
+  if(!beschreibung||betrag<=0){ alert('Bitte Beschreibung und Betrag eingeben.'); return; }
+  const row={typ:'einnahme',art:'in',beschreibung,betrag,kategorie:val('i_kat')||null,datum:val('i_datum')||todayISO(),zahlungsart:val('f_zahlung')||null};
+  withBtn(btn,async()=>{ await upsertTx(id,row); closeModal(); await loadAll(); });
+}
+
+/* ================= Einkauf ================= */
+const posTemplate=()=>({artikel:'',anzahl:1,preis:'',pfand:''});
+function renderPosRows(){
+  document.getElementById('posContainer').innerHTML = posRows.map((p,i)=>`
+    <div class="pos-row">
+      <input placeholder="Artikel" value="${esc(p.artikel)}" oninput="posRows[${i}].artikel=this.value">
+      <input type="number" min="0" step="1" value="${p.anzahl}" oninput="posRows[${i}].anzahl=this.value;calcEinkauf()">
+      <input type="number" min="0" step="0.01" placeholder="0,00" value="${p.preis}" oninput="posRows[${i}].preis=this.value;calcEinkauf()">
+      <input type="number" min="0" step="0.01" placeholder="0,00" value="${p.pfand}" oninput="posRows[${i}].pfand=this.value;calcEinkauf()">
+      <button class="icon-btn" title="Position entfernen" onclick="posRows.splice(${i},1);if(!posRows.length)posRows.push(posTemplate());renderPosRows();calcEinkauf()">✕</button>
+    </div>`).join('');
+}
+function addPos(){ posRows.push(posTemplate()); renderPosRows(); calcEinkauf(); }
+function calcEinkauf(){
+  let items=0,pfand=0;
+  posRows.forEach(p=>{const a=parseFloat(p.anzahl)||0,pr=parseFloat(p.preis)||0,pf=parseFloat(p.pfand)||0;items+=a*pr;pfand+=a*pf;});
+  const el=document.getElementById('ek_totalVal'); if(el) el.textContent=eur(items+pfand);
+  const pe=document.getElementById('ek_pfandVal'); if(pe) pe.textContent=eur(pfand);
+  return {items,pfand,total:items+pfand};
+}
+function openEinkauf(id){
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',datum:todayISO(),positionen:null,zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null};
+  posRows=(Array.isArray(t.positionen)&&t.positionen.length?t.positionen:[posTemplate()]).map(p=>({artikel:p.artikel||'',anzahl:p.anzahl??1,preis:p.preis??'',pfand:p.pfand??''}));
+  openModal(`<h3>${id?'Einkauf bearbeiten':'Neuer Einkauf'}</h3>
+    <div class="grid2">
+      <label class="field"><span>Bezeichnung / Geschäft *</span><input id="ek_titel" value="${esc(t.beschreibung)}" placeholder="z. B. Getränkemarkt Müller"></label>
+      <label class="field"><span>Datum</span><input type="date" id="ek_datum" value="${t.datum||todayISO()}"></label>
+    </div>
+    <label class="field"><span>Kategorie</span><input id="ek_kat" list="ekcats" value="${esc(t.kategorie)}">
+      <datalist id="ekcats"><option>Getränke</option><option>Essen / Lebensmittel</option><option>Deko</option><option>Material / Werkzeug</option><option>Reinigung</option><option>Sonstiges</option></datalist></label>
+    <div class="pos-head"><span>Artikel</span><span>Anz.</span><span>Einzel €</span><span>Pfand/Stk €</span><span></span></div>
+    <div id="posContainer"></div>
+    <button class="btn ghost sm" style="margin-top:2px" onclick="addPos()">＋ Position</button>
+    <div class="ek-total"><span>davon Pfand: <span id="ek_pfandVal">0,00 €</span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
+    ${fieldZahlung(t)}
+    ${fieldAuslage(t)}
+    ${fieldBeleg(t)}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveEinkauf('${id||''}',this)">Speichern</button></div>`,true);
+  renderPosRows(); calcEinkauf();
+}
+function saveEinkauf(id,btn){
+  const beschreibung=val('ek_titel');
+  if(!beschreibung){ alert('Bitte eine Bezeichnung / das Geschäft angeben.'); return; }
+  const clean=posRows.map(p=>({artikel:(p.artikel||'').trim(),anzahl:parseFloat(p.anzahl)||0,preis:parseFloat(p.preis)||0,pfand:parseFloat(p.pfand)||0}))
+    .filter(p=>p.artikel||p.preis||p.pfand);
+  if(!clean.length){ alert('Bitte mindestens eine Position mit Artikel/Preis erfassen.'); return; }
+  const {total,pfand}=calcEinkauf();
+  const row={typ:'einkauf',art:'out',beschreibung,kategorie:val('ek_kat')||null,datum:val('ek_datum')||todayISO(),
+    betrag:total,pfand,positionen:clean,zahlungsart:val('f_zahlung')||null,...readAuslage()};
+  withBtn(btn,async()=>{
+    const f=document.getElementById('f_beleg').files[0];
+    if(f) row.beleg_pfad=await uploadBeleg(f);
+    await upsertTx(id,row); closeModal(); await loadAll();
+  });
+}
+
+/* ================= Externe Ausgabe ================= */
+function openExtern(id){
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',betrag:'',datum:todayISO(),zeitraum_von:'',zeitraum_bis:'',zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null};
+  openModal(`<h3>${id?'Externe Ausgabe bearbeiten':'Neue externe Ausgabe'}</h3>
+    <label class="field"><span>Wofür? *</span><input id="ex_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Zeltmiete, Bühne, Versicherung"></label>
+    <div class="grid2">
+      <label class="field"><span>Kategorie</span><input id="ex_kat" list="excats" value="${esc(t.kategorie)}">
+        <datalist id="excats"><option>Location / Miete</option><option>Geräte / Technik</option><option>Musik / Band</option><option>Versicherung</option><option>Genehmigungen</option><option>Sonstiges</option></datalist></label>
+      <label class="field"><span>Kosten (€) *</span><input type="number" step="0.01" min="0" id="ex_betrag" value="${t.betrag}"></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Zeitraum von</span><input type="date" id="ex_von" value="${t.zeitraum_von||''}"></label>
+      <label class="field"><span>Zeitraum bis</span><input type="date" id="ex_bis" value="${t.zeitraum_bis||''}"></label>
+    </div>
+    <label class="field"><span>Buchungsdatum</span><input type="date" id="ex_datum" value="${t.datum||todayISO()}"></label>
+    ${fieldZahlung(t)}
+    ${fieldAuslage(t)}
+    ${fieldBeleg(t)}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveExtern('${id||''}',this)">Speichern</button></div>`);
+}
+function saveExtern(id,btn){
+  const beschreibung=val('ex_desc'); const betrag=num('ex_betrag');
+  if(!beschreibung||betrag<=0){ alert('Bitte „Wofür" und Kosten eingeben.'); return; }
+  const row={typ:'extern',art:'out',beschreibung,kategorie:val('ex_kat')||null,betrag,datum:val('ex_datum')||todayISO(),
+    zeitraum_von:val('ex_von')||null,zeitraum_bis:val('ex_bis')||null,zahlungsart:val('f_zahlung')||null,...readAuslage()};
+  withBtn(btn,async()=>{
+    const f=document.getElementById('f_beleg').files[0];
+    if(f) row.beleg_pfad=await uploadBeleg(f);
+    await upsertTx(id,row); closeModal(); await loadAll();
+  });
+}
+
+/* ================= gemeinsame Speicher-/Lösch-Logik ================= */
+async function upsertTx(id,row){
+  if(id){ const {error}=await sb.from('finanzbuchungen').update(row).eq('id',id); if(error) throw error; }
+  else { row.created_by=me.id; const {error}=await sb.from('finanzbuchungen').insert(row); if(error) throw error; }
+}
+function editTx(id){
+  const t=transactions.find(x=>x.id===id); if(!t) return;
+  const k=typOf(t);
+  if(k==='einnahme') openEinnahme(id);
+  else if(k==='einkauf') openEinkauf(id);
+  else openExtern(id);   // 'extern' und alte 'ausgabe'
+}
+async function markErstattet(id){
+  const t=transactions.find(x=>x.id===id); if(!t) return;
+  if(!confirm(`Auslage von ${t.ausgelegt_von||'—'} (${eur(t.betrag)}) als erstattet markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
+  const {error}=await sb.from('finanzbuchungen').update({erstattet:true}).eq('id',id);
+  if(error) alert('Fehler: '+error.message); else loadAll();
+}
+async function delTx(id){
+  const t=transactions.find(x=>x.id===id); if(!t) return;
+  if(!confirm('Buchung wirklich löschen?')) return;
+  if(t.beleg_pfad){ await sb.storage.from('finanzbelege').remove([t.beleg_pfad]).catch(()=>{}); }
+  const {error}=await sb.from('finanzbuchungen').delete().eq('id',id);
+  if(error) alert('Fehler: '+error.message); else loadAll();
+}
+
+/* ================= Veranstaltungen ================= */
+function openEvent(id){
+  const e=id?events.find(x=>x.id===id):{titel:'',datum:todayISO(),ort:'',status:'geplant',notiz:''};
+  openModal(`<h3>${id?'Veranstaltung bearbeiten':'Neue Veranstaltung'}</h3>
+    <label class="field"><span>Titel *</span><input id="e_titel" value="${esc(e.titel)}"></label>
+    <div class="grid2">
+      <label class="field"><span>Datum</span><input type="date" id="e_datum" value="${e.datum||todayISO()}"></label>
+      <label class="field"><span>Status</span><select id="e_status">
+        ${['geplant','bestätigt','abgeschlossen','abgesagt'].map(s=>`<option ${e.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    </div>
+    <label class="field"><span>Ort</span><input id="e_ort" value="${esc(e.ort)}"></label>
+    <label class="field"><span>Notiz</span><textarea id="e_notiz" rows="3">${esc(e.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveEvent('${id||''}',this)">Speichern</button></div>`);
+}
+function saveEvent(id,btn){
+  const titel=val('e_titel'); if(!titel){ alert('Bitte einen Titel eingeben.'); return; }
+  const row={titel,datum:val('e_datum')||null,ort:val('e_ort')||null,status:val('e_status'),notiz:val('e_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('veranstaltungen').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('veranstaltungen').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delEvent(id){ if(!confirm('Veranstaltung wirklich löschen?'))return;
+  sb.from('veranstaltungen').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+/* ================= Start ================= */
+init();
+</script>
+</body>
+</html>
