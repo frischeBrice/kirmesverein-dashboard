@@ -79,6 +79,20 @@
   .icon-btn:hover{background:#232b34;color:var(--text)}
   .empty{text-align:center;color:var(--muted);padding:34px 20px;font-size:14px}
   .note{background:rgba(58,134,232,.08);border:1px solid rgba(58,134,232,.25);color:#b9d0f2;padding:10px 13px;border-radius:10px;font-size:12.5px;margin-bottom:16px}
+  /* Mitglieder-Kacheln (wie in der App) */
+  .pav{border-radius:50%;overflow:hidden;display:inline-block;line-height:0;flex:none}
+  .member-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px}
+  .member-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:15px 8px 12px;text-align:center;cursor:pointer;transition:border-color .15s,transform .15s}
+  .member-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .member-card .pav{box-shadow:0 0 7px rgba(99,102,241,.4);margin-bottom:9px}
+  .member-card .mname{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
+  .member-card .mrole{margin-top:7px}
+  .member-count{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .mdetail{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .mdetail .mdname{font-size:18px;font-weight:700}
+  .mdetail .mdsub{color:var(--muted);font-size:13px;margin-top:2px}
+  .mdrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .mdrow:last-child{border-bottom:none} .mdrow .k{color:var(--muted)}
   .sectionbar{display:flex;align-items:center;gap:10px;margin:22px 0 12px}
   .sectionbar h3{margin:0;font-size:17px}
   .sectionbar .dot{width:11px;height:11px;border-radius:50%}
@@ -291,6 +305,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /* ================= Zustand ================= */
 let me = null;
 let members = [], transactions = [], events = [], beitraege = [];
+let strafenMap = {}, postenMap = {};
 let posRows = [];
 let beitragJahr = new Date().getFullYear();
 let reportJahr = new Date().getFullYear();
@@ -313,6 +328,17 @@ function typOf(t){ return t.typ || (t.art==='in'?'einnahme':'ausgabe'); }
 function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['🏗 Extern','blue'],ausgabe:['Ausgabe','warn']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
 function eventName(id){ const e=events.find(x=>x.id===id); return e?e.titel:null; }
 function memberName(id){ const m=members.find(x=>x.id===id); return m?(m.display_name||m.username):'—'; }
+
+/* Pixel-Avatar – identische Berechnung wie in der App (FNV-Hash, 8×8 symmetrisch) */
+function avatarHash(s){ let h=0x811c9dc5>>>0; s=s||'default'; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } h^=h>>>16; h=Math.imul(h,0x45d9f3b)>>>0; h^=h>>>16; return h>>>0; }
+function avatarGrid(seed){ const h=avatarHash(seed||'default'); const rows=[]; for(let row=0;row<8;row++){ const left=[]; for(let col=0;col<4;col++){ const bit=row*4+col; left.push(((h>>>bit)&1)===1); } rows.push([...left,...[...left].reverse()]); } return rows; }
+function pixelAvatar(seed,color,size,imageUrl){
+  const safe=color||'#6366f1';
+  const bg=/^#[0-9a-fA-F]{6}$/.test(safe)?safe+'22':safe;
+  if(imageUrl){ return `<span class="pav" style="width:${size}px;height:${size}px;background:${bg}"><img src="${esc(imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover"></span>`; }
+  let rects=''; avatarGrid(seed).forEach((r,ri)=>r.forEach((f,ci)=>{ if(f) rects+=`<rect x="${ci}" y="${ri}" width="1" height="1"/>`; }));
+  return `<span class="pav" style="width:${size}px;height:${size}px;background:${bg}"><svg viewBox="0 0 8 8" width="100%" height="100%" shape-rendering="crispEdges" style="fill:${safe}">${rects}</svg></span>`;
+}
 
 function balance(){
   return transactions.reduce((s,t)=>{
@@ -368,14 +394,22 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 
 /* ================= Daten laden ================= */
 async function loadAll(){
-  const [m,t,e,b] = await Promise.all([
-    sb.from('profiles').select('id,display_name,username,role,email').order('display_name'),
+  const nowISO=new Date().toISOString();
+  const [m,t,e,b,s,p] = await Promise.all([
+    sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     sb.from('mitgliedsbeitraege').select('*'),
+    sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO),
+    sb.from('posten_buchungen').select('mitglied_id,betrag').eq('bezahlt',false),
   ]);
   [m,t,e,b].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[]; beitraege = b.data||[];
+  // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
+  strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
+  postenMap={};  (p&&p.data||[]).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
+  if(s&&s.error) console.warn('strafen:',s.error.message);
+  if(p&&p.error) console.warn('posten:',p.error.message);
   document.getElementById('memberNames').innerHTML = members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('');
   renderAll();
 }
@@ -436,14 +470,38 @@ function renderDashboard(){
 }
 
 /* ---- Mitglieder ---- */
+function memberBadges(m,center){
+  const s=strafenMap[m.id]||0, p=postenMap[m.id]||0; const b=[];
+  if(s>0) b.push(`<span class="pill no mini" title="offene Strafen (App)">Strafen ${Math.round(s)}€</span>`);
+  if(p>0) b.push(`<span class="pill warn mini" title="offene Posten (App)">Posten ${Math.round(p)}€</span>`);
+  return b.length?`<div class="statusline"${center?' style="justify-content:center;margin-top:7px"':''}>${b.join('')}</div>`:'';
+}
 function renderMembers(){
   const q=(val('memberSearch')).toLowerCase(); const f=val('memberFilter');
   const list=members.filter(m=>((m.display_name||m.username||'').toLowerCase().includes(q)) && (!f||m.role===f));
-  document.getElementById('membersTable').innerHTML=list.length?`<table>
-    <thead><tr><th>Name</th><th>Benutzername</th><th>Rolle</th><th>E-Mail</th></tr></thead>
-    <tbody>${list.map(m=>`<tr><td><b>${esc(m.display_name||m.username)}</b></td>
-      <td style="color:var(--muted)">${esc(m.username)||'–'}</td><td>${rolePill(m.role)}</td><td>${esc(m.email)||'–'}</td></tr>`).join('')}</tbody></table>`
-    :'<div class="empty">Keine Mitglieder gefunden.</div>';
+  const el=document.getElementById('membersTable');
+  if(!list.length){ el.innerHTML='<div class="empty">Keine Mitglieder gefunden.</div>'; return; }
+  el.innerHTML=`<div class="member-count">${list.length} Mitglied${list.length!==1?'er':''}</div>
+    <div class="member-grid">${list.map(m=>`
+      <div class="member-card" onclick="openMemberCard('${m.id}')">
+        ${pixelAvatar(m.username,m.avatar_color,54,m.avatar_url)}
+        <div class="mname">${esc(m.display_name||m.username)}</div>
+        <div class="mrole">${rolePill(m.role)}</div>
+        ${memberBadges(m,true)}
+      </div>`).join('')}</div>`;
+}
+function openMemberCard(id){
+  const m=members.find(x=>x.id===id); if(!m) return;
+  const s=strafenMap[id]||0, p=postenMap[id]||0; const jahr=new Date().getFullYear(); const bei=beitragFor(id,jahr);
+  openModal(`<h3>Mitglied</h3>
+    <div class="mdetail">${pixelAvatar(m.username,m.avatar_color,64,m.avatar_url)}
+      <div><div class="mdname">${esc(m.display_name||m.username)}</div>
+        <div class="mdsub">@${esc(m.username)||'—'} · ${rolePill(m.role)}</div></div></div>
+    <div class="mdrow"><span class="k">E-Mail</span><span>${esc(m.email)||'–'}</span></div>
+    <div class="mdrow"><span class="k">Offene Strafen (App)</span><span class="${s>0?'amount minus':''}">${s>0?eur(s):'–'}</span></div>
+    <div class="mdrow"><span class="k">Offene Posten (App)</span><span class="${p>0?'amount minus':''}">${p>0?eur(p):'–'}</span></div>
+    <div class="mdrow"><span class="k">Mitgliedsbeitrag ${jahr}</span><span>${bei?(bei.bezahlt?'<span class="pill ok mini">bezahlt</span>':'<span class="pill no mini">offen · '+eur(bei.betrag)+'</span>'):'–'}</span></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Schließen</button></div>`);
 }
 
 /* ---- Finanzen ---- */
