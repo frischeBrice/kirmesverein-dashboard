@@ -254,18 +254,17 @@
 
     <!-- BEITRÄGE -->
     <section class="view" id="beitraege">
-      <div class="view-head"><h2>Mitgliedsbeiträge</h2></div>
+      <div class="view-head"><h2>Beiträge / Posten</h2></div>
+      <div class="note">Posten (z. B. „Mitgliedsbeitrag") werden in der <b>App</b> angelegt und Mitgliedern zugewiesen. Hier siehst du pro Posten den Bezahlstatus und kannst ihn abhaken – live mit der App verbunden.</div>
       <div class="cards">
-        <div class="card"><div class="label">Soll (Jahr)</div><div class="value" id="beiSoll">–</div></div>
+        <div class="card"><div class="label">Soll</div><div class="value" id="beiSoll">–</div></div>
         <div class="card"><div class="label">Bezahlt</div><div class="value green" id="beiBezahlt">–</div></div>
         <div class="card"><div class="label">Offen</div><div class="value red" id="beiOffen">–</div></div>
       </div>
       <div class="panel">
-        <h3>🧾 Beiträge
+        <h3>🧾 Posten
           <span class="grow">
-            <select id="beitragJahrSel" onchange="setBeitragJahr(this.value)" style="width:auto"></select>
-            <input id="standardBeitrag" type="number" step="0.01" min="0" placeholder="Standardbetrag €" style="width:150px">
-            <button class="btn sm" onclick="applyStandard()">Auf alle anwenden</button>
+            <select id="postenSel" onchange="setPostenSel(this.value)" style="width:auto;min-width:180px"></select>
           </span>
         </h3>
         <div id="beitraegeTable"></div>
@@ -304,10 +303,10 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ================= Zustand ================= */
 let me = null;
-let members = [], transactions = [], events = [], beitraege = [];
+let members = [], transactions = [], events = [];
 let strafenMap = {}, postenMap = {};
+let posten = [], postenBuchungen = [], postenSel = null;
 let posRows = [];
-let beitragJahr = new Date().getFullYear();
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
@@ -357,7 +356,6 @@ function auslagenProPerson(){
 function yearsList(){
   const ys=new Set([new Date().getFullYear()]);
   transactions.forEach(t=>{const y=yearOf(t.datum); if(y)ys.add(y);});
-  beitraege.forEach(b=>ys.add(b.jahr));
   return [...ys].sort((a,b)=>b-a);
 }
 
@@ -395,21 +393,23 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,b,s,p] = await Promise.all([
+  const [m,t,e,s,pd,pb] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
-    sb.from('mitgliedsbeitraege').select('*'),
     sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO),
-    sb.from('posten_buchungen').select('mitglied_id,betrag').eq('bezahlt',false),
+    sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
+    sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
   ]);
-  [m,t,e,b].forEach(r=>{ if(r.error) console.warn(r.error.message); });
-  members = m.data||[]; transactions = t.data||[]; events = e.data||[]; beitraege = b.data||[];
+  [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
+  members = m.data||[]; transactions = t.data||[]; events = e.data||[];
+  posten = pd.data||[]; postenBuchungen = pb.data||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
-  postenMap={};  (p&&p.data||[]).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
-  if(s&&s.error) console.warn('strafen:',s.error.message);
-  if(p&&p.error) console.warn('posten:',p.error.message);
+  postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
+  if(s&&s.error)  console.warn('strafen:',s.error.message);
+  if(pd&&pd.error) console.warn('posten:',pd.error.message);
+  if(pb&&pb.error) console.warn('posten_buchungen:',pb.error.message);
   document.getElementById('memberNames').innerHTML = members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('');
   renderAll();
 }
@@ -492,15 +492,17 @@ function renderMembers(){
 }
 function openMemberCard(id){
   const m=members.find(x=>x.id===id); if(!m) return;
-  const s=strafenMap[id]||0, p=postenMap[id]||0; const jahr=new Date().getFullYear(); const bei=beitragFor(id,jahr);
+  const s=strafenMap[id]||0, p=postenMap[id]||0;
+  const myPosten=postenBuchungen.filter(b=>b.mitglied_id===id);
+  const postenRows=myPosten.length? myPosten.map(b=>`<div class="mdrow"><span class="k">${esc(b.titel||postenTitel(b.posten_id))}</span><span>${b.bezahlt?'<span class="pill ok mini">bezahlt</span>':'<span class="pill no mini">offen · '+eur(b.betrag)+'</span>'}</span></div>`).join('') : '';
   openModal(`<h3>Mitglied</h3>
     <div class="mdetail">${pixelAvatar(m.username,m.avatar_color,64,m.avatar_url)}
       <div><div class="mdname">${esc(m.display_name||m.username)}</div>
         <div class="mdsub">@${esc(m.username)||'—'} · ${rolePill(m.role)}</div></div></div>
     <div class="mdrow"><span class="k">E-Mail</span><span>${esc(m.email)||'–'}</span></div>
     <div class="mdrow"><span class="k">Offene Strafen (App)</span><span class="${s>0?'amount minus':''}">${s>0?eur(s):'–'}</span></div>
-    <div class="mdrow"><span class="k">Offene Posten (App)</span><span class="${p>0?'amount minus':''}">${p>0?eur(p):'–'}</span></div>
-    <div class="mdrow"><span class="k">Mitgliedsbeitrag ${jahr}</span><span>${bei?(bei.bezahlt?'<span class="pill ok mini">bezahlt</span>':'<span class="pill no mini">offen · '+eur(bei.betrag)+'</span>'):'–'}</span></div>
+    <div class="mdrow"><span class="k">Offene Posten gesamt</span><span class="${p>0?'amount minus':''}">${p>0?eur(p):'–'}</span></div>
+    ${postenRows?`<div style="margin-top:12px"><div class="submuted" style="margin-bottom:2px">Posten im Detail</div>${postenRows}</div>`:''}
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Schließen</button></div>`);
 }
 
@@ -564,47 +566,46 @@ function renderFinance(){
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
 }
 
-/* ---- Beiträge ---- */
-function beitragFor(mid,jahr){ return beitraege.find(b=>b.mitglied_id===mid && b.jahr===jahr); }
+/* ---- Beiträge / Posten (aus der App) ---- */
+function postenTitel(id){ const p=posten.find(x=>x.id===id); return p?p.titel:'Posten'; }
+function nameWithAvatar(m,size){ return `<span style="display:inline-flex;align-items:center;gap:8px">${pixelAvatar(m.username,m.avatar_color,size||26,m.avatar_url)}<b>${esc(m.display_name||m.username)}</b></span>`; }
 function renderBeitraege(){
-  const sel=document.getElementById('beitragJahrSel');
-  const years=yearsList(); if(!years.includes(beitragJahr)) years.unshift(beitragJahr);
-  sel.innerHTML=years.map(y=>`<option value="${y}" ${y===beitragJahr?'selected':''}>${y}</option>`).join('');
+  const sel=document.getElementById('postenSel');
+  const tbl=document.getElementById('beitraegeTable');
+  if(!posten.length){
+    sel.innerHTML='<option>–</option>';
+    tbl.innerHTML='<div class="empty">In der App wurden noch keine Posten angelegt.<br>Lege dort z. B. „Mitgliedsbeitrag" an und weise ihn Mitgliedern zu – dann erscheint er hier.</div>';
+    document.getElementById('beiSoll').textContent=eur(0); document.getElementById('beiBezahlt').textContent=eur(0); document.getElementById('beiOffen').textContent=eur(0);
+    return;
+  }
+  if(!postenSel || !posten.find(p=>p.id===postenSel)) postenSel=posten[0].id;
+  sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)} (${eur(p.betrag)})</option>`).join('');
+  const byMember={}; postenBuchungen.filter(b=>b.posten_id===postenSel).forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
   let soll=0,bez=0;
   const rows=members.map(m=>{
-    const b=beitragFor(m.id,beitragJahr); const betrag=b?Number(b.betrag):0; const paid=b?b.bezahlt:false;
-    soll+=betrag; if(paid)bez+=betrag;
-    return `<tr><td><b>${esc(m.display_name||m.username)}</b></td>
-      <td><input class="beitrag-inp" type="number" step="0.01" min="0" value="${b?b.betrag:''}" placeholder="0,00" onchange="saveBeitrag('${m.id}',{betrag:parseFloat(this.value)||0})"></td>
-      <td>${paid?`<span class="pill ok">bezahlt${b&&b.bezahlt_am?' · '+fmtDate(b.bezahlt_am):''}</span>`:'<span class="pill no">offen</span>'}</td>
-      <td><div class="row-actions"><button class="btn ghost sm" onclick="saveBeitrag('${m.id}',{bezahlt:${!paid}})">${paid?'auf offen':'bezahlt ✓'}</button></div></td></tr>`;
+    const bs=byMember[m.id]||[];
+    if(!bs.length) return `<tr style="opacity:.55"><td>${nameWithAvatar(m)}</td><td colspan="2" style="color:var(--muted)">nicht zugewiesen <span class="submuted">(in der App zuweisen)</span></td><td></td></tr>`;
+    const total=bs.reduce((s,b)=>s+Number(b.betrag),0); const allPaid=bs.every(b=>b.bezahlt);
+    soll+=total; if(allPaid) bez+=total;
+    const btns=bs.map(b=>`<button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>`).join(' ');
+    return `<tr>
+      <td>${nameWithAvatar(m)}</td>
+      <td>${eur(total)}${bs.length>1?` <span class="submuted">(${bs.length}×)</span>`:''}</td>
+      <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
+      <td><div class="row-actions">${btns}</div></td></tr>`;
   }).join('');
-  document.getElementById('beitraegeTable').innerHTML=members.length?`<table>
-    <thead><tr><th>Mitglied</th><th>Beitrag (€)</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-    :'<div class="empty">Keine Mitglieder vorhanden.</div>';
+  tbl.innerHTML=`<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`;
   document.getElementById('beiSoll').textContent=eur(soll);
   document.getElementById('beiBezahlt').textContent=eur(bez);
   document.getElementById('beiOffen').textContent=eur(soll-bez);
 }
-function setBeitragJahr(y){ beitragJahr=parseInt(y); renderBeitraege(); }
-async function saveBeitrag(mid,patch){
-  const ex=beitragFor(mid,beitragJahr)||{betrag:0,bezahlt:false,bezahlt_am:null};
-  const row={mitglied_id:mid,jahr:beitragJahr,betrag:ex.betrag,bezahlt:ex.bezahlt,bezahlt_am:ex.bezahlt_am||null,...patch};
-  if(patch.bezahlt===true) row.bezahlt_am=todayISO();
-  if(patch.bezahlt===false) row.bezahlt_am=null;
-  row.created_by=me.id;
-  const {error}=await sb.from('mitgliedsbeitraege').upsert(row,{onConflict:'mitglied_id,jahr'});
-  if(error){ alert('Fehler: '+error.message); return; }
-  await loadAll();
-}
-async function applyStandard(){
-  const b=num('standardBeitrag');
-  if(b<=0){ alert('Bitte oben einen Standardbetrag eingeben.'); return; }
-  if(!confirm(`Standardbeitrag ${eur(b)} für alle ${members.length} Mitglieder im Jahr ${beitragJahr} setzen?\n(Bereits bezahlte bleiben bezahlt.)`)) return;
-  const rows=members.map(m=>{const ex=beitragFor(m.id,beitragJahr)||{bezahlt:false,bezahlt_am:null};
-    return {mitglied_id:m.id,jahr:beitragJahr,betrag:b,bezahlt:ex.bezahlt,bezahlt_am:ex.bezahlt_am||null,created_by:me.id};});
-  const {error}=await sb.from('mitgliedsbeitraege').upsert(rows,{onConflict:'mitglied_id,jahr'});
-  if(error){ alert('Fehler: '+error.message); return; }
+function setPostenSel(id){ postenSel=id; renderBeitraege(); }
+async function togglePosten(buchungId){
+  const bu=postenBuchungen.find(x=>x.id===buchungId); if(!bu) return;
+  const paid=!bu.bezahlt;
+  const {error}=await sb.from('posten_buchungen').update({bezahlt:paid, bezahlt_at: paid?new Date().toISOString():null}).eq('id',buchungId);
+  if(error){ alert('Konnte nicht speichern (evtl. fehlende Schreibrechte auf posten_buchungen): '+error.message); return; }
   await loadAll();
 }
 
