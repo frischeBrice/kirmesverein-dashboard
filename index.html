@@ -124,6 +124,7 @@
   .filterbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
   .filterbar input,.filterbar select{width:auto;flex:1;min-width:140px}
   .pos-head,.pos-row{display:grid;grid-template-columns:1fr 52px 84px 84px 28px;gap:6px;align-items:center}
+  .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 46px 52px 74px 74px 24px}
   .pos-head{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;padding:0 2px}
   .pos-row{margin-bottom:6px}
   .pos-row input{padding:7px 8px;font-size:13px}
@@ -135,6 +136,7 @@
   .beitrag-inp{max-width:110px;padding:6px 9px;font-size:13px}
   @media(max-width:600px){.grid2{grid-template-columns:1fr}nav{top:65px}.whoami{display:none}
     .pos-head,.pos-row{grid-template-columns:1fr 44px 70px 70px 24px}
+    .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 38px 42px 60px 60px 22px}
     .catbar{grid-template-columns:100px 1fr 74px}}
   /* Druck */
   @media print{
@@ -576,6 +578,8 @@ function subLine(t){
   const parts=[];
   if(typOf(t)==='einkauf' && Array.isArray(t.positionen) && t.positionen.length) parts.push(`🛒 ${t.positionen.length} Position(en)${Number(t.pfand)>0?' · Pfand '+eur(t.pfand):''}`);
   if(typOf(t)==='extern' && (t.zeitraum_von||t.zeitraum_bis)) parts.push(`🗓 ${fmtDate(t.zeitraum_von)} – ${fmtDate(t.zeitraum_bis)}`);
+  if(t.kommission) parts.push('🔄 Kommission');
+  if(Number(t.rabatt)>0) parts.push(`Rabatt/Pfandabgabe −${eur(t.rabatt)}`);
   if(t.veranstaltung_id && eventName(t.veranstaltung_id)) parts.push(`🎪 ${esc(eventName(t.veranstaltung_id))}`);
   return parts.length?`<div class="submuted">${parts.join(' · ')}</div>`:'';
 }
@@ -985,28 +989,42 @@ function saveEinnahme(id,btn){
 }
 
 /* ---- Einkauf ---- */
-const posTemplate=()=>({artikel:'',anzahl:1,preis:'',pfand:''});
+const posTemplate=()=>({artikel:'',anzahl:1,preis:'',pfand:'',zurueck:''});
+function ekKomm(){ const c=document.getElementById('ek_kommission'); return !!(c&&c.checked); }
 function renderPosRows(){
-  document.getElementById('posContainer').innerHTML = posRows.map((p,i)=>`
-    <div class="pos-row">
+  const komm=ekKomm();
+  const head=`<div class="pos-head${komm?' komm':''}"><span>Artikel</span><span>Anz.</span>${komm?'<span>Zurück</span>':''}<span>Einzel €</span><span>Pfand/Stk €</span><span></span></div>`;
+  const rows=posRows.map((p,i)=>`
+    <div class="pos-row${komm?' komm':''}">
       <input placeholder="Artikel" value="${esc(p.artikel)}" oninput="posRows[${i}].artikel=this.value">
       <input type="number" min="0" step="1" value="${p.anzahl}" oninput="posRows[${i}].anzahl=this.value;calcEinkauf()">
+      ${komm?`<input type="number" min="0" step="1" placeholder="0" value="${p.zurueck??''}" oninput="posRows[${i}].zurueck=this.value;calcEinkauf()">`:''}
       <input type="number" min="0" step="0.01" placeholder="0,00" value="${p.preis}" oninput="posRows[${i}].preis=this.value;calcEinkauf()">
       <input type="number" min="0" step="0.01" placeholder="0,00" value="${p.pfand}" oninput="posRows[${i}].pfand=this.value;calcEinkauf()">
       <button class="icon-btn" title="Position entfernen" onclick="posRows.splice(${i},1);if(!posRows.length)posRows.push(posTemplate());renderPosRows();calcEinkauf()">✕</button>
     </div>`).join('');
+  document.getElementById('posContainer').innerHTML = head+rows;
 }
+function toggleKommission(){ renderPosRows(); calcEinkauf(); }
 function addPos(){ posRows.push(posTemplate()); renderPosRows(); calcEinkauf(); }
 function calcEinkauf(){
-  let items=0,pfand=0;
-  posRows.forEach(p=>{const a=parseFloat(p.anzahl)||0,pr=parseFloat(p.preis)||0,pf=parseFloat(p.pfand)||0;items+=a*pr;pfand+=a*pf;});
-  const el=document.getElementById('ek_totalVal'); if(el) el.textContent=eur(items+pfand);
-  const pe=document.getElementById('ek_pfandVal'); if(pe) pe.textContent=eur(pfand);
-  return {items,pfand,total:items+pfand};
+  const komm=ekKomm();
+  let items=0,pfand=0,zurueckWert=0;
+  posRows.forEach(p=>{const a=parseFloat(p.anzahl)||0,pr=parseFloat(p.preis)||0,pf=parseFloat(p.pfand)||0;
+    const z=komm?Math.min(a,parseFloat(p.zurueck)||0):0; const c=Math.max(0,a-z);
+    items+=c*pr; pfand+=c*pf; zurueckWert+=z*(pr+pf);});
+  const rabatt=parseFloat(val('f_rabatt'))||0;
+  const total=Math.max(0, items+pfand-rabatt);
+  const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v;};
+  set('ek_pfandVal',eur(pfand));
+  set('ek_zurueckVal', zurueckWert>0?(' · −'+eur(zurueckWert)+' zurück'):'');
+  set('ek_rabattVal', rabatt>0?(' · −'+eur(rabatt)+' Rabatt'):'');
+  set('ek_totalVal',eur(total));
+  return {items,pfand,total,zurueckWert,rabatt};
 }
 function openEinkauf(id){
-  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',datum:todayISO(),positionen:null,zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:''};
-  posRows=(Array.isArray(t.positionen)&&t.positionen.length?t.positionen:[posTemplate()]).map(p=>({artikel:p.artikel||'',anzahl:p.anzahl??1,preis:p.preis??'',pfand:p.pfand??''}));
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',datum:todayISO(),positionen:null,zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:'',kommission:false,rabatt:''};
+  posRows=(Array.isArray(t.positionen)&&t.positionen.length?t.positionen:[posTemplate()]).map(p=>({artikel:p.artikel||'',anzahl:p.anzahl??1,preis:p.preis??'',pfand:p.pfand??'',zurueck:p.zurueck??''}));
   openModal(`<h3>${id?'Einkauf bearbeiten':'Neuer Einkauf'}</h3>
     <div class="grid2">
       <label class="field"><span>Bezeichnung / Geschäft *</span><input id="ek_titel" value="${esc(t.beschreibung)}" placeholder="z. B. Getränkemarkt Müller"></label>
@@ -1014,10 +1032,11 @@ function openEinkauf(id){
     </div>
     <label class="field"><span>Kategorie</span><input id="ek_kat" list="ekcats" value="${esc(t.kategorie)}">
       <datalist id="ekcats"><option>Getränke</option><option>Essen / Lebensmittel</option><option>Deko</option><option>Material / Werkzeug</option><option>Reinigung</option><option>Sonstiges</option></datalist></label>
-    <div class="pos-head"><span>Artikel</span><span>Anz.</span><span>Einzel €</span><span>Pfand/Stk €</span><span></span></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13.5px"><input type="checkbox" id="ek_kommission" style="width:auto" ${t.kommission?'checked':''} onchange="toggleKommission()"> 🔄 Kommission – nicht Verbrauchtes zurückgebracht (nur Verbrauchtes wird berechnet)</label>
     <div id="posContainer"></div>
     <button class="btn ghost sm" style="margin-top:2px" onclick="addPos()">＋ Position</button>
-    <div class="ek-total"><span>davon Pfand: <span id="ek_pfandVal">0,00 €</span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
+    <label class="field" style="margin-top:12px"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}" oninput="calcEinkauf()"></label>
+    <div class="ek-total"><span>Pfand: <span id="ek_pfandVal">0,00 €</span><span class="submuted" id="ek_zurueckVal"></span><span class="submuted" id="ek_rabattVal"></span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
     ${fieldVeranstaltung(t)}
     ${fieldZahlung(t)}
     ${fieldAuslage(t)}
@@ -1029,24 +1048,26 @@ function openEinkauf(id){
 function saveEinkauf(id,btn){
   const beschreibung=val('ek_titel');
   if(!beschreibung){ alert('Bitte eine Bezeichnung / das Geschäft angeben.'); return; }
-  const clean=posRows.map(p=>({artikel:(p.artikel||'').trim(),anzahl:parseFloat(p.anzahl)||0,preis:parseFloat(p.preis)||0,pfand:parseFloat(p.pfand)||0})).filter(p=>p.artikel||p.preis||p.pfand);
+  const komm=ekKomm();
+  const clean=posRows.map(p=>({artikel:(p.artikel||'').trim(),anzahl:parseFloat(p.anzahl)||0,preis:parseFloat(p.preis)||0,pfand:parseFloat(p.pfand)||0,zurueck:komm?(parseFloat(p.zurueck)||0):0})).filter(p=>p.artikel||p.preis||p.pfand);
   if(!clean.length){ alert('Bitte mindestens eine Position mit Artikel/Preis erfassen.'); return; }
-  const {total,pfand}=calcEinkauf();
+  const {total,pfand,rabatt}=calcEinkauf();
   const row={typ:'einkauf',art:'out',beschreibung,kategorie:val('ek_kat')||null,datum:val('ek_datum')||todayISO(),
-    betrag:total,pfand,positionen:clean,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
+    betrag:total,pfand,rabatt,kommission:komm,positionen:clean,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
   withBtn(btn,async()=>{ const f=document.getElementById('f_beleg').files[0]; if(f) row.beleg_pfad=await uploadBeleg(f); await upsertTx(id,row); closeModal(); await loadAll(); });
 }
 
 /* ---- Externe Ausgabe ---- */
 function openExtern(id){
-  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',betrag:'',datum:todayISO(),zeitraum_von:'',zeitraum_bis:'',zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:''};
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',betrag:'',rabatt:'',datum:todayISO(),zeitraum_von:'',zeitraum_bis:'',zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:''};
   openModal(`<h3>${id?'Externe Ausgabe bearbeiten':'Neue externe Ausgabe'}</h3>
     <label class="field"><span>Wofür? *</span><input id="ex_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Zeltmiete, Bühne, Versicherung"></label>
     <div class="grid2">
       <label class="field"><span>Kategorie</span><input id="ex_kat" list="excats" value="${esc(t.kategorie)}">
         <datalist id="excats"><option>Location / Miete</option><option>Geräte / Technik</option><option>Musik / Band</option><option>Versicherung</option><option>Genehmigungen</option><option>Sonstiges</option></datalist></label>
-      <label class="field"><span>Kosten (€) *</span><input type="number" step="0.01" min="0" id="ex_betrag" value="${t.betrag}"></label>
+      <label class="field"><span>Kosten (€) *</span><input type="number" step="0.01" min="0" id="ex_betrag" value="${(t.betrag!==''&&t.betrag!=null)?(Number(t.betrag)+Number(t.rabatt||0)):''}"></label>
     </div>
+    <label class="field"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}"></label>
     <div class="grid2">
       <label class="field"><span>Zeitraum von</span><input type="date" id="ex_von" value="${t.zeitraum_von||''}"></label>
       <label class="field"><span>Zeitraum bis</span><input type="date" id="ex_bis" value="${t.zeitraum_bis||''}"></label>
@@ -1060,9 +1081,10 @@ function openExtern(id){
       <button class="btn" onclick="saveExtern('${id||''}',this)">Speichern</button></div>`);
 }
 function saveExtern(id,btn){
-  const beschreibung=val('ex_desc'); const betrag=num('ex_betrag');
-  if(!beschreibung||betrag<=0){ alert('Bitte „Wofür" und Kosten eingeben.'); return; }
-  const row={typ:'extern',art:'out',beschreibung,kategorie:val('ex_kat')||null,betrag,datum:val('ex_datum')||todayISO(),
+  const beschreibung=val('ex_desc'); const kosten=num('ex_betrag'); const rabatt=parseFloat(val('f_rabatt'))||0;
+  if(!beschreibung||kosten<=0){ alert('Bitte „Wofür" und Kosten eingeben.'); return; }
+  const betrag=Math.max(0, kosten-rabatt);
+  const row={typ:'extern',art:'out',beschreibung,kategorie:val('ex_kat')||null,betrag,rabatt,datum:val('ex_datum')||todayISO(),
     zeitraum_von:val('ex_von')||null,zeitraum_bis:val('ex_bis')||null,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
   withBtn(btn,async()=>{ const f=document.getElementById('f_beleg').files[0]; if(f) row.beleg_pfad=await uploadBeleg(f); await upsertTx(id,row); closeModal(); await loadAll(); });
 }
