@@ -291,7 +291,7 @@
         <div class="card"><div class="label">Erhalten</div><div class="value green" id="spErhalten">–</div></div>
       </div>
       <div class="filterbar">
-        <input id="spSearch" placeholder="🔍 Suche (Sponsor, Ansprechpartner, Betreuer)…" oninput="renderSponsoren()">
+        <input id="spSearch" placeholder="🔍 Suche (Sponsor, Ansprechpartner, Zuständig)…" oninput="renderSponsoren()">
         <select id="spFilter" onchange="renderSponsoren()">
           <option value="">Alle Status</option>
           <option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
@@ -700,7 +700,7 @@ function sponsorRow(s,showBetreuer){
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Betreuer</th>':''}<th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function renderSponsoren(){
@@ -715,7 +715,7 @@ function renderSponsoren(){
   const el=document.getElementById('sponsorenTable');
   if(!list.length){ el.innerHTML='<div class="empty">Noch keine Sponsoren. Lege oben einen an.</div>'; return; }
   if(grouped){
-    const groups={}; list.forEach(s=>{ const k=s.betreuer||'— ohne Betreuer —'; (groups[k]=groups[k]||[]).push(s); });
+    const groups={}; list.forEach(s=>{ const k=s.betreuer||'— ohne Zuständige —'; (groups[k]=groups[k]||[]).push(s); });
     const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,'de'));
     el.innerHTML=keys.map(k=>{ const arr=groups[k]; const sum=arr.reduce((a,s)=>a+Number(s.betrag||0),0);
       return `<div class="sectionbar" style="margin:16px 0 8px"><h3 style="font-size:15px">👤 ${esc(k)}</h3>
@@ -730,7 +730,7 @@ function openSponsor(id){
   const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',jahr:new Date().getFullYear(),status:'angefragt',notiz:'',betreuer:''};
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
-    <label class="field"><span>Betreuer (zuständiges Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
+    <label class="field"><span>Zuständige Person (Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
     <div class="grid2">
       <label class="field"><span>Ansprechpartner</span><input id="sp_ap" value="${esc(s.ansprechpartner)}"></label>
       <label class="field"><span>Art</span><input id="sp_art" list="spArten" value="${esc(s.art)}">
