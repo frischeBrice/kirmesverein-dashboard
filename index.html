@@ -689,13 +689,23 @@ function renderEvents(){
 
 /* ---- Sponsoren ---- */
 function sponsorStatusPill(s){const c={'angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'angefragt')}</span>`;}
+function sponsorTrend(s){
+  const hasCur=s.betrag!=null&&s.betrag!=='';
+  const hasVor=s.betrag_vorjahr!=null&&s.betrag_vorjahr!=='';
+  if(!hasCur) return '';                                  // dieses Jahr noch offen
+  if(!hasVor) return ' <span class="pill blue mini">neu</span>';
+  const c=Number(s.betrag), v=Number(s.betrag_vorjahr);
+  if(c>v) return ` <span class="pill ok mini">▲ +${eur(c-v)}</span>`;
+  if(c<v) return ` <span class="pill no mini">▼ −${eur(v-c)}</span>`;
+  return ' <span class="pill gray mini">= gleich</span>';
+}
 function sponsorRow(s,showBetreuer){
   return `<tr>
     <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">${esc(s.notiz)}</div>`:''}</td>
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
-    <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?eur(s.betrag):'–'}</td>
+    <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?`<b>${eur(s.betrag)}</b>`:'<span style="color:var(--muted)">–</span>'}${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div></td>
     <td>${sponsorStatusPill(s.status)}</td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
@@ -727,7 +737,7 @@ function renderSponsoren(){
   }
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',jahr:new Date().getFullYear(),status:'angefragt',notiz:'',betreuer:''};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'angefragt',notiz:'',betreuer:''};
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
     <label class="field"><span>Zuständige Person (Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
@@ -741,20 +751,23 @@ function openSponsor(id){
       <label class="field"><span>Telefon</span><input id="sp_tel" value="${esc(s.telefon)}"></label>
     </div>
     <div class="grid2">
-      <label class="field"><span>Betrag / Wert (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
-      <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
+      <label class="field"><span>Betrag / Wert dieses Jahr (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
+      <label class="field"><span>Vorjahr (€)</span><input type="number" step="0.01" min="0" id="sp_vorjahr" value="${s.betrag_vorjahr??''}"></label>
     </div>
-    <label class="field"><span>Status</span><select id="sp_status">
-      ${['angefragt','zugesagt','erhalten','abgelehnt'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <div class="grid2">
+      <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
+      <label class="field"><span>Status</span><select id="sp_status">
+        ${['angefragt','zugesagt','erhalten','abgelehnt'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    </div>
     <label class="field"><span>Notiz</span><textarea id="sp_notiz" rows="2">${esc(s.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
 }
 function saveSponsor(id,btn){
   const name=val('sp_name'); if(!name){ alert('Bitte Name / Firma eingeben.'); return; }
-  const bet=val('sp_betrag'); const jahr=val('sp_jahr');
+  const bet=val('sp_betrag'); const vor=val('sp_vorjahr'); const jahr=val('sp_jahr');
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
-    art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),jahr:jahr===''?null:parseInt(jahr),
+    art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
     status:val('sp_status'),notiz:val('sp_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
