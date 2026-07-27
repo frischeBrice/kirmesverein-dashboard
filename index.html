@@ -182,6 +182,7 @@
     <button data-view="members" onclick="show('members')">👥 Mitglieder</button>
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
+    <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
@@ -280,6 +281,26 @@
       <div class="panel"><div id="eventsTable"></div></div>
     </section>
 
+    <!-- SPONSOREN -->
+    <section class="view" id="sponsoren">
+      <div class="view-head"><h2>Sponsoren</h2>
+        <div class="actions"><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
+      <div class="cards">
+        <div class="card"><div class="label">Sponsoren</div><div class="value" id="spCount">–</div></div>
+        <div class="card"><div class="label">Zugesagt</div><div class="value" id="spZugesagt">–</div></div>
+        <div class="card"><div class="label">Erhalten</div><div class="value green" id="spErhalten">–</div></div>
+      </div>
+      <div class="filterbar">
+        <input id="spSearch" placeholder="🔍 Suche nach Sponsor…" oninput="renderSponsoren()">
+        <select id="spFilter" onchange="renderSponsoren()">
+          <option value="">Alle Status</option>
+          <option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
+          <option value="erhalten">Erhalten</option><option value="abgelehnt">Abgelehnt</option>
+        </select>
+      </div>
+      <div class="panel"><div id="sponsorenTable"></div></div>
+    </section>
+
     <!-- INVENTUR -->
     <section class="view" id="inventur">
       <div class="view-head"><h2>Inventur</h2>
@@ -324,6 +345,7 @@ let members = [], transactions = [], events = [];
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
 let inventar = [];
+let sponsoren = [];
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -420,7 +442,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -428,11 +450,13 @@ async function loadAll(){
     sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
     sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
     sb.from('inventar').select('*').order('name'),
+    sb.from('sponsoren').select('*').order('name'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
   posten = pd.data||[]; postenBuchungen = pb.data||[];
   inventar = (inv&&inv.data)||[];
+  sponsoren = (sp&&sp.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -450,7 +474,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderEvents(); renderInventur(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderInventur(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -661,6 +685,65 @@ function renderEvents(){
       <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
     :'<div class="empty">Noch keine Veranstaltungen. Lege oben eine an.</div>';
 }
+
+/* ---- Sponsoren ---- */
+function sponsorStatusPill(s){const c={'angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'angefragt')}</span>`;}
+function renderSponsoren(){
+  const q=(val('spSearch')).toLowerCase(); const f=val('spFilter');
+  const zugesagt=sponsoren.filter(s=>['zugesagt','erhalten'].includes(s.status)).reduce((a,s)=>a+Number(s.betrag||0),0);
+  const erhalten=sponsoren.filter(s=>s.status==='erhalten').reduce((a,s)=>a+Number(s.betrag||0),0);
+  document.getElementById('spCount').textContent=sponsoren.length;
+  document.getElementById('spZugesagt').textContent=eur(zugesagt);
+  document.getElementById('spErhalten').textContent=eur(erhalten);
+  const list=sponsoren.filter(s=>((s.name||'').toLowerCase().includes(q)||(s.ansprechpartner||'').toLowerCase().includes(q)||(s.art||'').toLowerCase().includes(q)) && (!f||s.status===f));
+  document.getElementById('sponsorenTable').innerHTML=list.length?`<table>
+    <thead><tr><th>Sponsor</th><th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th></th></tr></thead>
+    <tbody>${list.map(s=>`<tr>
+      <td><b>${esc(s.name)}</b>${s.ansprechpartner?`<div class="submuted">${esc(s.ansprechpartner)}</div>`:''}${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}</td>
+      <td>${esc(s.art)||'–'}</td>
+      <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
+      <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?eur(s.betrag):'–'}</td>
+      <td>${sponsorStatusPill(s.status)}</td>
+      <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">Noch keine Sponsoren. Lege oben einen an.</div>';
+}
+function openSponsor(id){
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',jahr:new Date().getFullYear(),status:'angefragt',notiz:''};
+  openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
+    <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
+    <div class="grid2">
+      <label class="field"><span>Ansprechpartner</span><input id="sp_ap" value="${esc(s.ansprechpartner)}"></label>
+      <label class="field"><span>Art</span><input id="sp_art" list="spArten" value="${esc(s.art)}">
+        <datalist id="spArten"><option>Geldspende</option><option>Sachspende</option><option>Bandenwerbung</option><option>Gutschein</option><option>Sonstiges</option></datalist></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>E-Mail</span><input id="sp_email" value="${esc(s.email)}"></label>
+      <label class="field"><span>Telefon</span><input id="sp_tel" value="${esc(s.telefon)}"></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Betrag / Wert (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
+      <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
+    </div>
+    <label class="field"><span>Status</span><select id="sp_status">
+      ${['angefragt','zugesagt','erhalten','abgelehnt'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label class="field"><span>Notiz</span><textarea id="sp_notiz" rows="2">${esc(s.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
+}
+function saveSponsor(id,btn){
+  const name=val('sp_name'); if(!name){ alert('Bitte Name / Firma eingeben.'); return; }
+  const bet=val('sp_betrag'); const jahr=val('sp_jahr');
+  const row={name,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
+    art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),jahr:jahr===''?null:parseInt(jahr),
+    status:val('sp_status'),notiz:val('sp_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delSponsor(id){ if(!confirm('Sponsor wirklich löschen?'))return;
+  sb.from('sponsoren').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Inventur ---- */
 const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
