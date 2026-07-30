@@ -251,7 +251,7 @@
         <h3>Ausgaben</h3>
         <div class="actions">
           <button class="btn sm" onclick="openEinkauf()">🛒 Einkauf</button>
-          <button class="btn sm" onclick="openExtern()">🏗 Externe Ausgabe</button>
+          <button class="btn sm" onclick="openExtern()">💸 Ausgabe</button>
         </div>
       </div>
       <div class="panel"><div id="expenseTable"></div></div>
@@ -367,7 +367,7 @@ function amount(t){return `<span class="amount ${t.art==='in'?'plus':'minus'}">$
 function rolePill(r){const m={admin:['Admin','blue'],vorstand:['Vorstand','blue'],member:['Mitglied','ok']}[r]||[r||'–','warn'];return `<span class="pill ${m[1]}">${esc(m[0])}</span>`;}
 function statusPill(s){const c={'geplant':'warn','bestätigt':'blue','abgeschlossen':'ok','abgesagt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'geplant')}</span>`;}
 function typOf(t){ return t.typ || (t.art==='in'?'einnahme':'ausgabe'); }
-function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['🏗 Extern','blue'],ausgabe:['Ausgabe','warn']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
+function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['💸 Ausgabe','blue'],ausgabe:['Ausgabe','warn']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
 function eventName(id){ const e=events.find(x=>x.id===id); return e?e.titel:null; }
 function memberName(id){ const m=members.find(x=>x.id===id); return m?(m.display_name||m.username):'—'; }
 
@@ -1060,8 +1060,8 @@ function saveEinkauf(id,btn){
 /* ---- Externe Ausgabe ---- */
 function openExtern(id){
   const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',betrag:'',rabatt:'',datum:todayISO(),zeitraum_von:'',zeitraum_bis:'',zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:''};
-  openModal(`<h3>${id?'Externe Ausgabe bearbeiten':'Neue externe Ausgabe'}</h3>
-    <label class="field"><span>Wofür? *</span><input id="ex_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Zeltmiete, Bühne, Versicherung"></label>
+  openModal(`<h3>${id?'Ausgabe bearbeiten':'Neue Ausgabe'}</h3>
+    <label class="field"><span>Wofür? *</span><input id="ex_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Zeltmiete, Bühne, Leergut-Rückgabe"></label>
     <div class="grid2">
       <label class="field"><span>Kategorie</span><input id="ex_kat" list="excats" value="${esc(t.kategorie)}">
         <datalist id="excats"><option>Location / Miete</option><option>Geräte / Technik</option><option>Musik / Band</option><option>Versicherung</option><option>Genehmigungen</option><option>Sonstiges</option></datalist></label>
@@ -1082,10 +1082,18 @@ function openExtern(id){
 }
 function saveExtern(id,btn){
   const beschreibung=val('ex_desc'); const kosten=num('ex_betrag'); const rabatt=parseFloat(val('f_rabatt'))||0;
-  if(!beschreibung||kosten<=0){ alert('Bitte „Wofür" und Kosten eingeben.'); return; }
-  const betrag=Math.max(0, kosten-rabatt);
-  const row={typ:'extern',art:'out',beschreibung,kategorie:val('ex_kat')||null,betrag,rabatt,datum:val('ex_datum')||todayISO(),
-    zeitraum_von:val('ex_von')||null,zeitraum_bis:val('ex_bis')||null,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
+  if(!beschreibung || (kosten<=0 && rabatt<=0)){ alert('Bitte „Wofür" und Kosten (oder eine Pfandabgabe) eingeben.'); return; }
+  const netto=kosten-rabatt;
+  const base={beschreibung,datum:val('ex_datum')||todayISO(),zeitraum_von:val('ex_von')||null,zeitraum_bis:val('ex_bis')||null,
+    zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,rabatt};
+  let row;
+  if(netto>=0){
+    row={...base,typ:'extern',art:'out',betrag:netto,kategorie:val('ex_kat')||null,...readAuslage()};
+  } else {
+    // Pfandabgabe größer als Kosten -> Gutschrift als Einnahme (Plus in der Kasse)
+    row={...base,typ:'einnahme',art:'in',betrag:-netto,kategorie:val('ex_kat')||'Pfandrückgabe / Leergut',
+      ausgelegt:false,ausgelegt_von:null,erstattet:false,bezahlt:true,pfand:0,positionen:null,kommission:false};
+  }
   withBtn(btn,async()=>{ const f=document.getElementById('f_beleg').files[0]; if(f) row.beleg_pfad=await uploadBeleg(f); await upsertTx(id,row); closeModal(); await loadAll(); });
 }
 
