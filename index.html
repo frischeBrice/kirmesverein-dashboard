@@ -384,14 +384,15 @@ function pixelAvatar(seed,color,size,imageUrl){
 
 function balance(){
   const fin = transactions.reduce((s,t)=>{
-    if(t.art==='in') return s + Number(t.betrag);
+    if(t.art==='in') return s + (t.verrechnet ? 0 : Number(t.betrag));  // verrechnete Einnahme fließt nicht in die Kasse
     // Ausgabe fließt aus der Kasse: bei Auslage erst wenn erstattet, sonst wenn bezahlt (nicht „offen")
     const flows = t.ausgelegt ? t.erstattet : (t.bezahlt!==false);
     return flows ? s - Number(t.betrag) : s;
   },0);
   return fin + postenIncomeTotal();             // bezahlte App-Posten fließen als Einnahmen in die Kasse
 }
-function offeneAuslagen(){ return transactions.filter(t=>t.art==='out' && t.ausgelegt && !t.erstattet).reduce((s,t)=>s+Number(t.betrag),0); }
+function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
+function offeneAuslagen(){ return auslagenProPerson().reduce((s,r)=>s+Math.max(0,r[1]),0); }
 function offeneRechnungen(){ return transactions.filter(t=>t.art==='out' && !t.ausgelegt && t.bezahlt===false).reduce((s,t)=>s+Number(t.betrag),0); }
 function yearSum(art,jahr){ const y=jahr||new Date().getFullYear(); return transactions.filter(t=>t.art===art && yearOf(t.datum)===y).reduce((s,t)=>s+Number(t.betrag),0); }
 /* Bezahlte App-Posten als Einnahmequelle */
@@ -401,9 +402,14 @@ function postenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return 
 function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y); }
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
-  const map={};
-  transactions.filter(t=>t.art==='out'&&t.ausgelegt&&!t.erstattet).forEach(t=>{const p=t.ausgelegt_von||'Unbekannt';map[p]=(map[p]||0)+Number(t.betrag);});
-  return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const aus={};
+  transactions.filter(t=>t.art==='out'&&t.ausgelegt&&!t.erstattet).forEach(t=>{const p=t.ausgelegt_von||'Unbekannt';aus[p]=(aus[p]||0)+Number(t.betrag);});
+  const ver=verrechnetProPerson();
+  const persons=[...new Set([...Object.keys(aus),...Object.keys(ver)])];
+  // [person, netto (offen), ausgelegt, verrechnet]
+  return persons.map(p=>[p,(aus[p]||0)-(ver[p]||0),aus[p]||0,ver[p]||0])
+    .filter(r=>Math.abs(r[1])>0.005 || r[3]>0)
+    .sort((a,b)=>b[1]-a[1]);
 }
 function yearsList(){
   const ys=new Set([new Date().getFullYear()]);
@@ -571,6 +577,7 @@ function statusLine(t){
   if(t.ausgelegt && !t.erstattet) s.push(`<span class="pill no mini">Auslage offen${t.ausgelegt_von?': '+esc(t.ausgelegt_von):''}</span>`);
   if(t.ausgelegt && t.erstattet) s.push(`<span class="pill ok mini">Auslage erstattet</span>`);
   if(t.art==='out' && !t.ausgelegt && t.bezahlt===false) s.push('<span class="pill no mini">offen / unbezahlt</span>');
+  if(t.art==='in' && t.verrechnet) s.push(`<span class="pill blue mini">verrechnet mit ${esc(t.verrechnet_mit||'?')}</span>`);
   if(t.beleg_pfad) s.push(`<a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" class="pill blue mini" style="text-decoration:none">📎 Beleg</a>`);
   return s.length?`<div class="statusline">${s.join('')}</div>`:'';
 }
@@ -594,7 +601,7 @@ function renderFinance(){
   const ap=auslagenProPerson();
   document.getElementById('auslagenPanel').innerHTML = ap.length?`<div class="panel">
     <h3>⚠️ Offene Auslagen pro Person <span class="grow"><span class="pill orange" style="background:rgba(232,161,58,.15);color:var(--accent)">gesamt ${eur(offeneAuslagen())}</span></span></h3>
-    ${tbl(['Person','Offener Betrag'],ap.map(([p,v])=>[esc(p),`<b class="amount minus">${eur(v)}</b>`]))}</div>`:'';
+    ${tbl(['Person','Ausgelegt','Verrechnet','Offen'],ap.map(([p,netto,a,v])=>[esc(p),eur(a),v>0?('−'+eur(v)):'–',netto>=0?`<b class="amount minus">${eur(netto)}</b>`:`<b class="amount plus">+${eur(-netto)}</b><div class="submuted">an Kasse offen</div>`]))}</div>`:'';
 
   const q=(val('txSearch')).toLowerCase();
   const match=t=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
@@ -904,8 +911,9 @@ function renderReport(){
         <td style="text-align:right" class="amount minus">${eur(r.aus)}</td>
         <td style="text-align:right"><b class="amount ${r.erg>=0?'plus':'minus'}">${eur(r.erg)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
     ${ap.length?`<div class="panel"><h3>⚠️ Offene Auslagen (aktuell)</h3>
-      <table><tbody>${ap.map(([p,v])=>`<tr><td>${esc(p)}</td><td style="text-align:right" class="amount minus">${eur(v)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td>Gesamt offen</td><td style="text-align:right" class="amount minus">${eur(offeneAuslagen())}</td></tr></tfoot></table></div>`:''}
+      <table><thead><tr><th>Person</th><th style="text-align:right">Ausgelegt</th><th style="text-align:right">Verrechnet</th><th style="text-align:right">Offen</th></tr></thead>
+      <tbody>${ap.map(([p,netto,a,v])=>`<tr><td>${esc(p)}</td><td style="text-align:right">${eur(a)}</td><td style="text-align:right">${v>0?'−'+eur(v):'–'}</td><td style="text-align:right" class="amount ${netto>=0?'minus':'plus'}">${netto>=0?eur(netto):'+'+eur(-netto)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="3">Gesamt offen</td><td style="text-align:right" class="amount minus">${eur(offeneAuslagen())}</td></tr></tfoot></table></div>`:''}
   `;
 }
 function setReportJahr(y){ reportJahr = (y==='all')?'all':parseInt(y); renderReport(); }
@@ -967,7 +975,7 @@ function readAuslage(){
 
 /* ---- Einnahme ---- */
 function openEinnahme(id){
-  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',betrag:'',kategorie:'',datum:todayISO(),zahlungsart:'',veranstaltung_id:''};
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',betrag:'',kategorie:'',datum:todayISO(),zahlungsart:'',veranstaltung_id:'',verrechnet:false,verrechnet_mit:''};
   openModal(`<h3>${id?'Einnahme bearbeiten':'Neue Einnahme'}</h3>
     <label class="field"><span>Beschreibung *</span><input id="i_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Getränkeverkauf Sommerfest"></label>
     <div class="grid2">
@@ -978,13 +986,23 @@ function openEinnahme(id){
       <datalist id="inccats"><option>Mitgliedsbeitrag</option><option>Eintritt</option><option>Getränkeverkauf</option><option>Essensverkauf</option><option>Sponsoring</option><option>Spende</option><option>Standgebühr</option><option>Zuschuss</option><option>Sonstiges</option></datalist></label>
     ${fieldVeranstaltung(t)}
     ${fieldZahlung(t)}
+    <label class="field"><span>Eingang</span><select id="i_eingang" onchange="toggleVerrechnung()">
+      <option value="kasse" ${!t.verrechnet?'selected':''}>In die Vereinskasse</option>
+      <option value="verrechnet" ${t.verrechnet?'selected':''}>Mit Auslage einer Person verrechnet</option></select></label>
+    <div class="subfields" id="verrechnungBox" style="display:${t.verrechnet?'block':'none'}">
+      <label class="field"><span>Verrechnet mit (Person)</span><input id="i_vperson" list="memberNames" value="${esc(t.verrechnet_mit)}" placeholder="Wessen Auslage wird gedeckt?"></label>
+      <div class="submuted">Diese Einnahme geht nicht in die Kasse, sondern verringert die offene Auslage dieser Person.</div>
+    </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveEinnahme('${id||''}',this)">Speichern</button></div>`);
 }
+function toggleVerrechnung(){ document.getElementById('verrechnungBox').style.display = val('i_eingang')==='verrechnet'?'block':'none'; }
 function saveEinnahme(id,btn){
   const beschreibung=val('i_desc'); const betrag=num('i_betrag');
   if(!beschreibung||betrag<=0){ alert('Bitte Beschreibung und Betrag eingeben.'); return; }
-  const row={typ:'einnahme',art:'in',beschreibung,betrag,kategorie:val('i_kat')||null,datum:val('i_datum')||todayISO(),zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null};
+  const verrechnet=val('i_eingang')==='verrechnet';
+  const row={typ:'einnahme',art:'in',beschreibung,betrag,kategorie:val('i_kat')||null,datum:val('i_datum')||todayISO(),zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,
+    verrechnet, verrechnet_mit: verrechnet?(val('i_vperson')||null):null};
   withBtn(btn,async()=>{ await upsertTx(id,row); closeModal(); await loadAll(); });
 }
 
