@@ -349,6 +349,7 @@ let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
 let inventar = [];
 let sponsoren = [];
+let _apCache = [], rbPerson = null;
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -385,12 +386,12 @@ function pixelAvatar(seed,color,size,imageUrl){
 function balance(){
   const fin = transactions.reduce((s,t)=>{
     if(t.art==='in') return s + (t.verrechnet ? 0 : Number(t.betrag));  // verrechnete Einnahme fließt nicht in die Kasse
-    // Ausgabe fließt aus der Kasse: bei Auslage erst wenn erstattet, sonst wenn bezahlt (nicht „offen")
-    const flows = t.ausgelegt ? t.erstattet : (t.bezahlt!==false);
-    return flows ? s - Number(t.betrag) : s;
+    if(t.ausgelegt) return s - erstattetBetrag(t);                      // Auslage: nur der erstattete (Teil-)Betrag ist aus der Kasse geflossen
+    return (t.bezahlt!==false) ? s - Number(t.betrag) : s;             // direkt aus Kasse: fließt wenn bezahlt (nicht „offen")
   },0);
   return fin + postenIncomeTotal();             // bezahlte App-Posten fließen als Einnahmen in die Kasse
 }
+function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true) return b; return Math.min(b, Math.max(0, Number(t.erstattet_betrag)||0)); }
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
 function offeneAuslagen(){ return auslagenProPerson().reduce((s,r)=>s+Math.max(0,r[1]),0); }
 function offeneRechnungen(){ return transactions.filter(t=>t.art==='out' && !t.ausgelegt && t.bezahlt===false).reduce((s,t)=>s+Number(t.betrag),0); }
@@ -403,7 +404,7 @@ function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSu
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
   const aus={};
-  transactions.filter(t=>t.art==='out'&&t.ausgelegt&&!t.erstattet).forEach(t=>{const p=t.ausgelegt_von||'Unbekannt';aus[p]=(aus[p]||0)+Number(t.betrag);});
+  transactions.filter(t=>t.art==='out'&&t.ausgelegt).forEach(t=>{const open=(Number(t.betrag)||0)-erstattetBetrag(t); if(open>0.005){const p=t.ausgelegt_von||'Unbekannt';aus[p]=(aus[p]||0)+open;}});
   const ver=verrechnetProPerson();
   const persons=[...new Set([...Object.keys(aus),...Object.keys(ver)])];
   // [person, netto (offen), ausgelegt, verrechnet]
@@ -574,8 +575,10 @@ function zahlPill(z){const m={bar:['Bar','gray'],karte:['Karte','blue'],ueberwei
 function statusLine(t){
   const s=[];
   const zp=zahlPill(t.zahlungsart); if(zp)s.push(zp);
-  if(t.ausgelegt && !t.erstattet) s.push(`<span class="pill no mini">Auslage offen${t.ausgelegt_von?': '+esc(t.ausgelegt_von):''}</span>`);
-  if(t.ausgelegt && t.erstattet) s.push(`<span class="pill ok mini">Auslage erstattet</span>`);
+  if(t.ausgelegt){ const e=erstattetBetrag(t), b=Number(t.betrag)||0; const von=t.ausgelegt_von?': '+esc(t.ausgelegt_von):'';
+    if(e>=b-0.005) s.push(`<span class="pill ok mini">Auslage erstattet${von}</span>`);
+    else if(e>0.005) s.push(`<span class="pill warn mini">Auslage ${eur(e)}/${eur(b)} erstattet${von}</span>`);
+    else s.push(`<span class="pill no mini">Auslage offen${von}</span>`); }
   if(t.art==='out' && !t.ausgelegt && t.bezahlt===false) s.push('<span class="pill no mini">offen / unbezahlt</span>');
   if(t.art==='in' && t.verrechnet) s.push(`<span class="pill blue mini">verrechnet mit ${esc(t.verrechnet_mit||'?')}</span>`);
   if(t.beleg_pfad) s.push(`<a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" class="pill blue mini" style="text-decoration:none">📎 Beleg</a>`);
@@ -598,10 +601,10 @@ function renderFinance(){
   document.getElementById('finOffen').textContent=eur(offeneRechnungen());
 
   // Auslagen-Panel
-  const ap=auslagenProPerson();
+  const ap=auslagenProPerson(); _apCache=ap;
   document.getElementById('auslagenPanel').innerHTML = ap.length?`<div class="panel">
     <h3>⚠️ Offene Auslagen pro Person <span class="grow"><span class="pill orange" style="background:rgba(232,161,58,.15);color:var(--accent)">gesamt ${eur(offeneAuslagen())}</span></span></h3>
-    ${tbl(['Person','Ausgelegt','Verrechnet','Offen'],ap.map(([p,netto,a,v])=>[esc(p),eur(a),v>0?('−'+eur(v)):'–',netto>=0?`<b class="amount minus">${eur(netto)}</b>`:`<b class="amount plus">+${eur(-netto)}</b><div class="submuted">an Kasse offen</div>`]))}</div>`:'';
+    ${tbl(['Person','Ausgelegt','Verrechnet','Offen',''],ap.map(([p,netto,a,v],i)=>[esc(p),eur(a),v>0?('−'+eur(v)):'–',netto>=0?`<b class="amount minus">${eur(netto)}</b>`:`<b class="amount plus">+${eur(-netto)}</b><div class="submuted">an Kasse offen</div>`,a>0.005?`<button class="btn ghost sm" onclick="openReimburse(${i})">💶 Erstatten</button>`:'']))}</div>`:'';
 
   const q=(val('txSearch')).toLowerCase();
   const match=t=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
@@ -637,7 +640,7 @@ function renderFinance(){
       <td>${esc(t.kategorie)||'–'}</td>
       <td style="text-align:right">${amount(t)}</td>
       <td><div class="row-actions">
-        ${(t.ausgelegt&&!t.erstattet)?`<button class="icon-btn" title="Auslage als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
+        ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
         ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
         <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
@@ -1127,9 +1130,50 @@ function editTx(id){
 }
 async function markErstattet(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
-  if(!confirm(`Auslage von ${t.ausgelegt_von||'—'} (${eur(t.betrag)}) als erstattet markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
-  const {error}=await sb.from('finanzbuchungen').update({erstattet:true}).eq('id',id);
+  if(!confirm(`Auslage von ${t.ausgelegt_von||'—'} (${eur(t.betrag)}) komplett als erstattet markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
+  const {error}=await sb.from('finanzbuchungen').update({erstattet:true, erstattet_betrag:Number(t.betrag)}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
+}
+/* ---- Teil-Rückerstattung pro Person (FIFO: älteste Auslage zuerst) ---- */
+function personOpenRows(person){
+  return transactions.filter(t=>t.art==='out'&&t.ausgelegt&&(t.ausgelegt_von||'Unbekannt')===person && ((Number(t.betrag)||0)-erstattetBetrag(t))>0.005)
+    .sort((a,b)=>new Date(a.datum||0)-new Date(b.datum||0));
+}
+function personOpenAuslage(person){ return personOpenRows(person).reduce((s,t)=>s+((Number(t.betrag)||0)-erstattetBetrag(t)),0); }
+function openReimburse(i){
+  const person=_apCache[i]?_apCache[i][0]:null; if(!person) return;
+  rbPerson=person;
+  const openTotal=personOpenAuslage(person);
+  const rows=personOpenRows(person);
+  openModal(`<h3>Rückerstattung an ${esc(person)}</h3>
+    <div class="mdrow"><span class="k">Offen (ausgelegt, noch nicht erstattet)</span><span class="amount minus">${eur(openTotal)}</span></div>
+    <label class="field"><span>Rückerstattungsbetrag (€)</span><input type="number" step="0.01" min="0" id="rb_amount" value="${openTotal.toFixed(2)}"></label>
+    <div class="submuted" style="margin-bottom:12px">Wird von der ältesten Auslage an abgezogen – voll gedeckte Käufe werden abgehakt, der nächste ggf. teilweise.</div>
+    ${rows.length?`<div class="submuted" style="margin-bottom:4px">Reihenfolge:</div>${rows.map(t=>`<div class="mdrow"><span class="k">${fmtDate(t.datum)} · ${esc(t.beschreibung)}</span><span>${eur((Number(t.betrag)||0)-erstattetBetrag(t))} offen</span></div>`).join('')}`:''}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="doReimburse(this)">Erstatten</button></div>`);
+}
+function doReimburse(btn){
+  const person=rbPerson; if(!person) return;
+  let amount=parseFloat((val('rb_amount')||'').replace(',','.'));
+  if(isNaN(amount)||amount<=0){ alert('Bitte einen gültigen Betrag eingeben.'); return; }
+  const rows=personOpenRows(person);
+  const openTotal=rows.reduce((s,t)=>s+((Number(t.betrag)||0)-erstattetBetrag(t)),0);
+  if(amount>openTotal+0.005){ if(!confirm(`Betrag (${eur(amount)}) ist größer als offen (${eur(openTotal)}). Es werden maximal ${eur(openTotal)} verrechnet. Fortfahren?`)) return; amount=openTotal; }
+  withBtn(btn,async()=>{
+    let left=amount;
+    for(const t of rows){
+      if(left<=0.005) break;
+      const open=(Number(t.betrag)||0)-erstattetBetrag(t);
+      const apply=Math.min(left, open);
+      const newErst=erstattetBetrag(t)+apply;
+      const full=newErst>=(Number(t.betrag)||0)-0.005;
+      const {error}=await sb.from('finanzbuchungen').update({erstattet_betrag:newErst, erstattet:full}).eq('id',t.id);
+      if(error) throw error;
+      left-=apply;
+    }
+    closeModal(); await loadAll();
+  });
 }
 async function markBezahlt(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
