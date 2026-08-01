@@ -109,6 +109,19 @@
   .grid-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:760px){.grid-charts{grid-template-columns:1fr}}
   /* Modal */
+  /* Kalender */
+  .cal-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .cal-head .title{font-size:17px;font-weight:650;min-width:170px;text-align:center}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-wd{text-align:center;color:var(--muted);font-size:12px;font-weight:600;padding:4px 0}
+  .cal-cell{min-height:86px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:5px 6px;cursor:pointer;overflow:hidden}
+  .cal-cell:hover{border-color:var(--accent)}
+  .cal-cell.other{opacity:.4}
+  .cal-cell.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .cal-daynum{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .cal-cell.today .cal-daynum{color:var(--accent)}
+  .cal-ev{font-size:11px;line-height:1.3;padding:2px 5px;border-radius:5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+  @media(max-width:600px){.cal-cell{min-height:62px;padding:3px 4px}.cal-ev{font-size:10px;padding:1px 3px}}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:18px}
   .overlay.open{display:flex}
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:460px;padding:22px;max-height:90vh;overflow:auto}
@@ -186,6 +199,7 @@
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
+    <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
   </nav>
@@ -304,6 +318,19 @@
       <div class="panel"><div id="sponsorenTable"></div></div>
     </section>
 
+    <!-- KALENDER -->
+    <section class="view" id="kalender">
+      <div class="view-head"><h2>Kalender</h2>
+        <div class="actions"><button class="btn" onclick="openEvent()">＋ Termin</button></div></div>
+      <div class="cal-head">
+        <button class="btn ghost sm" onclick="calNav(-1)">‹ zurück</button>
+        <div class="title" id="calTitle"></div>
+        <button class="btn ghost sm" onclick="calNav(1)">vor ›</button>
+        <button class="btn ghost sm" onclick="calToday()">Heute</button>
+      </div>
+      <div class="panel"><div class="cal-grid" id="calGrid"></div></div>
+    </section>
+
     <!-- INVENTUR -->
     <section class="view" id="inventur">
       <div class="view-head"><h2>Inventur</h2>
@@ -350,6 +377,7 @@ let posten = [], postenBuchungen = [], postenSel = null;
 let inventar = [];
 let sponsoren = [];
 let _apCache = [], rbPerson = null;
+let calMonth = new Date();
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -484,7 +512,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderInventur(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -699,6 +727,35 @@ function renderEvents(){
       <td style="color:var(--muted);max-width:220px">${esc(e.notiz)||''}</td>
       <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
     :'<div class="empty">Noch keine Veranstaltungen. Lege oben eine an.</div>';
+}
+
+/* ---- Kalender ---- */
+function calColor(s){return {geplant:'#c47a1e','bestätigt':'#3a86e8',abgeschlossen:'#2e8b63',abgesagt:'#b23636'}[s]||'#c47a1e';}
+function calNav(delta){ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+delta,1); renderKalender(); }
+function calToday(){ calMonth=new Date(); renderKalender(); }
+function renderKalender(){
+  const y=calMonth.getFullYear(), m=calMonth.getMonth();
+  const titleEl=document.getElementById('calTitle'); if(!titleEl) return;
+  titleEl.textContent=new Date(y,m,1).toLocaleDateString('de-DE',{month:'long',year:'numeric'});
+  const startWd=(new Date(y,m,1).getDay()+6)%7;          // Mo=0
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const cells=[];
+  for(let i=0;i<startWd;i++) cells.push(new Date(y,m,1-startWd+i));
+  for(let d=1;d<=daysInMonth;d++) cells.push(new Date(y,m,d));
+  while(cells.length%7!==0){ const l=cells[cells.length-1]; cells.push(new Date(l.getFullYear(),l.getMonth(),l.getDate()+1)); }
+  const evByDate={}; events.forEach(e=>{ if(e.datum){ const k=String(e.datum).slice(0,10); (evByDate[k]=evByDate[k]||[]).push(e); } });
+  const today=todayISO();
+  const wd=['Mo','Di','Mi','Do','Fr','Sa','So'].map(w=>`<div class="cal-wd">${w}</div>`).join('');
+  const grid=cells.map(d=>{
+    const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const other=d.getMonth()!==m;
+    const evs=evByDate[iso]||[];
+    return `<div class="cal-cell${other?' other':''}${iso===today?' today':''}" onclick="openEvent('','${iso}')">
+      <div class="cal-daynum">${d.getDate()}</div>
+      ${evs.map(e=>`<div class="cal-ev" style="background:${calColor(e.status)}" title="${esc(e.titel)}${e.ort?' · '+esc(e.ort):''}" onclick="event.stopPropagation();openEvent('${e.id}')">${esc(e.titel)}</div>`).join('')}
+    </div>`;
+  }).join('');
+  document.getElementById('calGrid').innerHTML=wd+grid;
 }
 
 /* ---- Sponsoren ---- */
@@ -1190,8 +1247,8 @@ async function delTx(id){
 }
 
 /* ---- Veranstaltungen bearbeiten ---- */
-function openEvent(id){
-  const e=id?events.find(x=>x.id===id):{titel:'',datum:todayISO(),ort:'',status:'geplant',notiz:''};
+function openEvent(id,dateStr){
+  const e=id?events.find(x=>x.id===id):{titel:'',datum:dateStr||todayISO(),ort:'',status:'geplant',notiz:''};
   openModal(`<h3>${id?'Veranstaltung bearbeiten':'Neue Veranstaltung'}</h3>
     <label class="field"><span>Titel *</span><input id="e_titel" value="${esc(e.titel)}"></label>
     <div class="grid2">
