@@ -417,7 +417,7 @@ function balance(){
     if(t.ausgelegt) return s - erstattetBetrag(t);                      // Auslage: nur der erstattete (Teil-)Betrag ist aus der Kasse geflossen
     return (t.bezahlt!==false) ? s - Number(t.betrag) : s;             // direkt aus Kasse: fließt wenn bezahlt (nicht „offen")
   },0);
-  return fin + postenIncomeTotal();             // bezahlte App-Posten fließen als Einnahmen in die Kasse
+  return fin + postenIncomeTotal() + sponsorIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren fließen als Einnahmen in die Kasse
 }
 function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true) return b; return Math.min(b, Math.max(0, Number(t.erstattet_betrag)||0)); }
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
@@ -428,7 +428,11 @@ function yearSum(art,jahr){ const y=jahr||new Date().getFullYear(); return trans
 function paidPosten(){ return postenBuchungen.filter(b=>b.bezahlt); }
 function postenIncomeTotal(){ return paidPosten().reduce((s,b)=>s+Number(b.betrag),0); }
 function postenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return paidPosten().filter(b=>yearOf(b.bezahlt_at)===y).reduce((s,b)=>s+Number(b.betrag),0); }
-function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y); }
+/* Erhaltene Sponsoren als Einnahmequelle */
+function sponsorIncomeRows(){ return sponsoren.filter(s=>s.status==='erhalten' && Number(s.betrag)>0); }
+function sponsorIncomeTotal(){ return sponsorIncomeRows().reduce((a,s)=>a+Number(s.betrag),0); }
+function sponsorIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return sponsorIncomeRows().filter(s=>(s.jahr||y)===y).reduce((a,s)=>a+Number(s.betrag),0); }
+function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y); }
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
   const aus={};
@@ -637,11 +641,13 @@ function renderFinance(){
   const q=(val('txSearch')).toLowerCase();
   const match=t=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
 
-  // Einnahmen (inkl. bezahlter App-Posten als abgeleitete Zeilen)
+  // Einnahmen (inkl. bezahlter App-Posten + erhaltener Sponsoren als abgeleitete Zeilen)
   const inc=transactions.filter(t=>t.art==='in' && match(t));
   const postenAgg=Object.entries(postenIncomeByTitel()).filter(([k])=>k.toLowerCase().includes(q));
+  const spInc=sponsorIncomeRows().filter(s=>(s.name||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)||'sponsor'.includes(q));
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
+  const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
   const realRows=inc.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
@@ -652,10 +658,16 @@ function renderFinance(){
       <td><b>${esc(titel)}</b> <span class="pill blue mini">App-Posten</span><div class="submuted">${v.count}× bezahlt · Verwaltung im Tab „Beiträge"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(v.sum)}</span></td>
       <td></td></tr>`).join('');
-  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length)?`<table>
+  const spRows=spInc.map(s=>`<tr>
+      <td>–</td><td>Sponsoring</td>
+      <td><b>${esc(s.name)}</b> <span class="pill blue mini">Sponsor</span><div class="submuted">erhalten${s.betreuer?' · über '+esc(s.betreuer):''} · Verwaltung im Tab „Sponsoren"</div></td>
+      <td style="text-align:right"><span class="amount plus">+${eur(s.betrag)}</span></td>
+      <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="openSponsor('${s.id}')">✏️</button></div></td></tr>`).join('');
+  const gesamt=realSum+postenSum+spSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null].filter(Boolean).join(' & ');
+  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length)?`<table>
     <thead><tr><th>Datum</th><th>Kategorie</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
-    <tbody>${realRows}${postenRows}</tbody>
-    <tfoot><tr><td colspan="3">Summe Einnahmen${postenSum>0?' (inkl. Posten)':''}</td><td style="text-align:right" class="amount plus">${eur(realSum+postenSum)}</td><td></td></tr></tfoot></table>`
+    <tbody>${realRows}${postenRows}${spRows}</tbody>
+    <tfoot><tr><td colspan="3">Summe Einnahmen${extra?' (inkl. '+extra+')':''}</td><td style="text-align:right" class="amount plus">${eur(gesamt)}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
   // Ausgaben
@@ -926,8 +938,9 @@ function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
 function catSums(art,jahr){
   const map={};
   transactions.filter(t=>t.art===art && (jahr==='all'||yearOf(t.datum)===jahr)).forEach(t=>{const k=t.kategorie||'Ohne Kategorie';map[k]=(map[k]||0)+Number(t.betrag);});
-  if(art==='in'){ // bezahlte App-Posten als Einnahme-Kategorien ergänzen
+  if(art==='in'){ // bezahlte App-Posten + erhaltene Sponsoren als Einnahme-Kategorien ergänzen
     paidPosten().filter(b=>jahr==='all'||yearOf(b.bezahlt_at)===jahr).forEach(b=>{const k=(b.titel||postenTitel(b.posten_id))+' (Posten)';map[k]=(map[k]||0)+Number(b.betrag);});
+    sponsorIncomeRows().filter(s=>jahr==='all'||(s.jahr||new Date().getFullYear())===jahr).forEach(s=>{map['Sponsoring']=(map['Sponsoring']||0)+Number(s.betrag);});
   }
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
