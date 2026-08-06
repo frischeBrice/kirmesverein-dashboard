@@ -488,7 +488,7 @@ async function loadAll(){
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
-    sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO),
+    canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
     sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
     sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
     sb.from('inventar').select('*').order('name'),
@@ -566,9 +566,10 @@ function renderDashboard(){
 }
 
 /* ---- Mitglieder ---- */
+function canSeeStrafen(){ return !!(me && me.role==='admin'); }  // Strafenbeträge sind nur für Admin sichtbar, nicht für Vorstand
 function memberBadges(m,center){
   const s=strafenMap[m.id]||0, p=postenMap[m.id]||0; const b=[];
-  if(s>0) b.push(`<span class="pill no mini" title="offene Strafen (App)">Strafen ${Math.round(s)}€</span>`);
+  if(canSeeStrafen() && s>0) b.push(`<span class="pill no mini" title="offene Strafen (App)">Strafen ${Math.round(s)}€</span>`);
   if(p>0) b.push(`<span class="pill warn mini" title="offene Posten (App)">Posten ${Math.round(p)}€</span>`);
   return b.length?`<div class="statusline"${center?' style="justify-content:center;margin-top:7px"':''}>${b.join('')}</div>`:'';
 }
@@ -596,7 +597,7 @@ function openMemberCard(id){
       <div><div class="mdname">${esc(m.display_name||m.username)}</div>
         <div class="mdsub">@${esc(m.username)||'—'} · ${rolePill(m.role)}</div></div></div>
     <div class="mdrow"><span class="k">E-Mail</span><span>${esc(m.email)||'–'}</span></div>
-    <div class="mdrow"><span class="k">Offene Strafen (App)</span><span class="${s>0?'amount minus':''}">${s>0?eur(s):'–'}</span></div>
+    ${canSeeStrafen()?`<div class="mdrow"><span class="k">Offene Strafen (App)</span><span class="${s>0?'amount minus':''}">${s>0?eur(s):'–'}</span></div>`:''}
     <div class="mdrow"><span class="k">Offene Posten gesamt</span><span class="${p>0?'amount minus':''}">${p>0?eur(p):'–'}</span></div>
     ${postenRows?`<div style="margin-top:12px"><div class="submuted" style="margin-bottom:2px">Posten im Detail</div>${postenRows}</div>`:''}
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Schließen</button></div>`);
