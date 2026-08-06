@@ -3,20 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kirmesverein – Dashboard</title>
+<title>Apfelstädter Jugendkirmesgesellschaft e.V. – Dashboard</title>
+<link rel="icon" type="image/png" id="faviconLink">
 <style>
   :root{
     --bg:#0f1216; --panel:#171c22; --panel2:#1e252d; --line:#2a333d;
     --text:#e8edf2; --muted:#95a3b2; --accent:#e8a13a; --accent2:#3a86e8;
     --green:#3fb27f; --red:#e05c5c; --radius:14px;
+    --club-logo: url("data:image/png;base64,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");
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
   #loginView{min-height:100vh;display:none;align-items:center;justify-content:center;padding:20px}
   #loginView.show{display:flex}
   .login-box{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:30px;width:100%;max-width:380px;text-align:center}
-  .login-box .logo{width:56px;height:56px;border-radius:15px;display:inline-grid;place-items:center;background:linear-gradient(135deg,var(--accent),#c47a1e);font-size:28px;margin-bottom:14px}
-  .login-box h1{font-size:20px;margin:0 0 4px}
+  .login-box .logo{width:64px;height:64px;border-radius:15px;display:inline-grid;place-items:center;background:#fff;background-image:var(--club-logo);background-size:80%;background-position:center;background-repeat:no-repeat;margin-bottom:14px}
+  .login-box h1{font-size:17px;line-height:1.25;margin:0 0 6px}
   .login-box p{color:var(--muted);font-size:13.5px;margin:0 0 22px}
   .login-box .field{text-align:left}
   .login-msg{font-size:13px;margin-top:12px;min-height:18px}
@@ -24,8 +26,8 @@
   #appView{display:none}
   #appView.show{display:block}
   header{display:flex;align-items:center;gap:14px;padding:14px 22px;background:linear-gradient(135deg,#1b222b,#12161b);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
-  header .logo{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),#c47a1e);font-size:20px}
-  header h1{font-size:18px;margin:0;font-weight:650}
+  header .logo{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;background:#fff;background-image:var(--club-logo);background-size:82%;background-position:center;background-repeat:no-repeat;flex:none}
+  header h1{font-size:15.5px;line-height:1.2;margin:0;font-weight:650}
   header .sub{color:var(--muted);font-size:12px;margin-top:1px}
   header .tools{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .whoami{color:var(--muted);font-size:12.5px;text-align:right}
@@ -165,14 +167,22 @@
     a{color:#000 !important;text-decoration:none}
   }
 </style>
+<script>
+  // Favicon aus derselben CSS-Logo-Variable ableiten (keine doppelte Base64-Zeichenkette nötig)
+  (function(){
+    var cs=getComputedStyle(document.documentElement).getPropertyValue('--club-logo').trim();
+    var m=cs.match(/url\((?:"|')?(.*?)(?:"|')?\)/);
+    if(m) document.getElementById('faviconLink').setAttribute('href', m[1]);
+  })();
+</script>
 </head>
 <body>
 
 <!-- ================= LOGIN ================= -->
 <div id="loginView">
   <div class="login-box">
-    <div class="logo">🎡</div>
-    <h1>Kirmesverein</h1>
+    <div class="logo"></div>
+    <h1>Apfelstädter Jugendkirmesgesellschaft e.V.</h1>
     <p>Vorstands-Dashboard – bitte anmelden</p>
     <label class="field"><span>E-Mail</span><input id="li_email" type="email" autocomplete="username"></label>
     <label class="field"><span>Passwort</span><input id="li_pass" type="password" autocomplete="current-password"></label>
@@ -184,8 +194,8 @@
 <!-- ================= APP ================= -->
 <div id="appView">
   <header>
-    <div class="logo">🎡</div>
-    <div><h1>Kirmesverein</h1><div class="sub">Vorstands-Dashboard</div></div>
+    <div class="logo"></div>
+    <div><h1>Apfelstädter Jugendkirmesgesellschaft e.V.</h1><div class="sub">Vorstands-Dashboard</div></div>
     <div class="tools">
       <div class="whoami" id="whoami"></div>
       <button class="btn ghost sm" onclick="logout()">Abmelden</button>
@@ -964,7 +974,7 @@ function renderReport(){
   const ap=auslagenProPerson();
   document.getElementById('reportBody').innerHTML=`
     <div class="panel">
-      <h3>🎡 Kirmesverein – Kassenbericht ${label}</h3>
+      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Kassenbericht ${label}</h3>
       <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
       <div class="cards" style="margin-top:14px">
         <div class="card"><div class="label">Einnahmen</div><div class="value green">${eur(sumIn)}</div></div>
