@@ -211,6 +211,7 @@
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
+    <button data-view="sonstiges" onclick="show('sonstiges')">🗂 Sonstiges</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
   </nav>
 
@@ -320,11 +321,11 @@
           <option value="optional">Optional</option><option value="pflicht">Pflicht</option><option value="offiziell">Offiziell</option>
         </select>
         <select id="evSichtFilter" onchange="renderEvents()">
-          <option value="">Intern & Öffentlich</option>
-          <option value="intern">Nur Intern</option><option value="oeffentlich">Nur Öffentlich</option>
+          <option value="">Intern & Public</option>
+          <option value="intern">Nur Intern</option><option value="public">Nur Public</option>
         </select>
       </div>
-      <div class="note">🌐 <b>Öffentlich</b> markiert Veranstaltungen, die künftig auch anderen Vereinen extern angezeigt werden sollen (z. B. eure Kirmesdisco). Das eigentliche vereinsübergreifende Teilen ist noch nicht angebunden – hier wird die Markierung schon mal gesetzt.</div>
+      <div class="note">🌐 <b>Public</b> markiert Veranstaltungen, die künftig auch anderen Vereinen extern angezeigt werden sollen (z. B. eure Kirmesdisco). Das eigentliche vereinsübergreifende Teilen ist noch nicht angebunden – hier wird die Markierung schon mal gesetzt.</div>
       <div class="panel"><div id="eventsTable"></div></div>
     </section>
 
@@ -377,6 +378,16 @@
       <div class="panel"><div id="inventurTable"></div></div>
     </section>
 
+    <!-- SONSTIGES -->
+    <section class="view" id="sonstiges">
+      <div class="view-head"><h2>Sonstiges</h2>
+        <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
+          <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
+        </select></span>
+      </div>
+      <div id="sonstBody"></div>
+    </section>
+
     <!-- REPORT -->
     <section class="view" id="report">
       <div class="view-head"><h2>Kassenbericht</h2>
@@ -409,6 +420,8 @@ let inventar = [];
 let sponsoren = [];
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
+let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
+let sonstBereich = 'kartenvorverkauf';
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -448,7 +461,7 @@ function balance(){
     if(t.ausgelegt) return s - erstattetBetrag(t);                      // Auslage: nur der erstattete (Teil-)Betrag ist aus der Kasse geflossen
     return (t.bezahlt!==false) ? s - Number(t.betrag) : s;             // direkt aus Kasse: fließt wenn bezahlt (nicht „offen")
   },0);
-  return fin + postenIncomeTotal() + sponsorIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren fließen als Einnahmen in die Kasse
+  return fin + postenIncomeTotal() + sponsorIncomeTotal() + kvvIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren + Kartenvorverkauf fließen als Einnahmen in die Kasse
 }
 function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true) return b; return Math.min(b, Math.max(0, Number(t.erstattet_betrag)||0)); }
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
@@ -465,7 +478,15 @@ function postenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return 
 function sponsorIncomeRows(){ return sponsoren.filter(s=>s.status==='erhalten' && Number(s.betrag)>0); }
 function sponsorIncomeTotal(){ return sponsorIncomeRows().reduce((a,s)=>a+Number(s.betrag),0); }
 function sponsorIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return sponsorIncomeRows().filter(s=>(s.jahr||y)===y).reduce((a,s)=>a+Number(s.betrag),0); }
-function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y); }
+/* Bezahlte Kartenvorverkauf-Teilnahmen als Einnahmequelle */
+function kvvAktion(id){ return kartenvorverkauf.find(a=>a.id===id); }
+function kvvKarten(t){ return 1+Number(t.externe_anzahl||0); }               // Mitglied selbst + Externe
+function kvvBetrag(t){ const a=kvvAktion(t.aktion_id); return a ? kvvKarten(t)*Number(a.preis||0) : 0; }
+function kvvPaidRows(){ return kvTeilnehmer.filter(t=>t.bezahlt && kvvAktion(t.aktion_id)); }
+function kvvIncomeTotal(){ return kvvPaidRows().reduce((s,t)=>s+kvvBetrag(t),0); }
+function kvvIncomeYear(jahr){ const y=jahr||new Date().getFullYear();
+  return kvvPaidRows().filter(t=>{ const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===y; }).reduce((s,t)=>s+kvvBetrag(t),0); }
+function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y)+kvvIncomeYear(y); }
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
   const aus={};
@@ -517,7 +538,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -526,18 +547,23 @@ async function loadAll(){
     sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
     sb.from('inventar').select('*').order('name'),
     sb.from('sponsoren').select('*').order('name'),
+    sb.from('kartenvorverkauf').select('*').order('datum',{ascending:false}),
+    sb.from('kartenvorverkauf_teilnehmer').select('*'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
   posten = pd.data||[]; postenBuchungen = pb.data||[];
   inventar = (inv&&inv.data)||[];
   sponsoren = (sp&&sp.data)||[];
+  kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
   if(s&&s.error)  console.warn('strafen:',s.error.message);
   if(pd&&pd.error) console.warn('posten:',pd.error.message);
   if(pb&&pb.error) console.warn('posten_buchungen:',pb.error.message);
+  if(kv&&kv.error) console.warn('kartenvorverkauf:',kv.error.message);
+  if(kvt&&kvt.error) console.warn('kartenvorverkauf_teilnehmer:',kvt.error.message);
   document.getElementById('memberNames').innerHTML = members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('');
   renderAll();
 }
@@ -549,7 +575,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderSonstiges(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -679,9 +705,11 @@ function renderFinance(){
   const inc=transactions.filter(t=>t.art==='in' && typOf(t)!=='anpassung' && match(t));
   const postenAgg=Object.entries(postenIncomeByTitel()).filter(([k])=>k.toLowerCase().includes(q));
   const spInc=sponsorIncomeRows().filter(s=>(s.name||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)||'sponsor'.includes(q));
+  const kvvInc=kvvPaidRows().filter(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id); return (a&&(a.titel||'').toLowerCase().includes(q))||(m&&(m.display_name||m.username||'').toLowerCase().includes(q))||'kartenvorverkauf'.includes(q);});
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
   const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
+  const kvvSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
   const realRows=inc.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
@@ -697,10 +725,16 @@ function renderFinance(){
       <td><b>${esc(s.name)}</b> <span class="pill blue mini">Sponsor</span><div class="submuted">erhalten${s.betreuer?' · über '+esc(s.betreuer):''} · Verwaltung im Tab „Sponsoren"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(s.betrag)}</span></td>
       <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="openSponsor('${s.id}')">✏️</button></div></td></tr>`).join('');
-  const gesamt=realSum+postenSum+spSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null].filter(Boolean).join(' & ');
-  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length)?`<table>
+  const kvvRows=kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
+    return `<tr>
+      <td>–</td><td>Kartenvorverkauf</td>
+      <td><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span><div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''} · Verwaltung im Tab „Sonstiges"</div></td>
+      <td style="text-align:right"><span class="amount plus">+${eur(kvvBetrag(t))}</span></td>
+      <td></td></tr>`;}).join('');
+  const gesamt=realSum+postenSum+spSum+kvvSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null,kvvSum>0?'Kartenvorverkauf':null].filter(Boolean).join(' & ');
+  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length||kvvInc.length)?`<table>
     <thead><tr><th>Datum</th><th>Kategorie</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
-    <tbody>${realRows}${postenRows}${spRows}</tbody>
+    <tbody>${realRows}${postenRows}${spRows}${kvvRows}</tbody>
     <tfoot><tr><td colspan="3">Summe Einnahmen${extra?' (inkl. '+extra+')':''}</td><td style="text-align:right" class="amount plus">${eur(gesamt)}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
@@ -777,7 +811,7 @@ async function togglePosten(buchungId){
 
 /* ---- Veranstaltungen ---- */
 function artPill(a){const m={optional:['Optional','gray'],pflicht:['❗ Pflicht','no'],offiziell:['🏛 Offiziell','blue']}[a||'optional']||['Optional','gray'];return `<span class="pill ${m[1]} mini">${m[0]}</span>`;}
-function sichtPill(s){return s==='oeffentlich'?'<span class="pill blue mini">🌐 Öffentlich</span>':'<span class="pill gray mini">Intern</span>';}
+function sichtPill(s){return s==='public'?'<span class="pill blue mini">🌐 Public</span>':'<span class="pill gray mini">Intern</span>';}
 function renderEvents(){
   const q=(val('evSearch')).toLowerCase(); const af=val('evArtFilter'); const sf=val('evSichtFilter');
   const list=events.filter(e=>((e.titel||'').toLowerCase().includes(q)||(e.ort||'').toLowerCase().includes(q)) && (!af||(e.art||'optional')===af) && (!sf||(e.sichtbarkeit||'intern')===sf));
@@ -816,7 +850,7 @@ function renderKalender(){
     const evs=evByDate[iso]||[];
     return `<div class="cal-cell${other?' other':''}${iso===today?' today':''}" onclick="openEvent('','${iso}')">
       <div class="cal-daynum">${d.getDate()}</div>
-      ${evs.map(e=>{const artIcon=e.art==='pflicht'?'❗':e.art==='offiziell'?'🏛':''; const sichtIcon=e.sichtbarkeit==='oeffentlich'?'🌐':'';
+      ${evs.map(e=>{const artIcon=e.art==='pflicht'?'❗':e.art==='offiziell'?'🏛':''; const sichtIcon=e.sichtbarkeit==='public'?'🌐':'';
         return `<div class="cal-ev" style="background:${calColor(e.status)}" title="${esc(e.titel)}${e.ort?' · '+esc(e.ort):''}" onclick="event.stopPropagation();openEvent('${e.id}')">${artIcon}${sichtIcon}${esc(e.titel)}</div>`;}).join('')}
     </div>`;
   }).join('');
@@ -987,6 +1021,121 @@ function saveInv(id,btn){
 function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
   sb.from('inventar').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
+/* ---- Sonstiges: Kartenvorverkauf ---- */
+function setSonstBereich(v){ sonstBereich=v; renderSonstiges(); }
+function renderSonstiges(){ const body=document.getElementById('sonstBody'); if(!body) return; if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf(); }
+function setKvvSel(id){ kvvSel=id; renderKartenvorverkauf(); }
+function ensureKvvSel(){ if(!kvvSel || !kartenvorverkauf.find(a=>a.id===kvvSel)) kvvSel = kartenvorverkauf[0]?kartenvorverkauf[0].id:null; }
+
+function renderKartenvorverkauf(){
+  ensureKvvSel();
+  const body=document.getElementById('sonstBody');
+  if(!kartenvorverkauf.length){
+    body.innerHTML=`<div class="note">Für Vorverkäufe fremder Veranstaltungen: Preis pro Karte festlegen, dann pro Mitglied eintragen, wie viele externe Personen es mitbringt.</div>
+      <div class="panel"><button class="btn" onclick="openKvvAktion()">＋ Neue Aktion</button></div>`;
+    return;
+  }
+  const aktion=kvvAktion(kvvSel);
+  const rows=kvTeilnehmer.filter(t=>t.aktion_id===kvvSel);
+  const totalKarten=rows.reduce((s,t)=>s+kvvKarten(t),0);
+  const totalBetrag=rows.reduce((s,t)=>s+kvvBetrag(t),0);
+  const bezahltBetrag=rows.filter(t=>t.bezahlt).reduce((s,t)=>s+kvvBetrag(t),0);
+  const offenBetrag=totalBetrag-bezahltBetrag;
+  const usedIds=new Set(rows.map(t=>t.mitglied_id));
+  const available=members.filter(m=>!usedIds.has(m.id));
+
+  body.innerHTML=`
+    <div class="panel">
+      <h3>🎟 Aktion
+        <span class="grow">
+          <select id="kvvAktionSel" onchange="setKvvSel(this.value)" style="width:auto;min-width:200px">
+            ${kartenvorverkauf.map(a=>`<option value="${a.id}" ${a.id===kvvSel?'selected':''}>${esc(a.titel)}${a.datum?' ('+fmtDate(a.datum)+')':''}</option>`).join('')}
+          </select>
+          <button class="btn ghost sm" onclick="openKvvAktion()">＋ Neue Aktion</button>
+          ${aktion?`<button class="btn ghost sm" onclick="openKvvAktion('${aktion.id}')">✏️</button><button class="btn ghost sm" onclick="delKvvAktion('${aktion.id}')">🗑️</button>`:''}
+        </span>
+      </h3>
+      ${aktion?`<div class="submuted">${fmtDate(aktion.datum)} · Preis pro Karte ${eur(aktion.preis)}${aktion.notiz?' · '+esc(aktion.notiz):''}</div>`:''}
+    </div>
+    ${aktion?`
+    <div class="cards">
+      <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+      <div class="card"><div class="label">Erlös gesamt</div><div class="value">${eur(totalBetrag)}</div></div>
+      <div class="card"><div class="label">Bezahlt</div><div class="value green">${eur(bezahltBetrag)}</div></div>
+      <div class="card"><div class="label">Offen</div><div class="value red">${eur(offenBetrag)}</div></div>
+    </div>
+    <div class="panel">
+      <h3>Teilnehmer
+        <span class="grow">
+          ${available.length?`<select id="kvvNewMember" style="width:auto;min-width:170px">${available.map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}</select>
+            <button class="btn sm" onclick="addKvvTeilnehmer()">＋ Teilnehmer</button>`:'<span class="submuted">Alle Mitglieder bereits erfasst</span>'}
+        </span>
+      </h3>
+      ${rows.length?`<table>
+        <thead><tr><th>Mitglied</th><th>Externe Personen</th><th>Karten</th><th style="text-align:right">Betrag</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id);
+          return `<tr>
+            <td>${m?nameWithAvatar(m):'—'}</td>
+            <td><input type="number" min="0" step="1" value="${t.externe_anzahl}" class="beitrag-inp" onchange="setKvvExterne('${t.id}',this.value)"></td>
+            <td>${kvvKarten(t)}</td>
+            <td style="text-align:right">${eur(kvvBetrag(t))}</td>
+            <td>${t.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
+            <td><div class="row-actions">
+              <button class="btn ghost sm" onclick="toggleKvvBezahlt('${t.id}')">${t.bezahlt?'auf offen':'bezahlt ✓'}</button>
+              <button class="icon-btn" onclick="delKvvTeilnehmer('${t.id}')">🗑️</button>
+            </div></td></tr>`;}).join('')}</tbody>
+        <tfoot><tr><td colspan="2">Summe</td><td>${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td colspan="2"></td></tr></tfoot></table>`
+        :'<div class="empty">Noch keine Teilnehmer. Mitglied oben auswählen und hinzufügen.</div>'}
+    </div>`:''}
+  `;
+}
+
+function openKvvAktion(id){
+  const a=id?kvvAktion(id):{titel:'',datum:todayISO(),preis:'',notiz:''};
+  openModal(`<h3>${id?'Aktion bearbeiten':'Neue Kartenvorverkauf-Aktion'}</h3>
+    <label class="field"><span>Veranstaltung / Anlass *</span><input id="kvv_titel" value="${esc(a.titel)}" placeholder="z. B. Stadtfest Nachbarort"></label>
+    <div class="grid2">
+      <label class="field"><span>Datum</span><input type="date" id="kvv_datum" value="${a.datum||todayISO()}"></label>
+      <label class="field"><span>Preis pro Karte (€) *</span><input type="number" step="0.01" min="0" id="kvv_preis" value="${a.preis}"></label>
+    </div>
+    <label class="field"><span>Notiz</span><textarea id="kvv_notiz" rows="2">${esc(a.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveKvvAktion('${id||''}',this)">Speichern</button></div>`);
+}
+function saveKvvAktion(id,btn){
+  const titel=val('kvv_titel'); const preis=num('kvv_preis');
+  if(!titel||preis<=0){ alert('Bitte Veranstaltung/Anlass und Preis pro Karte eingeben.'); return; }
+  const row={titel,datum:val('kvv_datum')||todayISO(),preis,notiz:val('kvv_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('kartenvorverkauf').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {data,error}=await sb.from('kartenvorverkauf').insert(row).select().single(); if(error) throw error; kvvSel=data.id; }
+    closeModal(); await loadAll();
+  });
+}
+function delKvvAktion(id){ if(!confirm('Diese Aktion inkl. aller Teilnehmer wirklich löschen?'))return;
+  sb.from('kartenvorverkauf').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { kvvSel=null; loadAll(); } }); }
+async function addKvvTeilnehmer(){
+  const sel=document.getElementById('kvvNewMember'); if(!sel||!sel.value||!kvvSel) return;
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').insert({aktion_id:kvvSel, mitglied_id:sel.value, externe_anzahl:0, bezahlt:false});
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+async function setKvvExterne(id,v){
+  const n=Math.max(0, parseInt(v)||0);
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({externe_anzahl:n}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+async function toggleKvvBezahlt(id){
+  const t=kvTeilnehmer.find(x=>x.id===id); if(!t) return;
+  const bezahlt=!t.bezahlt;
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({bezahlt, bezahlt_at: bezahlt?new Date().toISOString():null}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
+  sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
 /* ---- Bericht ---- */
 function catSums(art,jahr){
   const map={};
@@ -994,6 +1143,8 @@ function catSums(art,jahr){
   if(art==='in'){ // bezahlte App-Posten + erhaltene Sponsoren als Einnahme-Kategorien ergänzen
     paidPosten().filter(b=>jahr==='all'||yearOf(b.bezahlt_at)===jahr).forEach(b=>{const k=(b.titel||postenTitel(b.posten_id))+' (Posten)';map[k]=(map[k]||0)+Number(b.betrag);});
     sponsorIncomeRows().filter(s=>jahr==='all'||(s.jahr||new Date().getFullYear())===jahr).forEach(s=>{map['Sponsoring']=(map['Sponsoring']||0)+Number(s.betrag);});
+    kvvPaidRows().filter(t=>{ if(jahr==='all') return true; const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===jahr; })
+      .forEach(t=>{map['Kartenvorverkauf']=(map['Kartenvorverkauf']||0)+kvvBetrag(t);});
   }
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
@@ -1355,7 +1506,7 @@ function openEvent(id,dateStr){
         <option value="offiziell" ${e.art==='offiziell'?'selected':''}>🏛 Offiziell</option></select></label>
       <label class="field"><span>Sichtbarkeit</span><select id="e_sicht">
         <option value="intern" ${(e.sichtbarkeit||'intern')==='intern'?'selected':''}>Intern (nur eigene Mitglieder)</option>
-        <option value="oeffentlich" ${e.sichtbarkeit==='oeffentlich'?'selected':''}>🌐 Öffentlich (für andere Vereine, extern)</option></select></label>
+        <option value="public" ${e.sichtbarkeit==='public'?'selected':''}>🌐 Public (für andere Vereine, extern)</option></select></label>
     </div>
     <label class="field"><span>Ort</span><input id="e_ort" value="${esc(e.ort)}"></label>
     <label class="field"><span>Notiz</span><textarea id="e_notiz" rows="3">${esc(e.notiz)}</textarea></label>
