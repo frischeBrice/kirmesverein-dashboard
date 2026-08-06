@@ -279,6 +279,15 @@
         </div>
       </div>
       <div class="panel"><div id="expenseTable"></div></div>
+
+      <!-- Kassenanpassungen -->
+      <div class="sectionbar">
+        <span class="dot" style="background:var(--muted)"></span>
+        <h3>Kassenanpassungen</h3>
+        <div class="actions"><button class="btn ghost sm" onclick="openAdjust()">⚖️ Anpassung</button></div>
+      </div>
+      <div class="note">Für den <b>Anfangsbestand aus dem Vorjahr</b> oder sonstige Korrekturen des Kassenstands – zählt zum Kassenstand, aber nicht zu den Einnahmen/Ausgaben des Jahres.</div>
+      <div class="panel"><div id="adjustTable"></div></div>
     </section>
 
     <!-- BEITRÄGE -->
@@ -406,7 +415,7 @@ function amount(t){return `<span class="amount ${t.art==='in'?'plus':'minus'}">$
 function rolePill(r){const m={admin:['Admin','blue'],vorstand:['Vorstand','blue'],member:['Mitglied','ok']}[r]||[r||'–','warn'];return `<span class="pill ${m[1]}">${esc(m[0])}</span>`;}
 function statusPill(s){const c={'geplant':'warn','bestätigt':'blue','abgeschlossen':'ok','abgesagt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'geplant')}</span>`;}
 function typOf(t){ return t.typ || (t.art==='in'?'einnahme':'ausgabe'); }
-function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['💸 Ausgabe','blue'],ausgabe:['Ausgabe','warn']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
+function typPill(t){const m={einnahme:['Einnahme','ok'],einkauf:['🛒 Einkauf','warn'],extern:['💸 Ausgabe','blue'],ausgabe:['Ausgabe','warn'],anpassung:['⚖️ Anpassung','gray']}[typOf(t)]||['–','gray'];return `<span class="pill ${m[1]}">${m[0]}</span>`;}
 function eventName(id){ const e=events.find(x=>x.id===id); return e?e.titel:null; }
 function memberName(id){ const m=members.find(x=>x.id===id); return m?(m.display_name||m.username):'—'; }
 
@@ -433,7 +442,9 @@ function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true)
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
 function offeneAuslagen(){ return auslagenProPerson().reduce((s,r)=>s+Math.max(0,r[1]),0); }
 function offeneRechnungen(){ return transactions.filter(t=>t.art==='out' && !t.ausgelegt && t.bezahlt===false).reduce((s,t)=>s+Number(t.betrag),0); }
-function yearSum(art,jahr){ const y=jahr||new Date().getFullYear(); return transactions.filter(t=>t.art===art && yearOf(t.datum)===y).reduce((s,t)=>s+Number(t.betrag),0); }
+function yearSum(art,jahr){ const y=jahr||new Date().getFullYear(); return transactions.filter(t=>t.art===art && typOf(t)!=='anpassung' && yearOf(t.datum)===y).reduce((s,t)=>s+Number(t.betrag),0); }
+function adjustRows(){ return transactions.filter(t=>typOf(t)==='anpassung'); }
+function adjustTotal(){ return adjustRows().reduce((s,t)=>s+(t.art==='in'?Number(t.betrag):-Number(t.betrag)),0); }
 /* Bezahlte App-Posten als Einnahmequelle */
 function paidPosten(){ return postenBuchungen.filter(b=>b.bezahlt); }
 function postenIncomeTotal(){ return paidPosten().reduce((s,b)=>s+Number(b.betrag),0); }
@@ -653,7 +664,7 @@ function renderFinance(){
   const match=t=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
 
   // Einnahmen (inkl. bezahlter App-Posten + erhaltener Sponsoren als abgeleitete Zeilen)
-  const inc=transactions.filter(t=>t.art==='in' && match(t));
+  const inc=transactions.filter(t=>t.art==='in' && typOf(t)!=='anpassung' && match(t));
   const postenAgg=Object.entries(postenIncomeByTitel()).filter(([k])=>k.toLowerCase().includes(q));
   const spInc=sponsorIncomeRows().filter(s=>(s.name||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)||'sponsor'.includes(q));
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
@@ -682,7 +693,7 @@ function renderFinance(){
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
   // Ausgaben
-  const exp=transactions.filter(t=>t.art==='out' && match(t));
+  const exp=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung' && match(t));
   document.getElementById('expenseTable').innerHTML=exp.length?`<table>
     <thead><tr><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Kategorie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${exp.map(t=>`<tr>
@@ -696,6 +707,17 @@ function renderFinance(){
         <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
+
+  // Kassenanpassungen
+  const adj=adjustRows().filter(match);
+  document.getElementById('adjustTable').innerHTML=adj.length?`<table>
+    <thead><tr><th>Datum</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
+    <tbody>${adj.map(t=>`<tr>
+      <td>${fmtDate(t.datum)}</td><td><b>${esc(t.beschreibung)}</b></td>
+      <td style="text-align:right">${amount(t)}</td>
+      <td><div class="row-actions"><button class="icon-btn" onclick="openAdjust('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Summe Anpassungen</td><td colspan="1"></td><td style="text-align:right" class="amount ${adjustTotal()>=0?'plus':'minus'}">${adjustTotal()>=0?'+':''}${eur(adjustTotal())}</td><td></td></tr></tfoot></table>`
+    :'<div class="empty">Noch keine Anpassungen. Lege oben eine an (z. B. Anfangsbestand aus dem Vorjahr).</div>';
 }
 
 /* ---- Beiträge / Posten (aus der App) ---- */
@@ -948,7 +970,7 @@ function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
 /* ---- Bericht ---- */
 function catSums(art,jahr){
   const map={};
-  transactions.filter(t=>t.art===art && (jahr==='all'||yearOf(t.datum)===jahr)).forEach(t=>{const k=t.kategorie||'Ohne Kategorie';map[k]=(map[k]||0)+Number(t.betrag);});
+  transactions.filter(t=>t.art===art && typOf(t)!=='anpassung' && (jahr==='all'||yearOf(t.datum)===jahr)).forEach(t=>{const k=t.kategorie||'Ohne Kategorie';map[k]=(map[k]||0)+Number(t.betrag);});
   if(art==='in'){ // bezahlte App-Posten + erhaltene Sponsoren als Einnahme-Kategorien ergänzen
     paidPosten().filter(b=>jahr==='all'||yearOf(b.bezahlt_at)===jahr).forEach(b=>{const k=(b.titel||postenTitel(b.posten_id))+' (Posten)';map[k]=(map[k]||0)+Number(b.betrag);});
     sponsorIncomeRows().filter(s=>jahr==='all'||(s.jahr||new Date().getFullYear())===jahr).forEach(s=>{map['Sponsoring']=(map['Sponsoring']||0)+Number(s.betrag);});
@@ -998,6 +1020,9 @@ function renderReport(){
       <table><thead><tr><th>Person</th><th style="text-align:right">Ausgelegt</th><th style="text-align:right">Verrechnet</th><th style="text-align:right">Offen</th></tr></thead>
       <tbody>${ap.map(([p,netto,a,v])=>`<tr><td>${esc(p)}</td><td style="text-align:right">${eur(a)}</td><td style="text-align:right">${v>0?'−'+eur(v):'–'}</td><td style="text-align:right" class="amount ${netto>=0?'minus':'plus'}">${netto>=0?eur(netto):'+'+eur(-netto)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="3">Gesamt offen</td><td style="text-align:right" class="amount minus">${eur(offeneAuslagen())}</td></tr></tfoot></table></div>`:''}
+    ${adjustRows().length?`<div class="panel"><h3>⚖️ Kassenanpassungen (aktuell, z. B. Anfangsbestand)</h3>
+      <table><tbody>${adjustRows().map(t=>`<tr><td>${fmtDate(t.datum)} · ${esc(t.beschreibung)}</td><td style="text-align:right">${amount(t)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Summe Anpassungen</td><td style="text-align:right" class="amount ${adjustTotal()>=0?'plus':'minus'}">${adjustTotal()>=0?'+':''}${eur(adjustTotal())}</td></tr></tfoot></table></div>`:''}
   `;
 }
 function setReportJahr(y){ reportJahr = (y==='all')?'all':parseInt(y); renderReport(); }
@@ -1199,6 +1224,29 @@ function saveExtern(id,btn){
   withBtn(btn,async()=>{ const f=document.getElementById('f_beleg').files[0]; if(f) row.beleg_pfad=await uploadBeleg(f); await upsertTx(id,row); closeModal(); await loadAll(); });
 }
 
+/* ---- Kassenanpassung (z. B. Anfangsbestand aus dem Vorjahr) ---- */
+function openAdjust(id){
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'Anfangsbestand '+new Date().getFullYear(),betrag:'',datum:todayISO(),art:'in'};
+  openModal(`<h3>${id?'Kassenanpassung bearbeiten':'Neue Kassenanpassung'}</h3>
+    <label class="field"><span>Beschreibung *</span><input id="adj_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Anfangsbestand aus dem Vorjahr"></label>
+    <div class="grid2">
+      <label class="field"><span>Richtung</span><select id="adj_richtung">
+        <option value="in" ${t.art==='in'?'selected':''}>Kassenstand erhöhen (+)</option>
+        <option value="out" ${t.art==='out'?'selected':''}>Kassenstand verringern (−)</option></select></label>
+      <label class="field"><span>Betrag (€) *</span><input type="number" step="0.01" min="0" id="adj_betrag" value="${t.betrag}"></label>
+    </div>
+    <label class="field"><span>Datum</span><input type="date" id="adj_datum" value="${t.datum||todayISO()}"></label>
+    <div class="submuted" style="margin-bottom:12px">Zählt zum Kassenstand, taucht aber nicht bei den Einnahmen/Ausgaben des Jahres auf.</div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveAdjust('${id||''}',this)">Speichern</button></div>`);
+}
+function saveAdjust(id,btn){
+  const beschreibung=val('adj_desc'); const betrag=num('adj_betrag');
+  if(!beschreibung||betrag<=0){ alert('Bitte Beschreibung und Betrag eingeben.'); return; }
+  const row={typ:'anpassung',art:val('adj_richtung'),beschreibung,betrag,datum:val('adj_datum')||todayISO(),kategorie:'Kassenanpassung',bezahlt:true,ausgelegt:false};
+  withBtn(btn,async()=>{ await upsertTx(id,row); closeModal(); await loadAll(); });
+}
+
 /* ---- gemeinsame Tx-Logik ---- */
 async function upsertTx(id,row){
   if(id){ const {error}=await sb.from('finanzbuchungen').update(row).eq('id',id); if(error) throw error; }
@@ -1207,7 +1255,7 @@ async function upsertTx(id,row){
 function editTx(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
   const k=typOf(t);
-  if(k==='einnahme') openEinnahme(id); else if(k==='einkauf') openEinkauf(id); else openExtern(id);
+  if(k==='einnahme') openEinnahme(id); else if(k==='einkauf') openEinkauf(id); else if(k==='anpassung') openAdjust(id); else openExtern(id);
 }
 async function markErstattet(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
