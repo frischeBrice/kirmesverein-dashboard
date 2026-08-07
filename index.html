@@ -36,6 +36,13 @@
   nav button{background:none;border:none;color:var(--muted);font-size:14.5px;font-weight:550;padding:10px 14px;border-radius:10px 10px 0 0;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
   nav button:hover{color:var(--text);background:#1a2028}
   nav button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .nav-flyout{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 12px 30px rgba(0,0,0,.45);padding:6px;min-width:210px;z-index:60;display:none}
+  .nav-flyout.show{display:block}
+  .nav-flyout a{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:8px;
+    color:var(--text);text-decoration:none;font-size:14px;cursor:pointer}
+  .nav-flyout a:hover{background:#232b34}
+  .nav-flyout a.active{color:var(--accent)}
   main{max-width:1080px;margin:0 auto;padding:24px 18px 80px}
   .view{display:none;animation:fade .25s}
   .view.active{display:block}
@@ -211,9 +218,11 @@
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
-    <button data-view="sonstiges" onclick="show('sonstiges')">🗂 Sonstiges</button>
+    <button data-view="sonstiges" onclick="show('sonstiges')"
+      onmouseenter="showSonstFlyout(this)" onmouseleave="scheduleHideFlyout()">🗂 Sonstiges ▾</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
   </nav>
+  <div class="nav-flyout" id="navFlyout" onmouseenter="cancelHideFlyout()" onmouseleave="scheduleHideFlyout()"></div>
 
   <main>
     <!-- DASHBOARD -->
@@ -422,6 +431,11 @@ let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let sonstBereich = 'kartenvorverkauf';
+const SONST_ITEMS = [
+  {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
+  // weitere „Sonstiges"-Unterseiten hier ergänzen
+];
+let flyoutHideTimer = null;
 let posRows = [];
 let reportJahr = new Date().getFullYear();
 const MONTHS_SHORT=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -1023,7 +1037,31 @@ function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
 
 /* ---- Sonstiges: Kartenvorverkauf ---- */
 function setSonstBereich(v){ sonstBereich=v; renderSonstiges(); }
-function renderSonstiges(){ const body=document.getElementById('sonstBody'); if(!body) return; if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf(); }
+function renderSonstiges(){
+  const body=document.getElementById('sonstBody'); if(!body) return;
+  const sel=document.getElementById('sonstBereichSel');
+  if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
+  if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
+}
+/* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
+function showSonstFlyout(btn){
+  clearTimeout(flyoutHideTimer);
+  const el=document.getElementById('navFlyout');
+  el.innerHTML=SONST_ITEMS.map(it=>`<a class="${sonstBereich===it.key?'active':''}" onclick="selectSonstFlyout('${it.key}')">${it.label}</a>`).join('');
+  el.classList.add('show');
+  const r=btn.getBoundingClientRect();
+  const menuW=el.offsetWidth||210, margin=10;
+  let left=Math.min(r.left, window.innerWidth-menuW-margin);
+  if(left<margin) left=margin;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(r.bottom+4)+'px';
+}
+function cancelHideFlyout(){ clearTimeout(flyoutHideTimer); }
+function scheduleHideFlyout(){ flyoutHideTimer=setTimeout(()=>{ const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show'); },200); }
+function selectSonstFlyout(key){
+  sonstBereich=key; show('sonstiges'); renderSonstiges();
+  const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
+}
 function setKvvSel(id){ kvvSel=id; renderKartenvorverkauf(); }
 function ensureKvvSel(){ if(!kvvSel || !kartenvorverkauf.find(a=>a.id===kvvSel)) kvvSel = kartenvorverkauf[0]?kartenvorverkauf[0].id:null; }
 
