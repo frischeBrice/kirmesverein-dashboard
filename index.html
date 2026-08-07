@@ -158,6 +158,9 @@
   .beitrag-inp{max-width:110px;padding:6px 9px;font-size:13px}
   .status-select{width:auto;max-width:130px;padding:5px 8px;font-size:12.5px;font-weight:600;
     background:var(--panel2);border-width:1.5px;border-radius:8px}
+  .sachspende-area{width:200px;min-height:44px;padding:6px 8px;font-size:12.5px;font-weight:400;
+    background:var(--panel2);border:1.5px solid var(--line);border-radius:8px;resize:vertical;
+    line-height:1.35;white-space:pre-wrap;text-align:left}
   @media(max-width:600px){.grid2{grid-template-columns:1fr}nav{top:65px}.whoami{display:none}
     .pos-head,.pos-row{grid-template-columns:1fr 44px 70px 70px 24px}
     .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 38px 42px 60px 60px 22px}
@@ -904,8 +907,6 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
-function sachspendeWidth(text){ return Math.min(260, Math.max(140, (text||'').length*7+30)); }
-function autosizeText(el){ el.style.width=Math.min(260, Math.max(140, (el.value||'').length*7+30))+'px'; }
 async function setSponsorBetrag(id,value,inputEl){
   const sp=sponsoren.find(x=>x.id===id);
   const oldVal=sp?sp.betrag:null;
@@ -937,7 +938,7 @@ function sponsorRow(s,showBetreuer){
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
     <td style="text-align:right">${isSachspende(s.art)
-      ? `<input type="text" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier" class="status-select" style="width:${sachspendeWidth(s.sachspende_text)}px;max-width:none;text-align:left;font-weight:400" oninput="autosizeText(this)" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">`
+      ? `<textarea rows="2" class="sachspende-area" placeholder="z. B. 2 Kisten Bier" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">${esc(s.sachspende_text)}</textarea>`
       : `<input type="number" step="0.01" min="0" value="${s.betrag??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right;font-weight:600" onchange="setSponsorBetrag('${s.id}',this.value,this)">
          ${s.betrag!=null&&s.betrag!==''?'<span class="submuted" title="Bereits eingetragene Beträge sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
@@ -1000,7 +1001,7 @@ function openSponsor(id){
       </div>
     </div>
     <div id="sp_sachspendeBox" style="display:${sach?'block':'none'}">
-      <label class="field"><span>Beschreibung der Sachspende</span><input id="sp_sachspende" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier"></label>
+      <label class="field"><span>Beschreibung der Sachspende</span><textarea id="sp_sachspende" rows="3" placeholder="z. B. 2 Kisten Bier">${esc(s.sachspende_text)}</textarea></label>
     </div>
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
