@@ -414,6 +414,11 @@
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 <datalist id="memberNames"></datalist>
+<datalist id="quittungOptions">
+  <option>Quittung offen</option>
+  <option>Quittung ausgestellt</option>
+  <option>im Austausch gegen Quittung</option>
+</datalist>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -887,6 +892,11 @@ async function setSponsorStatus(id,status){
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
+async function setSponsorField(id,field,value){
+  const {error}=await sb.from('sponsoren').update({[field]:value||null}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
 function sponsorTrend(s){
   const hasCur=s.betrag!=null&&s.betrag!=='';
   const hasVor=s.betrag_vorjahr!=null&&s.betrag_vorjahr!=='';
@@ -905,10 +915,12 @@ function sponsorRow(s,showBetreuer){
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
     <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?`<b>${eur(s.betrag)}</b>`:'<span style="color:var(--muted)">–</span>'}${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div></td>
     <td>${sponsorStatusSelect(s)}</td>
+    <td><input type="text" list="quittungOptions" value="${esc(s.quittung)}" class="status-select" style="max-width:190px;font-weight:400"
+      placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)"></td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung / Bemerkung</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function renderSponsoren(){
@@ -957,6 +969,7 @@ function openSponsor(id){
       <label class="field"><span>Status</span><select id="sp_status">
         ${['angefragt','zugesagt','erhalten','abgelehnt'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></label>
     </div>
+    <label class="field"><span>Quittung / Bemerkung</span><input id="sp_quittung" list="quittungOptions" value="${esc(s.quittung)}" placeholder="z. B. Quittung offen"></label>
     <label class="field"><span>Notiz</span><textarea id="sp_notiz" rows="2">${esc(s.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
@@ -966,7 +979,7 @@ function saveSponsor(id,btn){
   const bet=val('sp_betrag'); const vor=val('sp_vorjahr'); const jahr=val('sp_jahr');
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
-    status:val('sp_status'),notiz:val('sp_notiz')||null};
+    status:val('sp_status'),quittung:val('sp_quittung')||null,notiz:val('sp_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
