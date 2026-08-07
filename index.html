@@ -156,6 +156,8 @@
   .spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
   @keyframes spin{to{transform:rotate(360deg)}}
   .beitrag-inp{max-width:110px;padding:6px 9px;font-size:13px}
+  .status-select{width:auto;max-width:130px;padding:5px 8px;font-size:12.5px;font-weight:600;
+    background:var(--panel2);border-width:1.5px;border-radius:8px}
   @media(max-width:600px){.grid2{grid-template-columns:1fr}nav{top:65px}.whoami{display:none}
     .pos-head,.pos-row{grid-template-columns:1fr 44px 70px 70px 24px}
     .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 38px 42px 60px 60px 22px}
@@ -873,6 +875,18 @@ function renderKalender(){
 
 /* ---- Sponsoren ---- */
 function sponsorStatusPill(s){const c={'angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'angefragt')}</span>`;}
+const SPONSOR_STATUS_COLOR={angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
+function sponsorStatusSelect(s){
+  const cur=s.status||'angefragt'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
+  const opts=[['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
+  return `<select class="status-select" style="border-color:${col};color:${col}" onchange="setSponsorStatus('${s.id}',this.value)">
+    ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
+}
+async function setSponsorStatus(id,status){
+  const {error}=await sb.from('sponsoren').update({status}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
 function sponsorTrend(s){
   const hasCur=s.betrag!=null&&s.betrag!=='';
   const hasVor=s.betrag_vorjahr!=null&&s.betrag_vorjahr!=='';
@@ -890,7 +904,7 @@ function sponsorRow(s,showBetreuer){
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
     <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?`<b>${eur(s.betrag)}</b>`:'<span style="color:var(--muted)">–</span>'}${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div></td>
-    <td>${sponsorStatusPill(s.status)}</td>
+    <td>${sponsorStatusSelect(s)}</td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
