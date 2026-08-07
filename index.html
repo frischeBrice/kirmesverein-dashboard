@@ -164,6 +164,7 @@
     .catbar{grid-template-columns:100px 1fr 74px}}
   /* Druck */
   .only-print{display:none}
+  .chk-box{display:inline-block;width:15px;height:15px;border:1.4px solid #000;border-radius:2px;margin:1px 3px 1px 0;vertical-align:middle}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
@@ -903,10 +904,20 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
-async function setSponsorBetrag(id,value){
+function sachspendeWidth(text){ return Math.min(260, Math.max(140, (text||'').length*7+30)); }
+function autosizeText(el){ el.style.width=Math.min(260, Math.max(140, (el.value||'').length*7+30))+'px'; }
+async function setSponsorBetrag(id,value,inputEl){
+  const sp=sponsoren.find(x=>x.id===id);
+  const oldVal=sp?sp.betrag:null;
   const v=value===''?null:parseFloat(value);
-  const {error}=await sb.from('sponsoren').update({betrag:(v==null||isNaN(v))?null:v}).eq('id',id);
-  if(error){ alert('Fehler: '+error.message); return; }
+  const newVal=(v==null||isNaN(v))?null:v;
+  const hadValue=oldVal!=null && oldVal!=='';
+  if(hadValue && Number(oldVal)!==newVal){
+    const ok=confirm(`Bereits eingetragener Betrag ist gesperrt.\n\nWirklich von ${eur(oldVal)} auf ${newVal!=null?eur(newVal):'– (leer)'} ändern?`);
+    if(!ok){ if(inputEl) inputEl.value=oldVal; return; }
+  }
+  const {error}=await sb.from('sponsoren').update({betrag:newVal}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); if(inputEl) inputEl.value=oldVal??''; return; }
   await loadAll();
 }
 function sponsorTrend(s){
@@ -926,8 +937,9 @@ function sponsorRow(s,showBetreuer){
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
     <td style="text-align:right">${isSachspende(s.art)
-      ? `<input type="text" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier" class="status-select" style="max-width:190px;text-align:left;font-weight:400" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">`
-      : `<input type="number" step="0.01" min="0" value="${s.betrag??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right;font-weight:600" onchange="setSponsorBetrag('${s.id}',this.value)">
+      ? `<input type="text" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier" class="status-select" style="width:${sachspendeWidth(s.sachspende_text)}px;max-width:none;text-align:left;font-weight:400" oninput="autosizeText(this)" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">`
+      : `<input type="number" step="0.01" min="0" value="${s.betrag??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right;font-weight:600" onchange="setSponsorBetrag('${s.id}',this.value,this)">
+         ${s.betrag!=null&&s.betrag!==''?'<span class="submuted" title="Bereits eingetragene Beträge sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
     <td><input type="text" list="quittungOptions" value="${esc(s.quittung)}" class="status-select" style="max-width:190px;font-weight:400"
@@ -1250,14 +1262,15 @@ function printKvvAktion(){
     <div class="panel">
       <h3>Teilnehmer</h3>
       ${rows.length?`<table>
-        <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Status</th></tr></thead>
-        <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id);
+        <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+        <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id); const karten=kvvKarten(t);
           return `<tr><td>${esc(m?(m.display_name||m.username):'—')}</td>
             <td style="text-align:right">${t.externe_anzahl}</td>
-            <td style="text-align:right">${kvvKarten(t)}</td>
+            <td style="text-align:right">${karten}</td>
             <td style="text-align:right">${eur(kvvBetrag(t))}</td>
-            <td>${t.bezahlt?'bezahlt':'offen'}</td></tr>`;}).join('')}</tbody>
-        <tfoot><tr><td>Summe</td><td></td><td style="text-align:right">${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td></td></tr></tfoot>
+            <td>${t.bezahlt?'☑ bezahlt':'☐ offen'}</td>
+            <td>${'<span class="chk-box"></span>'.repeat(karten)}</td></tr>`;}).join('')}</tbody>
+        <tfoot><tr><td>Summe</td><td></td><td style="text-align:right">${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td colspan="2"></td></tr></tfoot>
       </table>`:'<div class="empty">Keine Teilnehmer erfasst.</div>'}
     </div>
     <div class="panel">
