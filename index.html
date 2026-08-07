@@ -163,11 +163,13 @@
     .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 38px 42px 60px 60px 22px}
     .catbar{grid-template-columns:100px 1fr 74px}}
   /* Druck */
+  .only-print{display:none}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
     .view{display:none !important}
     #report.active{display:block !important}
+    .only-print.show{display:block !important}
     main{padding:0}
     .panel,.card{border:1px solid #bbb !important;background:#fff !important;box-shadow:none;break-inside:avoid}
     .card .value,.panel h3,td,th,h2{color:#000 !important}
@@ -409,6 +411,9 @@
       </div>
       <div id="reportBody"></div>
     </section>
+
+    <!-- Druckfläche für den Kartenvorverkauf (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="kvvPrintArea"></div>
   </main>
 </div>
 
@@ -897,6 +902,13 @@ async function setSponsorField(id,field,value){
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
+function isSachspende(art){ return /sachspende/i.test(art||''); }
+async function setSponsorBetrag(id,value){
+  const v=value===''?null:parseFloat(value);
+  const {error}=await sb.from('sponsoren').update({betrag:(v==null||isNaN(v))?null:v}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
 function sponsorTrend(s){
   const hasCur=s.betrag!=null&&s.betrag!=='';
   const hasVor=s.betrag_vorjahr!=null&&s.betrag_vorjahr!=='';
@@ -913,7 +925,10 @@ function sponsorRow(s,showBetreuer){
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
-    <td style="text-align:right">${s.betrag!=null&&s.betrag!==''?`<b>${eur(s.betrag)}</b>`:'<span style="color:var(--muted)">–</span>'}${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div></td>
+    <td style="text-align:right">${isSachspende(s.art)
+      ? `<input type="text" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier" class="status-select" style="max-width:190px;text-align:left;font-weight:400" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">`
+      : `<input type="number" step="0.01" min="0" value="${s.betrag??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right;font-weight:600" onchange="setSponsorBetrag('${s.id}',this.value)">
+         ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
     <td><input type="text" list="quittungOptions" value="${esc(s.quittung)}" class="status-select" style="max-width:190px;font-weight:400"
       placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)"></td>
@@ -946,23 +961,34 @@ function renderSponsoren(){
     el.innerHTML=sponsorTable(list,true);
   }
 }
+function toggleSponsorArtFields(){
+  const sach=isSachspende(val('sp_art'));
+  document.getElementById('sp_betragBox').style.display=sach?'none':'block';
+  document.getElementById('sp_sachspendeBox').style.display=sach?'block':'none';
+}
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:''};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:''};
+  const sach=isSachspende(s.art);
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
     <label class="field"><span>Zuständige Person (Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
     <div class="grid2">
       <label class="field"><span>Ansprechpartner</span><input id="sp_ap" value="${esc(s.ansprechpartner)}"></label>
-      <label class="field"><span>Art</span><input id="sp_art" list="spArten" value="${esc(s.art)}">
+      <label class="field"><span>Art</span><input id="sp_art" list="spArten" value="${esc(s.art)}" oninput="toggleSponsorArtFields()">
         <datalist id="spArten"><option>Geldspende</option><option>Sachspende</option><option>Bandenwerbung</option><option>Gutschein</option><option>Sonstiges</option></datalist></label>
     </div>
     <div class="grid2">
       <label class="field"><span>E-Mail</span><input id="sp_email" value="${esc(s.email)}"></label>
       <label class="field"><span>Telefon</span><input id="sp_tel" value="${esc(s.telefon)}"></label>
     </div>
-    <div class="grid2">
-      <label class="field"><span>Betrag / Wert dieses Jahr (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
-      <label class="field"><span>Vorjahr (€)</span><input type="number" step="0.01" min="0" id="sp_vorjahr" value="${s.betrag_vorjahr??''}"></label>
+    <div id="sp_betragBox" style="display:${sach?'none':'block'}">
+      <div class="grid2">
+        <label class="field"><span>Betrag / Wert dieses Jahr (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
+        <label class="field"><span>Vorjahr (€)</span><input type="number" step="0.01" min="0" id="sp_vorjahr" value="${s.betrag_vorjahr??''}"></label>
+      </div>
+    </div>
+    <div id="sp_sachspendeBox" style="display:${sach?'block':'none'}">
+      <label class="field"><span>Beschreibung der Sachspende</span><input id="sp_sachspende" value="${esc(s.sachspende_text)}" placeholder="z. B. 2 Kisten Bier"></label>
     </div>
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
@@ -979,7 +1005,7 @@ function saveSponsor(id,btn){
   const bet=val('sp_betrag'); const vor=val('sp_vorjahr'); const jahr=val('sp_jahr');
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
-    status:val('sp_status'),quittung:val('sp_quittung')||null,notiz:val('sp_notiz')||null};
+    status:val('sp_status'),quittung:val('sp_quittung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
@@ -1117,7 +1143,7 @@ function renderKartenvorverkauf(){
             ${kartenvorverkauf.map(a=>`<option value="${a.id}" ${a.id===kvvSel?'selected':''}>${esc(a.titel)}${a.datum?' ('+fmtDate(a.datum)+')':''}</option>`).join('')}
           </select>
           <button class="btn ghost sm" onclick="openKvvAktion()">＋ Neue Aktion</button>
-          ${aktion?`<button class="btn ghost sm" onclick="openKvvAktion('${aktion.id}')">✏️</button><button class="btn ghost sm" onclick="delKvvAktion('${aktion.id}')">🗑️</button>`:''}
+          ${aktion?`<button class="btn ghost sm" onclick="openKvvAktion('${aktion.id}')">✏️</button><button class="btn ghost sm" onclick="delKvvAktion('${aktion.id}')">🗑️</button><button class="btn sm" onclick="printKvvAktion()">🖨 Drucken / PDF</button>`:''}
         </span>
       </h3>
       ${aktion?`<div class="submuted">${fmtDate(aktion.datum)} · Preis pro Karte ${eur(aktion.preis)}${aktion.notiz?' · '+esc(aktion.notiz):''}</div>`:''}
@@ -1200,6 +1226,51 @@ async function toggleKvvBezahlt(id){
 }
 function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
   sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+function printKvvAktion(){
+  const aktion=kvvAktion(kvvSel);
+  if(!aktion){ alert('Bitte zuerst eine Aktion auswählen.'); return; }
+  const rows=kvTeilnehmer.filter(t=>t.aktion_id===kvvSel);
+  const totalKarten=rows.reduce((s,t)=>s+kvvKarten(t),0);
+  const totalBetrag=rows.reduce((s,t)=>s+kvvBetrag(t),0);
+  const bezahltBetrag=rows.filter(t=>t.bezahlt).reduce((s,t)=>s+kvvBetrag(t),0);
+  const offenBetrag=totalBetrag-bezahltBetrag;
+  document.getElementById('kvvPrintArea').innerHTML=`
+    <div class="panel">
+      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Kartenvorverkauf</h3>
+      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
+      <div class="cards" style="margin-top:14px">
+        <div class="card"><div class="label">Veranstaltung</div><div class="value" style="font-size:17px">${esc(aktion.titel)}</div></div>
+        <div class="card"><div class="label">Datum</div><div class="value" style="font-size:17px">${fmtDate(aktion.datum)}</div></div>
+        <div class="card"><div class="label">Preis pro Karte</div><div class="value">${eur(aktion.preis)}</div></div>
+        <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+      </div>
+      ${aktion.notiz?`<div class="submuted" style="margin-top:10px">${esc(aktion.notiz)}</div>`:''}
+    </div>
+    <div class="panel">
+      <h3>Teilnehmer</h3>
+      ${rows.length?`<table>
+        <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Status</th></tr></thead>
+        <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id);
+          return `<tr><td>${esc(m?(m.display_name||m.username):'—')}</td>
+            <td style="text-align:right">${t.externe_anzahl}</td>
+            <td style="text-align:right">${kvvKarten(t)}</td>
+            <td style="text-align:right">${eur(kvvBetrag(t))}</td>
+            <td>${t.bezahlt?'bezahlt':'offen'}</td></tr>`;}).join('')}</tbody>
+        <tfoot><tr><td>Summe</td><td></td><td style="text-align:right">${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td></td></tr></tfoot>
+      </table>`:'<div class="empty">Keine Teilnehmer erfasst.</div>'}
+    </div>
+    <div class="panel">
+      <div class="cards">
+        <div class="card"><div class="label">Erlös gesamt</div><div class="value">${eur(totalBetrag)}</div></div>
+        <div class="card"><div class="label">Bezahlt</div><div class="value">${eur(bezahltBetrag)}</div></div>
+        <div class="card"><div class="label">Offen</div><div class="value">${eur(offenBetrag)}</div></div>
+      </div>
+    </div>`;
+  document.getElementById('kvvPrintArea').classList.add('show');
+  window.print();
+}
+window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show'); });
 
 /* ---- Bericht ---- */
 function catSums(art,jahr){
