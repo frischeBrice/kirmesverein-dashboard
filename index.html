@@ -353,7 +353,7 @@
         <input id="spSearch" placeholder="🔍 Suche (Sponsor, Ansprechpartner, Zuständig)…" oninput="renderSponsoren()">
         <select id="spFilter" onchange="renderSponsoren()">
           <option value="">Alle Status</option>
-          <option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
+          <option value="offen">Offen</option><option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
           <option value="erhalten">Erhalten</option><option value="abgelehnt">Abgelehnt</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;flex:none"><input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> nach Mitglied gruppieren</label>
@@ -879,11 +879,11 @@ function renderKalender(){
 }
 
 /* ---- Sponsoren ---- */
-function sponsorStatusPill(s){const c={'angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'warn';return `<span class="pill ${c}">${esc(s||'angefragt')}</span>`;}
-const SPONSOR_STATUS_COLOR={angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
+function sponsorStatusPill(s){const c={'offen':'gray','angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'gray';return `<span class="pill ${c}">${esc(s||'offen')}</span>`;}
+const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
 function sponsorStatusSelect(s){
-  const cur=s.status||'angefragt'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
-  const opts=[['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
+  const cur=s.status||'offen'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
+  const opts=[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
   return `<select class="status-select" style="border-color:${col};color:${col}" onchange="setSponsorStatus('${s.id}',this.value)">
     ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
@@ -947,7 +947,7 @@ function renderSponsoren(){
   }
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'angefragt',notiz:'',betreuer:''};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:''};
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
     <label class="field"><span>Zuständige Person (Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
@@ -967,7 +967,7 @@ function openSponsor(id){
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
       <label class="field"><span>Status</span><select id="sp_status">
-        ${['angefragt','zugesagt','erhalten','abgelehnt'].map(x=>`<option ${s.status===x?'selected':''}>${x}</option>`).join('')}</select></label>
+        ${[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']].map(([v,l])=>`<option value="${v}" ${(s.status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     </div>
     <label class="field"><span>Quittung / Bemerkung</span><input id="sp_quittung" list="quittungOptions" value="${esc(s.quittung)}" placeholder="z. B. Quittung offen"></label>
     <label class="field"><span>Notiz</span><textarea id="sp_notiz" rows="2">${esc(s.notiz)}</textarea></label>
