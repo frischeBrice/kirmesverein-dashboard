@@ -962,19 +962,28 @@ function sponsorTrend(s){
   return ' <span class="pill gray mini">= gleich</span>';
 }
 function freikartenCell(s){
-  const eligible=Number(s.betrag||0)>=50;
-  const nums=parseFreikarten(s.freikarten_nummern);
-  return `<div class="submuted" style="margin-bottom:4px">${eligible?'<span class="pill ok mini">Ja ab 50€</span>':'<span class="pill gray mini">Nein</span>'}</div>
-    <div style="display:flex;gap:4px;margin-bottom:4px">
-      <input type="number" min="0" step="1" value="${s.freikarten_anzahl??''}" placeholder="Anz." class="status-select" style="max-width:58px;padding:4px 6px" onchange="setSponsorFkAnzahl('${s.id}',this.value)">
-      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="#Nummern" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
-    </div>
-    ${nums.length?`<div class="submuted" style="margin-bottom:4px">#${nums.join(', #')}</div>`:''}
-    ${freikartenStatusSelect(s)}`;
+  // Freikarten-Auswahl gibt's nur, wenn der Sponsor überhaupt in Frage kommt (50 € + zugesagt/erhalten) –
+  // bei offen/angefragt/abgelehnt taucht hier gar nichts auf.
+  const eligible=Number(s.betrag||0)>=50 && ['zugesagt','erhalten'].includes(s.status);
+  if(!eligible) return '<span class="submuted">–</span>';
+  const isJa=Number(s.freikarten_anzahl)>0;
+  const col=isJa?'#3fb27f':'#e05c5c';
+  let html=`<select class="status-select" style="border-color:${col};color:${col};font-weight:700" onchange="setSponsorFkJaNein('${s.id}',this.value)">
+    <option value="ja" ${isJa?'selected':''}>Ja</option>
+    <option value="nein" ${!isJa?'selected':''}>Nein</option>
+  </select>`;
+  if(isJa){
+    const nums=parseFreikarten(s.freikarten_nummern);
+    html+=`<div style="margin-top:4px"><input type="text" value="${esc(s.freikarten_nummern)}" placeholder="#Nummern" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)"></div>`;
+    if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
+    html+=freikartenStatusSelect(s);
+  }
+  return html;
 }
-async function setSponsorFkAnzahl(id,value){
-  const v=value===''?null:parseFloat(value);
-  const {error}=await sb.from('sponsoren').update({freikarten_anzahl:(v==null||isNaN(v))?null:v}).eq('id',id);
+async function setSponsorFkJaNein(id,value){
+  // Ja = feste Anzahl 2 (Standardfall); Nein = zurückgesetzt (auch Nummern + Annahmestatus, falls vorher Ja war)
+  const patch = value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null,freikarten_status:'offen'};
+  const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
