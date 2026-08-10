@@ -424,11 +424,6 @@
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 <datalist id="memberNames"></datalist>
-<datalist id="quittungOptions">
-  <option>Quittung offen</option>
-  <option>Quittung ausgestellt</option>
-  <option>im Austausch gegen Quittung</option>
-</datalist>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -916,6 +911,12 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
+const QUITTUNG_OPTS=[['Quittung offen','Offen'],['Quittung ausgestellt','Ausgestellt'],['im Austausch gegen Quittung','Im Austausch']];
+function quittungCell(s){
+  return `<div style="display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:400">
+    ${QUITTUNG_OPTS.map(([v,l])=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="qu_${s.id}" value="${esc(v)}" ${s.quittung===v?'checked':''} onchange="setSponsorField('${s.id}','quittung',this.value)">${l}</label>`).join('')}
+  </div>`;
+}
 /* Freikarten */
 function suggestedFreikarten(betrag){ return (Number(betrag)||0)>=50 ? 2 : 0; }
 function parseFreikarten(text){ return (text||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean); }
@@ -1011,12 +1012,13 @@ function sponsorRow(s,showBetreuer){
          ${s.betrag!=null&&s.betrag!==''?'<span class="submuted" title="Bereits eingetragene Beträge sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
-    <td><textarea rows="2" class="sachspende-area" placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)">${esc(s.quittung)}</textarea></td>
+    <td>${quittungCell(s)}</td>
+    <td><textarea rows="2" class="sachspende-area" placeholder="Bemerkung…" onchange="setSponsorField('${s.id}','bemerkung',this.value)">${esc(s.bemerkung)}</textarea></td>
     <td>${freikartenCell(s)}</td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung / Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function renderSponsoren(){
@@ -1048,7 +1050,7 @@ function toggleSponsorArtFields(){
   document.getElementById('sp_sachspendeBox').style.display=sach?'block':'none';
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:'',freikarten_status:'offen'};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',bemerkung:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:'',freikarten_status:'offen'};
   // Vorschlag nur wenn der Sponsor bereits (oder gerade) als "zugesagt"/"erhalten" markiert ist – siehe maybeSuggestFreikarten() für live Nachschlag im Modal
   const fkAnzahl = (s.freikarten_anzahl!=null && s.freikarten_anzahl!=='') ? s.freikarten_anzahl : ((['zugesagt','erhalten'].includes(s.status||'offen') && suggestedFreikarten(s.betrag)>0) ? suggestedFreikarten(s.betrag) : '');
   const sach=isSachspende(s.art);
@@ -1085,7 +1087,12 @@ function openSponsor(id){
       <label class="field"><span>Status</span><select id="sp_status" onchange="maybeSuggestFreikarten()">
         ${[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']].map(([v,l])=>`<option value="${v}" ${(s.status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     </div>
-    <label class="field"><span>Quittung / Bemerkung</span><textarea id="sp_quittung" rows="3" placeholder="z. B. Quittung offen">${esc(s.quittung)}</textarea></label>
+    <div class="grid2">
+      <label class="field"><span>Quittung</span><select id="sp_quittung">
+        <option value="" ${!s.quittung?'selected':''}>– keine Auswahl –</option>
+        ${QUITTUNG_OPTS.map(([v,l])=>`<option value="${v}" ${s.quittung===v?'selected':''}>${l}</option>`).join('')}</select></label>
+      <label class="field"><span>Bemerkung</span><textarea id="sp_bemerkung" rows="2">${esc(s.bemerkung)}</textarea></label>
+    </div>
     <label class="field"><span>Anschrift</span><textarea id="sp_notiz" rows="2" placeholder="z. B. Musterstr. 1, 12345 Musterstadt">${esc(s.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
@@ -1107,7 +1114,7 @@ function saveSponsor(id,btn){
   }
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
-    status:val('sp_status'),quittung:val('sp_quittung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
+    status:val('sp_status'),quittung:val('sp_quittung')||null,bemerkung:val('sp_bemerkung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
     freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,freikarten_status:val('sp_fk_status')||'offen'};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
