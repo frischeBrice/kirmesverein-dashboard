@@ -379,6 +379,7 @@
           <option value="nein">Freikarten: Nein</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;flex:none"><input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> nach Mitglied gruppieren</label>
+        <button class="btn ghost" style="flex:none" onclick="resetSponsorFilters()">✕ Filter zurücksetzen</button>
       </div>
       <div class="panel"><div id="sponsorenTable"></div></div>
     </section>
@@ -1050,6 +1051,14 @@ function sponsorRow(s,showBetreuer){
 function sponsorTable(arr,showBetreuer){
   return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th style="text-align:right">Betrag/Wert</th><th>Status</th><th style="text-align:center">Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
+}
+function resetSponsorFilters(){
+  document.getElementById('spSearch').value='';
+  document.getElementById('spFilter').value='';
+  document.getElementById('spQuittungFilter').value='';
+  document.getElementById('spFreikartenFilter').value='';
+  document.getElementById('spGroup').checked=false;
+  renderSponsoren();
 }
 function renderSponsoren(){
   const q=(val('spSearch')).toLowerCase(); const f=val('spFilter');
