@@ -907,6 +907,20 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
+/* Freikarten */
+function suggestedFreikarten(betrag){ return (Number(betrag)||0)>=50 ? 2 : 0; }
+function parseFreikarten(text){ return (text||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean); }
+function freikartenKonflikte(nummern,excludeId){
+  const conflicts=[];
+  nummern.forEach(nr=>{
+    sponsoren.forEach(sp=>{
+      if(sp.id===excludeId) return;
+      const other=parseFreikarten(sp.freikarten_nummern);
+      if(other.includes(nr)) conflicts.push({nr,name:sp.name});
+    });
+  });
+  return conflicts;
+}
 async function setSponsorBetrag(id,value,inputEl){
   const sp=sponsoren.find(x=>x.id===id);
   const oldVal=sp?sp.betrag:null;
@@ -933,7 +947,7 @@ function sponsorTrend(s){
 }
 function sponsorRow(s,showBetreuer){
   return `<tr>
-    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">${esc(s.notiz)}</div>`:''}</td>
+    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">${esc(s.notiz)}</div>`:''}${(Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length)?`<div class="submuted">🎟 ${Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length} Freikarte${(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length)!==1?'n':''}${parseFreikarten(s.freikarten_nummern).length?' (#'+parseFreikarten(s.freikarten_nummern).join(', #')+')':''}</div>`:''}</td>
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
@@ -980,7 +994,8 @@ function toggleSponsorArtFields(){
   document.getElementById('sp_sachspendeBox').style.display=sach?'block':'none';
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:''};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:''};
+  const fkAnzahl = (s.freikarten_anzahl!=null && s.freikarten_anzahl!=='') ? s.freikarten_anzahl : (id?'':(suggestedFreikarten(s.betrag)||''));
   const sach=isSachspende(s.art);
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
@@ -1004,6 +1019,11 @@ function openSponsor(id){
       <label class="field"><span>Beschreibung der Sachspende</span><textarea id="sp_sachspende" rows="3" placeholder="z. B. 2 Kisten Bier">${esc(s.sachspende_text)}</textarea></label>
     </div>
     <div class="grid2">
+      <label class="field"><span>Freikarten (Anzahl)</span><input type="number" step="1" min="0" id="sp_fk_anzahl" value="${fkAnzahl}" placeholder="0">
+        <div class="submuted" style="margin-top:4px">ab 50 € meist 2 Freikarten</div></label>
+      <label class="field"><span>Kartennummern</span><input id="sp_fk_nummern" value="${esc(s.freikarten_nummern)}" placeholder="z. B. 1042, 1043"></label>
+    </div>
+    <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
       <label class="field"><span>Status</span><select id="sp_status">
         ${[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']].map(([v,l])=>`<option value="${v}" ${(s.status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
@@ -1015,10 +1035,17 @@ function openSponsor(id){
 }
 function saveSponsor(id,btn){
   const name=val('sp_name'); if(!name){ alert('Bitte Name / Firma eingeben.'); return; }
-  const bet=val('sp_betrag'); const vor=val('sp_vorjahr'); const jahr=val('sp_jahr');
+  const bet=val('sp_betrag'); const vor=val('sp_vorjahr'); const jahr=val('sp_jahr'); const fkAnz=val('sp_fk_anzahl');
+  const fkNummernRaw=val('sp_fk_nummern'); const fkNummern=parseFreikarten(fkNummernRaw);
+  const konflikte=fkNummern.length?freikartenKonflikte(fkNummern,id||null):[];
+  if(konflikte.length){
+    const liste=konflikte.map(k=>`#${k.nr} → bereits bei „${k.name}"`).join('\n');
+    if(!confirm(`Diese Kartennummer(n) sind schon einem anderen Sponsor zugeordnet:\n\n${liste}\n\nTrotzdem speichern?`)) return;
+  }
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
-    status:val('sp_status'),quittung:val('sp_quittung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null};
+    status:val('sp_status'),quittung:val('sp_quittung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
+    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
