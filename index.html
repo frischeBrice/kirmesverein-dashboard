@@ -926,12 +926,6 @@ function freikartenStatusSelect(s){
   return `<select class="status-select" style="max-width:150px;padding:3px 6px;font-size:11.5px;margin-top:3px;border-color:${col};color:${col}" onchange="setSponsorField('${s.id}','freikarten_status',this.value)">
     ${FREIKARTEN_STATUS_OPTS.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
-function freikartenBadge(s){
-  const nums=parseFreikarten(s.freikarten_nummern);
-  const anz=Number(s.freikarten_anzahl)||nums.length;
-  if(!anz) return '';
-  return `<div class="submuted">🎟 ${anz} Freikarte${anz!==1?'n':''}${nums.length?' (#'+nums.join(', #')+')':''}<br>${freikartenStatusSelect(s)}</div>`;
-}
 function freikartenKonflikte(nummern,excludeId){
   const conflicts=[];
   nummern.forEach(nr=>{
@@ -967,12 +961,41 @@ function sponsorTrend(s){
   if(c<v) return ` <span class="pill no mini">▼ −${eur(v-c)}</span>`;
   return ' <span class="pill gray mini">= gleich</span>';
 }
+function freikartenCell(s){
+  const eligible=Number(s.betrag||0)>=50;
+  const nums=parseFreikarten(s.freikarten_nummern);
+  return `<div class="submuted" style="margin-bottom:4px">${eligible?'<span class="pill ok mini">Ja ab 50€</span>':'<span class="pill gray mini">Nein</span>'}</div>
+    <div style="display:flex;gap:4px;margin-bottom:4px">
+      <input type="number" min="0" step="1" value="${s.freikarten_anzahl??''}" placeholder="Anz." class="status-select" style="max-width:58px;padding:4px 6px" onchange="setSponsorFkAnzahl('${s.id}',this.value)">
+      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="#Nummern" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
+    </div>
+    ${nums.length?`<div class="submuted" style="margin-bottom:4px">#${nums.join(', #')}</div>`:''}
+    ${freikartenStatusSelect(s)}`;
+}
+async function setSponsorFkAnzahl(id,value){
+  const v=value===''?null:parseFloat(value);
+  const {error}=await sb.from('sponsoren').update({freikarten_anzahl:(v==null||isNaN(v))?null:v}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+async function setSponsorFkNummern(id,value,inputEl){
+  const nums=parseFreikarten(value);
+  const konflikte=nums.length?freikartenKonflikte(nums,id):[];
+  if(konflikte.length){
+    const liste=konflikte.map(k=>`#${k.nr} → bereits bei „${k.name}"`).join('\n');
+    if(!confirm(`Diese Kartennummer(n) sind schon einem anderen Sponsor zugeordnet:\n\n${liste}\n\nTrotzdem speichern?`)){
+      const sp=sponsoren.find(x=>x.id===id); if(inputEl) inputEl.value=sp?(sp.freikarten_nummern||''):''; return;
+    }
+  }
+  const {error}=await sb.from('sponsoren').update({freikarten_nummern:nums.join(', ')||null}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
 function sponsorRow(s,showBetreuer){
   return `<tr>
-    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">📍 ${esc(s.notiz)}</div>`:''}${(s.email||s.telefon)?`<div class="submuted">${[s.email?esc(s.email):'',s.telefon?esc(s.telefon):''].filter(Boolean).join(' · ')}</div>`:''}${freikartenBadge(s)}</td>
+    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">📍 ${esc(s.notiz)}</div>`:''}${(s.email||s.telefon)?`<div class="submuted">${[s.email?esc(s.email):'',s.telefon?esc(s.telefon):''].filter(Boolean).join(' · ')}</div>`:''}</td>
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td>${esc(s.art)||'–'}</td>
-    <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
     <td style="text-align:right">${isSachspende(s.art)
       ? `<textarea rows="2" class="sachspende-area" placeholder="z. B. 2 Kisten Bier" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">${esc(s.sachspende_text)}</textarea>`
       : `<input type="number" step="0.01" min="0" value="${s.betrag??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right;font-weight:600" onchange="setSponsorBetrag('${s.id}',this.value,this)">
@@ -980,10 +1003,11 @@ function sponsorRow(s,showBetreuer){
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
     <td><textarea rows="2" class="sachspende-area" placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)">${esc(s.quittung)}</textarea></td>
+    <td>${freikartenCell(s)}</td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th>Kontakt</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung / Bemerkung</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung / Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function renderSponsoren(){
