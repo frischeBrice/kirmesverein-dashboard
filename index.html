@@ -161,6 +161,9 @@
   .sachspende-area{width:200px;min-height:44px;padding:6px 8px;font-size:12.5px;font-weight:400;
     background:var(--panel2);border:1.5px solid var(--line);border-radius:8px;resize:vertical;
     line-height:1.35;white-space:pre-wrap;text-align:left}
+  .qu-radio{appearance:none;-webkit-appearance:none;width:14px;height:14px;flex:none;margin:0;
+    border:2px solid var(--qc,#95a3b2);border-radius:4px;cursor:pointer;position:relative;background:transparent}
+  .qu-radio:checked{background:var(--qc,#95a3b2)}
   @media(max-width:600px){.grid2{grid-template-columns:1fr}nav{top:65px}.whoami{display:none}
     .pos-head,.pos-row{grid-template-columns:1fr 44px 70px 70px 24px}
     .pos-head.komm,.pos-row.komm{grid-template-columns:1fr 38px 42px 60px 60px 22px}
@@ -911,12 +914,12 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
-const QUITTUNG_OPTS=[['Quittung offen','Offen','#e05c5c'],['Quittung ausgestellt','Ausgestellt','#3fb27f'],['im Austausch gegen Quittung','Im Austausch','#3a86e8']];
+const QUITTUNG_OPTS=[['Quittung offen','Offen','#e05c5c'],['im Austausch gegen Quittung','Im Austausch','#3a86e8'],['Quittung ausgestellt','Ausgestellt','#3fb27f']];
 function quittungCell(s){
-  return `<div style="display:flex;flex-direction:column;gap:4px;font-size:12px;align-items:center">
+  return `<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;align-items:center;width:100%">
     ${QUITTUNG_OPTS.map(([v,l,col])=>{const on=s.quittung===v;
-      return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:${on?col:'var(--muted)'};font-weight:${on?700:400}">
-        <input type="radio" name="qu_${s.id}" value="${esc(v)}" ${on?'checked':''} onchange="setSponsorField('${s.id}','quittung',this.value)" style="accent-color:${col}">${l}</label>`;
+      return `<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:${on?col:'var(--muted)'};font-weight:${on?700:400};align-self:center">
+        <input type="radio" class="qu-radio" name="qu_${s.id}" value="${esc(v)}" ${on?'checked':''} onchange="setSponsorField('${s.id}','quittung',this.value)" style="--qc:${col}">${l}</label>`;
     }).join('')}
   </div>`;
 }
@@ -1007,7 +1010,7 @@ function sponsorRow(s,showBetreuer){
          ${s.betrag!=null&&s.betrag!==''?'<span class="submuted" title="Bereits eingetragene Beträge sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
-    <td>${quittungCell(s)}</td>
+    <td style="text-align:center">${quittungCell(s)}</td>
     <td><textarea rows="2" class="sachspende-area" placeholder="Bemerkung…" onchange="setSponsorField('${s.id}','bemerkung',this.value)">${esc(s.bemerkung)}</textarea></td>
     <td>${freikartenCell(s)}</td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
