@@ -923,13 +923,6 @@ function quittungCell(s){
 /* Freikarten */
 function suggestedFreikarten(betrag){ return (Number(betrag)||0)>=50 ? 2 : 0; }
 function parseFreikarten(text){ return (text||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean); }
-const FREIKARTEN_STATUS_COLOR={offen:'#95a3b2',angenommen:'#3fb27f',abgelehnt:'#e05c5c'};
-const FREIKARTEN_STATUS_OPTS=[['offen','Offen'],['angenommen','Angenommen'],['abgelehnt','Abgelehnt']];
-function freikartenStatusSelect(s){
-  const cur=s.freikarten_status||'offen'; const col=FREIKARTEN_STATUS_COLOR[cur]||'#95a3b2';
-  return `<select class="status-select" style="max-width:150px;padding:3px 6px;font-size:11.5px;margin-top:3px;border-color:${col};color:${col}" onchange="setSponsorField('${s.id}','freikarten_status',this.value)">
-    ${FREIKARTEN_STATUS_OPTS.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
-}
 function freikartenKonflikte(nummern,excludeId){
   const conflicts=[];
   nummern.forEach(nr=>{
@@ -980,13 +973,12 @@ function freikartenCell(s){
     const nums=parseFreikarten(s.freikarten_nummern);
     html+=`<div style="margin-top:4px"><input type="text" value="${esc(s.freikarten_nummern)}" placeholder="#Nummern" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)"></div>`;
     if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
-    html+=freikartenStatusSelect(s);
   }
   return html;
 }
 async function setSponsorFkJaNein(id,value){
-  // Ja = feste Anzahl 2 (Standardfall); Nein = zurückgesetzt (auch Nummern + Annahmestatus, falls vorher Ja war)
-  const patch = value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null,freikarten_status:'offen'};
+  // Ja = feste Anzahl 2 (Standardfall); Nein = zurückgesetzt (auch Nummern, falls vorher Ja war)
+  const patch = value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null};
   const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
@@ -1053,7 +1045,7 @@ function toggleSponsorArtFields(){
   document.getElementById('sp_sachspendeBox').style.display=sach?'block':'none';
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',bemerkung:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:'',freikarten_status:'offen'};
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',bemerkung:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:''};
   // Vorschlag nur wenn der Sponsor bereits (oder gerade) als "zugesagt"/"erhalten" markiert ist – siehe maybeSuggestFreikarten() für live Nachschlag im Modal
   const fkAnzahl = (s.freikarten_anzahl!=null && s.freikarten_anzahl!=='') ? s.freikarten_anzahl : ((['zugesagt','erhalten'].includes(s.status||'offen') && suggestedFreikarten(s.betrag)>0) ? suggestedFreikarten(s.betrag) : '');
   const sach=isSachspende(s.art);
@@ -1083,8 +1075,6 @@ function openSponsor(id){
         <div class="submuted" style="margin-top:4px">ab 50 € + Status „Zugesagt"/„Erhalten" meist 2 Freikarten</div></label>
       <label class="field"><span>Kartennummern</span><input id="sp_fk_nummern" value="${esc(s.freikarten_nummern)}" placeholder="z. B. 1042, 1043"></label>
     </div>
-    <label class="field"><span>Freikarten angenommen?</span><select id="sp_fk_status">
-      ${FREIKARTEN_STATUS_OPTS.map(([v,l])=>`<option value="${v}" ${(s.freikarten_status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
       <label class="field"><span>Status</span><select id="sp_status" onchange="maybeSuggestFreikarten()">
@@ -1118,7 +1108,7 @@ function saveSponsor(id,btn){
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
     status:val('sp_status'),quittung:val('sp_quittung')||null,bemerkung:val('sp_bemerkung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
-    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,freikarten_status:val('sp_fk_status')||'offen'};
+    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
@@ -1218,24 +1208,17 @@ function renderFreikartenUebersicht(){
     return;
   }
   const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
-  const angenommen=list.filter(s=>s.freikarten_status==='angenommen').length;
-  const offen=list.filter(s=>(s.freikarten_status||'offen')==='offen').length;
-  const abgelehnt=list.filter(s=>s.freikarten_status==='abgelehnt').length;
   body.innerHTML=`
     <div class="note">Übersicht aller vergebenen Sponsoren-Freikarten – schneller Überblick ohne die Sponsoren-Tabelle zu durchsuchen.</div>
     <div class="cards">
       <div class="card"><div class="label">Sponsoren mit Freikarten</div><div class="value">${list.length}</div></div>
       <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
-      <div class="card"><div class="label">Angenommen</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.angenommen}">${angenommen}</div></div>
-      <div class="card"><div class="label">Noch offen</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.offen}">${offen}</div></div>
-      <div class="card"><div class="label">Abgelehnt</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.abgelehnt}">${abgelehnt}</div></div>
     </div>
-    <div class="panel"><table><thead><tr><th>Sponsor</th><th>Betrag</th><th>Sponsor-Status</th><th>Anzahl</th><th>Nummern</th><th>Angenommen?</th></tr></thead>
+    <div class="panel"><table><thead><tr><th>Sponsor</th><th>Betrag</th><th>Sponsor-Status</th><th>Anzahl</th><th>Nummern</th></tr></thead>
       <tbody>${list.map(s=>{
         const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
         return `<tr><td><b>${esc(s.name)}</b></td><td>${s.betrag!=null&&s.betrag!==''?eur(s.betrag):'–'}</td><td>${sponsorStatusPill(s.status)}</td>
-          <td>${anz}</td><td>${nums.length?'#'+nums.join(', #'):'<span style="color:var(--muted)">–</span>'}</td>
-          <td>${freikartenStatusSelect(s)}</td></tr>`;
+          <td>${anz}</td><td>${nums.length?'#'+nums.join(', #'):'<span style="color:var(--muted)">–</span>'}</td></tr>`;
       }).join('')}</tbody></table></div>`;
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
