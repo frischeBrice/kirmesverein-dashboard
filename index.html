@@ -64,6 +64,10 @@
   .card .value{font-size:25px;font-weight:700;margin-top:6px}
   .card .value.green{color:var(--green)} .card .value.red{color:var(--red)} .card .value.orange{color:var(--accent)}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:20px;overflow-x:auto}
+  .mitglied-group{border:1.5px solid var(--line);border-radius:16px;margin-bottom:18px;overflow:hidden;
+    box-shadow:0 3px 14px rgba(0,0,0,.18);border-top:3px solid var(--accent2)}
+  .mitglied-group .sectionbar{margin:0;padding:13px 18px;background:linear-gradient(90deg,rgba(58,134,232,.14),transparent 70%);border-bottom:1.5px solid var(--line)}
+  .mitglied-group .panel{border:none;border-radius:0;margin-bottom:0;box-shadow:none}
   .panel h3{margin:0 0 14px;font-size:16px;display:flex;align-items:center;gap:8px}
   .panel h3 .grow{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
   table{width:100%;border-collapse:collapse;font-size:14px}
@@ -365,7 +369,9 @@
         <select id="spQuittungFilter" onchange="renderSponsoren()">
           <option value="">Alle Quittungen</option>
           <option value="__keine__">– keine Auswahl –</option>
-          ${QUITTUNG_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+          <option value="Quittung offen">Offen</option>
+          <option value="im Austausch gegen Quittung">Im Austausch</option>
+          <option value="Quittung ausgestellt">Ausgestellt</option>
         </select>
         <select id="spFreikartenFilter" onchange="renderSponsoren()">
           <option value="">Alle Freikarten</option>
@@ -1064,9 +1070,11 @@ function renderSponsoren(){
     const groups={}; list.forEach(s=>{ const k=s.betreuer||'— ohne Zuständige —'; (groups[k]=groups[k]||[]).push(s); });
     const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,'de'));
     el.innerHTML=keys.map(k=>{ const arr=groups[k]; const sum=arr.reduce((a,s)=>a+Number(s.betrag||0),0);
-      return `<div class="sectionbar" style="margin:16px 0 8px"><h3 style="font-size:15px">👤 ${esc(k)}</h3>
-        <span class="grow"><span class="pill gray mini">${arr.length} Sponsor${arr.length!==1?'en':''}</span>${sum>0?`<span class="pill blue mini">${eur(sum)}</span>`:''}</span></div>
-        <div class="panel" style="margin-bottom:10px">${sponsorTable(arr,false)}</div>`;
+      return `<div class="mitglied-group">
+        <div class="sectionbar"><h3 style="font-size:15px">👤 ${esc(k)}</h3>
+          <span class="grow"><span class="pill gray mini">${arr.length} Sponsor${arr.length!==1?'en':''}</span>${sum>0?`<span class="pill blue mini">${eur(sum)}</span>`:''}</span></div>
+        <div class="panel">${sponsorTable(arr,false)}</div>
+      </div>`;
     }).join('');
   } else {
     el.innerHTML=sponsorTable(list,true);
