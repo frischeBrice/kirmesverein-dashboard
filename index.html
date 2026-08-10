@@ -362,6 +362,16 @@
           <option value="offen">Offen</option><option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
           <option value="erhalten">Erhalten</option><option value="abgelehnt">Abgelehnt</option>
         </select>
+        <select id="spQuittungFilter" onchange="renderSponsoren()">
+          <option value="">Alle Quittungen</option>
+          <option value="__keine__">– keine Auswahl –</option>
+          ${QUITTUNG_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+        </select>
+        <select id="spFreikartenFilter" onchange="renderSponsoren()">
+          <option value="">Alle Freikarten</option>
+          <option value="ja">Freikarten: Ja</option>
+          <option value="nein">Freikarten: Nein</option>
+        </select>
         <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;flex:none"><input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> nach Mitglied gruppieren</label>
       </div>
       <div class="panel"><div id="sponsorenTable"></div></div>
@@ -997,10 +1007,28 @@ async function setSponsorFkNummern(id,value,inputEl){
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
-// Klick auf den Namen öffnet das Daten-Fenster (Ansprechpartner steht klein unter dem Namen, Art/Kontakt/Anschrift im Fenster).
+// ℹ️ neben dem Namen zeigt eine reine Lese-Visitenkarte (Kontaktdaten) – zum Bearbeiten gibt's weiterhin ✏️.
+function openSponsorCard(id){
+  const s=sponsoren.find(x=>x.id===id); if(!s) return;
+  const rows=[
+    s.ansprechpartner?['👤',esc(s.ansprechpartner)]:null,
+    s.art?['🏷',esc(s.art)]:null,
+    s.email?['✉️',`<a href="mailto:${esc(s.email)}" style="color:inherit">${esc(s.email)}</a>`]:null,
+    s.telefon?['📞',`<a href="tel:${esc(s.telefon)}" style="color:inherit">${esc(s.telefon)}</a>`]:null,
+    s.notiz?['📍',esc(s.notiz)]:null,
+  ].filter(Boolean);
+  openModal(`<div style="min-width:260px">
+    <h3 style="margin-bottom:2px">${esc(s.name)}</h3>
+    ${s.betreuer?`<div class="submuted" style="margin-bottom:14px">Zuständig: ${esc(s.betreuer)}</div>`:'<div style="margin-bottom:14px"></div>'}
+    <div style="display:flex;flex-direction:column;gap:11px;font-size:14px">
+      ${rows.length?rows.map(([icon,val])=>`<div style="display:flex;align-items:center;gap:9px"><span>${icon}</span><span>${val}</span></div>`).join(''):'<div class="submuted">Noch keine Kontaktdaten hinterlegt.</div>'}
+    </div>
+    <div class="modal-actions" style="margin-top:20px"><button class="btn ghost" onclick="closeModal()">Schließen</button></div>
+  </div>`);
+}
 function sponsorRow(s,showBetreuer){
   return `<tr>
-    <td><b style="cursor:pointer" onclick="openSponsor('${s.id}')" title="Klicken für Ansprechpartner, Art, Kontakt, Anschrift">${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}</td>
+    <td><b>${esc(s.name)}</b> <button class="icon-btn" style="padding:2px 4px;font-size:13px;vertical-align:1px" onclick="openSponsorCard('${s.id}')" title="Kontaktdaten anzeigen">ℹ️</button>${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}</td>
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td style="text-align:right">${isSachspende(s.art)
       ? `<textarea rows="2" class="sachspende-area" placeholder="z. B. 2 Kisten Bier" onchange="setSponsorField('${s.id}','sachspende_text',this.value)">${esc(s.sachspende_text)}</textarea>`
@@ -1011,7 +1039,7 @@ function sponsorRow(s,showBetreuer){
     <td style="text-align:center">${quittungCell(s)}</td>
     <td><textarea rows="2" class="sachspende-area" placeholder="Bemerkung…" onchange="setSponsorField('${s.id}','bemerkung',this.value)">${esc(s.bemerkung)}</textarea></td>
     <td>${freikartenCell(s)}</td>
-    <td><div class="row-actions"><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
+    <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
   return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th style="text-align:right">Betrag/Wert</th><th>Status</th><th style="text-align:center">Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
@@ -1019,13 +1047,17 @@ function sponsorTable(arr,showBetreuer){
 }
 function renderSponsoren(){
   const q=(val('spSearch')).toLowerCase(); const f=val('spFilter');
+  const fq=val('spQuittungFilter'); const ffk=val('spFreikartenFilter');
   const grouped=document.getElementById('spGroup')&&document.getElementById('spGroup').checked;
   const zugesagt=sponsoren.filter(s=>['zugesagt','erhalten'].includes(s.status)).reduce((a,s)=>a+Number(s.betrag||0),0);
   const erhalten=sponsoren.filter(s=>s.status==='erhalten').reduce((a,s)=>a+Number(s.betrag||0),0);
   document.getElementById('spCount').textContent=sponsoren.length;
   document.getElementById('spZugesagt').textContent=eur(zugesagt);
   document.getElementById('spErhalten').textContent=eur(erhalten);
-  const list=sponsoren.filter(s=>((s.name||'').toLowerCase().includes(q)||(s.ansprechpartner||'').toLowerCase().includes(q)||(s.art||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)) && (!f||s.status===f));
+  const list=sponsoren.filter(s=>((s.name||'').toLowerCase().includes(q)||(s.ansprechpartner||'').toLowerCase().includes(q)||(s.art||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q))
+    && (!f||s.status===f)
+    && (!fq||(fq==='__keine__'?!s.quittung:s.quittung===fq))
+    && (!ffk||((Number(s.freikarten_anzahl)>0?'ja':'nein')===ffk)));
   const el=document.getElementById('sponsorenTable');
   if(!list.length){ el.innerHTML='<div class="empty">Noch keine Sponsoren. Lege oben einen an.</div>'; return; }
   if(grouped){
