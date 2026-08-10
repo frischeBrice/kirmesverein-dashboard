@@ -400,6 +400,7 @@
       <div class="view-head"><h2>Sonstiges</h2>
         <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
           <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
+          <option value="freikarten">🎫 Freikarten</option>
         </select></span>
       </div>
       <div id="sonstBody"></div>
@@ -449,6 +450,7 @@ let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
+  {key:'freikarten', label:'🎫 Freikarten'},
   // weitere „Sonstiges"-Unterseiten hier ergänzen
 ];
 let flyoutHideTimer = null;
@@ -897,7 +899,14 @@ function sponsorStatusSelect(s){
     ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
 async function setSponsorStatus(id,status){
-  const {error}=await sb.from('sponsoren').update({status}).eq('id',id);
+  const patch={status};
+  const sp=sponsoren.find(x=>x.id===id);
+  // ab 50 € + Status "zugesagt" oder "erhalten" bekommt der Sponsor automatisch 2 Freikarten vorgeschlagen
+  // (nur wenn noch keine Anzahl eingetragen ist – bestehende Werte werden nie überschrieben)
+  if(sp && ['zugesagt','erhalten'].includes(status) && (sp.freikarten_anzahl==null||sp.freikarten_anzahl==='') && suggestedFreikarten(sp.betrag)>0){
+    patch.freikarten_anzahl=suggestedFreikarten(sp.betrag);
+  }
+  const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
@@ -910,6 +919,19 @@ function isSachspende(art){ return /sachspende/i.test(art||''); }
 /* Freikarten */
 function suggestedFreikarten(betrag){ return (Number(betrag)||0)>=50 ? 2 : 0; }
 function parseFreikarten(text){ return (text||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean); }
+const FREIKARTEN_STATUS_COLOR={offen:'#95a3b2',angenommen:'#3fb27f',abgelehnt:'#e05c5c'};
+const FREIKARTEN_STATUS_OPTS=[['offen','Offen'],['angenommen','Angenommen'],['abgelehnt','Abgelehnt']];
+function freikartenStatusSelect(s){
+  const cur=s.freikarten_status||'offen'; const col=FREIKARTEN_STATUS_COLOR[cur]||'#95a3b2';
+  return `<select class="status-select" style="max-width:150px;padding:3px 6px;font-size:11.5px;margin-top:3px;border-color:${col};color:${col}" onchange="setSponsorField('${s.id}','freikarten_status',this.value)">
+    ${FREIKARTEN_STATUS_OPTS.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
+}
+function freikartenBadge(s){
+  const nums=parseFreikarten(s.freikarten_nummern);
+  const anz=Number(s.freikarten_anzahl)||nums.length;
+  if(!anz) return '';
+  return `<div class="submuted">🎟 ${anz} Freikarte${anz!==1?'n':''}${nums.length?' (#'+nums.join(', #')+')':''}<br>${freikartenStatusSelect(s)}</div>`;
+}
 function freikartenKonflikte(nummern,excludeId){
   const conflicts=[];
   nummern.forEach(nr=>{
@@ -947,7 +969,7 @@ function sponsorTrend(s){
 }
 function sponsorRow(s,showBetreuer){
   return `<tr>
-    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">${esc(s.notiz)}</div>`:''}${(Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length)?`<div class="submuted">🎟 ${Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length} Freikarte${(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length)!==1?'n':''}${parseFreikarten(s.freikarten_nummern).length?' (#'+parseFreikarten(s.freikarten_nummern).join(', #')+')':''}</div>`:''}</td>
+    <td><b>${esc(s.name)}</b>${s.jahr?` <span class="pill gray mini">${s.jahr}</span>`:''}${s.ansprechpartner?`<div class="submuted">AP: ${esc(s.ansprechpartner)}</div>`:''}${s.notiz?`<div class="submuted">📍 ${esc(s.notiz)}</div>`:''}${(s.email||s.telefon)?`<div class="submuted">${[s.email?esc(s.email):'',s.telefon?esc(s.telefon):''].filter(Boolean).join(' · ')}</div>`:''}${freikartenBadge(s)}</td>
     ${showBetreuer?`<td>${s.betreuer?esc(s.betreuer):'<span style="color:var(--muted)">–</span>'}</td>`:''}
     <td>${esc(s.art)||'–'}</td>
     <td>${s.email?esc(s.email):''}${s.telefon?`<div class="submuted">${esc(s.telefon)}</div>`:''}${(!s.email&&!s.telefon)?'–':''}</td>
@@ -957,8 +979,7 @@ function sponsorRow(s,showBetreuer){
          ${s.betrag!=null&&s.betrag!==''?'<span class="submuted" title="Bereits eingetragene Beträge sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}
          ${sponsorTrend(s)}<div class="submuted">Vorjahr: ${s.betrag_vorjahr!=null&&s.betrag_vorjahr!==''?eur(s.betrag_vorjahr):'–'}</div>`}</td>
     <td>${sponsorStatusSelect(s)}</td>
-    <td><input type="text" list="quittungOptions" value="${esc(s.quittung)}" class="status-select" style="max-width:190px;font-weight:400"
-      placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)"></td>
+    <td><textarea rows="2" class="sachspende-area" placeholder="– keine –" onchange="setSponsorField('${s.id}','quittung',this.value)">${esc(s.quittung)}</textarea></td>
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
@@ -994,8 +1015,9 @@ function toggleSponsorArtFields(){
   document.getElementById('sp_sachspendeBox').style.display=sach?'block':'none';
 }
 function openSponsor(id){
-  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:''};
-  const fkAnzahl = (s.freikarten_anzahl!=null && s.freikarten_anzahl!=='') ? s.freikarten_anzahl : (id?'':(suggestedFreikarten(s.betrag)||''));
+  const s=id?sponsoren.find(x=>x.id===id):{name:'',ansprechpartner:'',email:'',telefon:'',art:'',betrag:'',betrag_vorjahr:'',jahr:new Date().getFullYear(),status:'offen',notiz:'',betreuer:'',sachspende_text:'',freikarten_anzahl:'',freikarten_nummern:'',freikarten_status:'offen'};
+  // Vorschlag nur wenn der Sponsor bereits (oder gerade) als "zugesagt"/"erhalten" markiert ist – siehe maybeSuggestFreikarten() für live Nachschlag im Modal
+  const fkAnzahl = (s.freikarten_anzahl!=null && s.freikarten_anzahl!=='') ? s.freikarten_anzahl : ((['zugesagt','erhalten'].includes(s.status||'offen') && suggestedFreikarten(s.betrag)>0) ? suggestedFreikarten(s.betrag) : '');
   const sach=isSachspende(s.art);
   openModal(`<h3>${id?'Sponsor bearbeiten':'Neuer Sponsor'}</h3>
     <label class="field"><span>Name / Firma *</span><input id="sp_name" value="${esc(s.name)}"></label>
@@ -1011,7 +1033,7 @@ function openSponsor(id){
     </div>
     <div id="sp_betragBox" style="display:${sach?'none':'block'}">
       <div class="grid2">
-        <label class="field"><span>Betrag / Wert dieses Jahr (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}"></label>
+        <label class="field"><span>Betrag / Wert dieses Jahr (€)</span><input type="number" step="0.01" min="0" id="sp_betrag" value="${s.betrag}" onchange="maybeSuggestFreikarten()"></label>
         <label class="field"><span>Vorjahr (€)</span><input type="number" step="0.01" min="0" id="sp_vorjahr" value="${s.betrag_vorjahr??''}"></label>
       </div>
     </div>
@@ -1020,18 +1042,26 @@ function openSponsor(id){
     </div>
     <div class="grid2">
       <label class="field"><span>Freikarten (Anzahl)</span><input type="number" step="1" min="0" id="sp_fk_anzahl" value="${fkAnzahl}" placeholder="0">
-        <div class="submuted" style="margin-top:4px">ab 50 € meist 2 Freikarten</div></label>
+        <div class="submuted" style="margin-top:4px">ab 50 € + Status „Zugesagt"/„Erhalten" meist 2 Freikarten</div></label>
       <label class="field"><span>Kartennummern</span><input id="sp_fk_nummern" value="${esc(s.freikarten_nummern)}" placeholder="z. B. 1042, 1043"></label>
     </div>
+    <label class="field"><span>Freikarten angenommen?</span><select id="sp_fk_status">
+      ${FREIKARTEN_STATUS_OPTS.map(([v,l])=>`<option value="${v}" ${(s.freikarten_status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
-      <label class="field"><span>Status</span><select id="sp_status">
+      <label class="field"><span>Status</span><select id="sp_status" onchange="maybeSuggestFreikarten()">
         ${[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']].map(([v,l])=>`<option value="${v}" ${(s.status||'offen')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     </div>
-    <label class="field"><span>Quittung / Bemerkung</span><input id="sp_quittung" list="quittungOptions" value="${esc(s.quittung)}" placeholder="z. B. Quittung offen"></label>
-    <label class="field"><span>Notiz</span><textarea id="sp_notiz" rows="2">${esc(s.notiz)}</textarea></label>
+    <label class="field"><span>Quittung / Bemerkung</span><textarea id="sp_quittung" rows="3" placeholder="z. B. Quittung offen">${esc(s.quittung)}</textarea></label>
+    <label class="field"><span>Anschrift</span><textarea id="sp_notiz" rows="2" placeholder="z. B. Musterstr. 1, 12345 Musterstadt">${esc(s.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
+}
+function maybeSuggestFreikarten(){
+  const anzEl=document.getElementById('sp_fk_anzahl'); if(!anzEl) return;
+  const status=val('sp_status'); const betrag=parseFloat(val('sp_betrag'))||0;
+  // nur nachschlagen wenn noch nichts eingetragen ist – nie einen vorhandenen Wert überschreiben
+  if((anzEl.value===''||anzEl.value==null) && ['zugesagt','erhalten'].includes(status) && betrag>=50){ anzEl.value=suggestedFreikarten(betrag); }
 }
 function saveSponsor(id,btn){
   const name=val('sp_name'); if(!name){ alert('Bitte Name / Firma eingeben.'); return; }
@@ -1045,7 +1075,7 @@ function saveSponsor(id,btn){
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
     status:val('sp_status'),quittung:val('sp_quittung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
-    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null};
+    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,freikarten_status:val('sp_fk_status')||'offen'};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
@@ -1135,6 +1165,35 @@ function renderSonstiges(){
   const sel=document.getElementById('sonstBereichSel');
   if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
   if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
+  else if(sonstBereich==='freikarten') renderFreikartenUebersicht();
+}
+function renderFreikartenUebersicht(){
+  const body=document.getElementById('sonstBody'); if(!body) return;
+  const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
+  if(!list.length){
+    body.innerHTML=`<div class="note">Noch keine Freikarten vergeben. Ab 50 € + Status „Zugesagt"/„Erhalten" werden bei Sponsoren automatisch 2 Freikarten vorgeschlagen.</div>`;
+    return;
+  }
+  const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
+  const angenommen=list.filter(s=>s.freikarten_status==='angenommen').length;
+  const offen=list.filter(s=>(s.freikarten_status||'offen')==='offen').length;
+  const abgelehnt=list.filter(s=>s.freikarten_status==='abgelehnt').length;
+  body.innerHTML=`
+    <div class="note">Übersicht aller vergebenen Sponsoren-Freikarten – schneller Überblick ohne die Sponsoren-Tabelle zu durchsuchen.</div>
+    <div class="cards">
+      <div class="card"><div class="label">Sponsoren mit Freikarten</div><div class="value">${list.length}</div></div>
+      <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+      <div class="card"><div class="label">Angenommen</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.angenommen}">${angenommen}</div></div>
+      <div class="card"><div class="label">Noch offen</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.offen}">${offen}</div></div>
+      <div class="card"><div class="label">Abgelehnt</div><div class="value" style="color:${FREIKARTEN_STATUS_COLOR.abgelehnt}">${abgelehnt}</div></div>
+    </div>
+    <div class="panel"><table><thead><tr><th>Sponsor</th><th>Betrag</th><th>Sponsor-Status</th><th>Anzahl</th><th>Nummern</th><th>Angenommen?</th></tr></thead>
+      <tbody>${list.map(s=>{
+        const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
+        return `<tr><td><b>${esc(s.name)}</b></td><td>${s.betrag!=null&&s.betrag!==''?eur(s.betrag):'–'}</td><td>${sponsorStatusPill(s.status)}</td>
+          <td>${anz}</td><td>${nums.length?'#'+nums.join(', #'):'<span style="color:var(--muted)">–</span>'}</td>
+          <td>${freikartenStatusSelect(s)}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
 function showSonstFlyout(btn){
