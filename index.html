@@ -260,8 +260,8 @@
       <div class="view-head"><h2>Mitglieder</h2></div>
       <div class="note">Mitglieder werden aus der App (Supabase <b>profiles</b>) gespiegelt – hier nur Ansicht.</div>
       <div class="filterbar">
-        <input id="memberSearch" placeholder="🔍 Suche nach Name…" oninput="renderMembers()">
-        <select id="memberFilter" onchange="renderMembers()">
+        <input id="memberSearch" placeholder="🔍 Suche nach Name…" oninput="renderMembers()" style="flex:3;min-width:220px">
+        <select id="memberFilter" onchange="renderMembers()" style="flex:0.6;min-width:110px">
           <option value="">Alle Rollen</option>
           <option value="admin">Admin</option><option value="vorstand">Vorstand</option><option value="member">Mitglied</option>
         </select>
@@ -360,26 +360,26 @@
         <div class="card"><div class="label">Erhalten</div><div class="value green" id="spErhalten">–</div></div>
       </div>
       <div class="filterbar">
-        <input id="spSearch" placeholder="🔍 Suche (Sponsor, Ansprechpartner, Zuständig)…" oninput="renderSponsoren()">
-        <select id="spFilter" onchange="renderSponsoren()">
+        <input id="spSearch" placeholder="🔍 Suche (Sponsor, Ansprechpartner, Zuständig)…" oninput="renderSponsoren()" style="flex:3;min-width:220px">
+        <select id="spFilter" onchange="renderSponsoren()" style="flex:0.6;min-width:110px">
           <option value="">Alle Status</option>
           <option value="offen">Offen</option><option value="angefragt">Angefragt</option><option value="zugesagt">Zugesagt</option>
           <option value="erhalten">Erhalten</option><option value="abgelehnt">Abgelehnt</option>
         </select>
-        <select id="spQuittungFilter" onchange="renderSponsoren()">
+        <select id="spQuittungFilter" onchange="renderSponsoren()" style="flex:0.6;min-width:110px">
           <option value="">Alle Quittungen</option>
           <option value="__keine__">– keine Auswahl –</option>
           <option value="Quittung offen">Offen</option>
           <option value="im Austausch gegen Quittung">Im Austausch</option>
           <option value="Quittung ausgestellt">Ausgestellt</option>
         </select>
-        <select id="spFreikartenFilter" onchange="renderSponsoren()">
+        <select id="spFreikartenFilter" onchange="renderSponsoren()" style="flex:0.6;min-width:110px">
           <option value="">Alle Freikarten</option>
           <option value="ja">Freikarten: Ja</option>
           <option value="nein">Freikarten: Nein</option>
         </select>
-        <label style="display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;flex:none;
-          background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 13px;cursor:pointer">
+        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px;flex:none;
+          background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;white-space:nowrap">
           <input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> 👤 nach Mitglied gruppieren</label>
         <button class="btn ghost" style="flex:none" onclick="resetSponsorFilters()">✕ Filter zurücksetzen</button>
       </div>
