@@ -911,10 +911,13 @@ async function setSponsorField(id,field,value){
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
-const QUITTUNG_OPTS=[['Quittung offen','Offen'],['Quittung ausgestellt','Ausgestellt'],['im Austausch gegen Quittung','Im Austausch']];
+const QUITTUNG_OPTS=[['Quittung offen','Offen','#e05c5c'],['Quittung ausgestellt','Ausgestellt','#3fb27f'],['im Austausch gegen Quittung','Im Austausch','#3a86e8']];
 function quittungCell(s){
-  return `<div style="display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:400">
-    ${QUITTUNG_OPTS.map(([v,l])=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="qu_${s.id}" value="${esc(v)}" ${s.quittung===v?'checked':''} onchange="setSponsorField('${s.id}','quittung',this.value)">${l}</label>`).join('')}
+  return `<div style="display:flex;flex-direction:column;gap:4px;font-size:12px;align-items:center">
+    ${QUITTUNG_OPTS.map(([v,l,col])=>{const on=s.quittung===v;
+      return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:${on?col:'var(--muted)'};font-weight:${on?700:400}">
+        <input type="radio" name="qu_${s.id}" value="${esc(v)}" ${on?'checked':''} onchange="setSponsorField('${s.id}','quittung',this.value)" style="accent-color:${col}">${l}</label>`;
+    }).join('')}
   </div>`;
 }
 /* Freikarten */
@@ -1018,7 +1021,7 @@ function sponsorRow(s,showBetreuer){
     <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th>Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th>Art</th><th style="text-align:right">Betrag/Wert</th><th>Status</th><th style="text-align:center">Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function renderSponsoren(){
