@@ -378,7 +378,9 @@
           <option value="ja">Freikarten: Ja</option>
           <option value="nein">Freikarten: Nein</option>
         </select>
-        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;flex:none"><input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> nach Mitglied gruppieren</label>
+        <label style="display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;flex:none;
+          background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 13px;cursor:pointer">
+          <input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> 👤 nach Mitglied gruppieren</label>
         <button class="btn ghost" style="flex:none" onclick="resetSponsorFilters()">✕ Filter zurücksetzen</button>
       </div>
       <div class="panel"><div id="sponsorenTable"></div></div>
