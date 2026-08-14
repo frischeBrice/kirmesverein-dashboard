@@ -606,6 +606,9 @@ async function afterLogin(session){
   document.getElementById('loginView').classList.remove('show');
   document.getElementById('appView').classList.add('show');
   await loadAll();
+  // Beim Neuladen auf dem zuletzt geöffneten Tab bleiben statt immer auf der Übersicht zu starten.
+  let saved=null; try{ saved=localStorage.getItem('kv_activeTab'); }catch(e){}
+  if(saved && document.getElementById(saved)) show(saved);
 }
 async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 
@@ -651,6 +654,7 @@ async function loadAll(){
 function show(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id===v));
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  try{ localStorage.setItem('kv_activeTab', v); }catch(e){}
 }
 
 /* ================= Render ================= */
