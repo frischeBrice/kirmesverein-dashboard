@@ -1562,6 +1562,29 @@ function fsTable(list,showVotes){
   return list.length ? `<table><thead><tr><th></th><th>Fundsache</th>${showVotes?'<th>Stimmen</th>':''}<th>Status</th><th></th></tr></thead>
     <tbody>${list.map(x=>fsRow(x,showVotes)).join('')}</tbody></table>` : '';
 }
+async function setFsAnfangsgebot(id,value){
+  const v=value===''?null:parseFloat(value);
+  const {error}=await sb.from('fundsachen').update({anfangsgebot:(v==null||isNaN(v))?null:v}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+function fsAuktionRow(x){
+  const st=fsStatusOf(x);
+  const actions = (st==='verkauft'
+    ? `<button class="icon-btn" title="Verkauf bearbeiten" onclick="openFundsacheVerkauf('${x.id}')">✏️</button>`
+    : `<button class="btn sm" onclick="openFundsacheVerkauf('${x.id}')">💰 Verkauf erfassen</button>`)
+    + `<button class="icon-btn" title="Löschen" onclick="delFundsache('${x.id}')">🗑️</button>`;
+  return `<tr>
+    <td>${x.bild_url?`<a href="${esc(x.bild_url)}" target="_blank" rel="noopener"><img src="${esc(x.bild_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></a>`:''}</td>
+    <td><b>${esc(x.beschreibung)}</b><div class="submuted">${esc(memberName(x.erstellt_von))} · ${fmtDate(x.created_at)}</div>
+      ${st==='verkauft'?`<div class="submuted">🔨 Verkauft für ${x.erloes!=null?eur(x.erloes):'–'}${x.kaeufer?' an '+esc(x.kaeufer):''}${x.verkauft_am?' · '+fmtDate(x.verkauft_am):''}</div>`:''}</td>
+    <td style="text-align:right"><input type="number" step="0.01" min="0" value="${x.anfangsgebot??''}" placeholder="0,00" class="status-select" style="max-width:100px;text-align:right" onchange="setFsAnfangsgebot('${x.id}',this.value)"></td>
+    <td><div class="row-actions">${actions}</div></td></tr>`;
+}
+function fsAuktionTable(list){
+  return list.length ? `<table><thead><tr><th></th><th>Fundsache</th><th style="text-align:right">Anfangsgebot</th><th></th></tr></thead>
+    <tbody>${list.map(fsAuktionRow).join('')}</tbody></table>` : '';
+}
 function renderFundsachen(){
   const elF=document.getElementById('fundsachenTable'); if(!elF) return; // View noch nicht im DOM
   const q=(val('fsSearch')).toLowerCase();
@@ -1577,7 +1600,7 @@ function renderFundsachen(){
   document.getElementById('fsAuktionOffen').textContent=auktionList.filter(x=>!x.verkauft).length;
   document.getElementById('fsVerkauftCount').textContent=auktionList.filter(x=>x.verkauft).length;
   document.getElementById('fsErloes').textContent=eur(fundsachenIncomeTotal());
-  document.getElementById('auktionTable').innerHTML = fsTable(auktionList) || '<div class="empty">Noch keine Fundsachen zur Auktion freigegeben.</div>';
+  document.getElementById('auktionTable').innerHTML = fsAuktionTable(auktionList) || '<div class="empty">Noch keine Fundsachen zur Auktion freigegeben.</div>';
 
   const qu=(val('fsUebergebenSearch')).toLowerCase();
   const uebergebenList=fundsachen.filter(x=>x.uebergeben && !x.auktion && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qu));
@@ -1601,7 +1624,7 @@ async function fsSetFlag(id,field,value=true){
 function openFundsacheVerkauf(id){
   const x=fundsachen.find(y=>y.id===id); if(!x) return;
   openModal(`<h3>Verkauf erfassen</h3>
-    <div class="submuted" style="margin-bottom:10px"><b>${esc(x.beschreibung)}</b> · gefunden von ${esc(memberName(x.erstellt_von))}</div>
+    <div class="submuted" style="margin-bottom:10px"><b>${esc(x.beschreibung)}</b> · gefunden von ${esc(memberName(x.erstellt_von))}${x.anfangsgebot!=null?' · Anfangsgebot '+eur(x.anfangsgebot):''}</div>
     ${x.bild_url?`<img src="${esc(x.bild_url)}" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:12px">`:''}
     <div class="grid2">
       <label class="field"><span>Erlös (€) *</span><input type="number" step="0.01" min="0" id="fs_erloes" value="${x.erloes??''}"></label>
