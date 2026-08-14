@@ -241,6 +241,7 @@
     <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
+    <button data-view="fundsachen" onclick="show('fundsachen')">🧦 Fundsachen</button>
     <button data-view="sonstiges" onclick="show('sonstiges')"
       onmouseenter="showSonstFlyout(this)" onmouseleave="scheduleHideFlyout()">🗂 Sonstiges ▾</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
@@ -440,6 +441,26 @@
       </div>
     </section>
 
+    <!-- FUNDSACHEN -->
+    <section class="view" id="fundsachen">
+      <div class="view-head"><h2>Fundsachen &amp; Auktion</h2>
+        <div class="actions"><button class="btn" onclick="openFundsache()">＋ Fundsache</button></div></div>
+      <div class="note">Bei der Kirmes gefundene Gegenstände erfassen. Abgeholte Sachen als „Abgeholt" markieren, unabgeholte am Ende versteigern – der Erlös fließt automatisch als Einnahme in die Kasse.</div>
+      <div class="cards">
+        <div class="card"><div class="label">Fundsachen</div><div class="value" id="fsCount">–</div></div>
+        <div class="card"><div class="label">Noch offen</div><div class="value orange" id="fsOffen">–</div></div>
+        <div class="card"><div class="label">Auktions-Erlös</div><div class="value green" id="fsErloes">–</div></div>
+      </div>
+      <div class="filterbar">
+        <input id="fsSearch" placeholder="🔍 Suche nach Beschreibung, Ort…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        <select id="fsFilter" onchange="renderFundsachen()" style="flex:none;min-width:120px">
+          <option value="">Alle Status</option>
+          <option value="gefunden">Gefunden</option><option value="abgeholt">Abgeholt</option><option value="auktioniert">Auktioniert</option>
+        </select>
+      </div>
+      <div class="panel"><div id="fundsachenTable"></div></div>
+    </section>
+
     <!-- SONSTIGES -->
     <section class="view" id="sonstiges">
       <div class="view-head"><h2>Sonstiges</h2>
@@ -486,6 +507,7 @@ let posten = [], postenBuchungen = [], postenSel = null;
 let inventar = [];
 let kleidung = [], kleidungVerleih = [];
 let invBereich = 'lager';
+let fundsachen = [];
 let sponsoren = [];
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
@@ -535,7 +557,7 @@ function balance(){
     if(t.ausgelegt) return s - erstattetBetrag(t);                      // Auslage: nur der erstattete (Teil-)Betrag ist aus der Kasse geflossen
     return (t.bezahlt!==false) ? s - Number(t.betrag) : s;             // direkt aus Kasse: fließt wenn bezahlt (nicht „offen")
   },0);
-  return fin + postenIncomeTotal() + sponsorIncomeTotal() + kvvIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren + Kartenvorverkauf fließen als Einnahmen in die Kasse
+  return fin + postenIncomeTotal() + sponsorIncomeTotal() + kvvIncomeTotal() + fundsachenIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren + Kartenvorverkauf + Fundsachen-Auktion fließen als Einnahmen in die Kasse
 }
 function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true) return b; return Math.min(b, Math.max(0, Number(t.erstattet_betrag)||0)); }
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
@@ -560,7 +582,11 @@ function kvvPaidRows(){ return kvTeilnehmer.filter(t=>t.bezahlt && kvvAktion(t.a
 function kvvIncomeTotal(){ return kvvPaidRows().reduce((s,t)=>s+kvvBetrag(t),0); }
 function kvvIncomeYear(jahr){ const y=jahr||new Date().getFullYear();
   return kvvPaidRows().filter(t=>{ const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===y; }).reduce((s,t)=>s+kvvBetrag(t),0); }
-function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y)+kvvIncomeYear(y); }
+/* Auktionierte Fundsachen als Einnahmequelle */
+function fundsachenIncomeRows(){ return fundsachen.filter(f=>f.status==='auktioniert' && Number(f.auktion_erloes)>0); }
+function fundsachenIncomeTotal(){ return fundsachenIncomeRows().reduce((a,f)=>a+Number(f.auktion_erloes),0); }
+function fundsachenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return fundsachenIncomeRows().filter(f=>yearOf(f.auktion_datum||f.gefunden_am)===y).reduce((a,f)=>a+Number(f.auktion_erloes),0); }
+function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y)+kvvIncomeYear(y)+fundsachenIncomeYear(y); }
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
   const aus={};
@@ -615,7 +641,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -628,6 +654,7 @@ async function loadAll(){
     sb.from('kartenvorverkauf_teilnehmer').select('*'),
     sb.from('kleidung').select('*').order('typ'),
     sb.from('kleidung_verleih').select('*').order('ausgegeben_am',{ascending:false}),
+    sb.from('fundsachen').select('*').order('gefunden_am',{ascending:false}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -636,6 +663,8 @@ async function loadAll(){
   kleidung = (kl&&kl.data)||[]; kleidungVerleih = (klv&&klv.data)||[];
   if(kl&&kl.error) console.warn('kleidung:',kl.error.message);
   if(klv&&klv.error) console.warn('kleidung_verleih:',klv.error.message);
+  fundsachen = (fs&&fs.data)||[];
+  if(fs&&fs.error) console.warn('fundsachen:',fs.error.message);
   sponsoren = (sp&&sp.data)||[];
   kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
@@ -658,7 +687,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderSonstiges(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderSonstiges(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -789,10 +818,12 @@ function renderFinance(){
   const postenAgg=Object.entries(postenIncomeByTitel()).filter(([k])=>k.toLowerCase().includes(q));
   const spInc=sponsorIncomeRows().filter(s=>(s.name||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)||'sponsor'.includes(q));
   const kvvInc=kvvPaidRows().filter(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id); return (a&&(a.titel||'').toLowerCase().includes(q))||(m&&(m.display_name||m.username||'').toLowerCase().includes(q))||'kartenvorverkauf'.includes(q);});
+  const fsInc=fundsachenIncomeRows().filter(f=>(f.beschreibung||'').toLowerCase().includes(q)||'fundsache'.includes(q)||'auktion'.includes(q));
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
   const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
   const kvvSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
+  const fsSum=fsInc.reduce((s,f)=>s+Number(f.auktion_erloes),0);
   const realRows=inc.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
@@ -814,10 +845,15 @@ function renderFinance(){
       <td><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span><div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''} · Verwaltung im Tab „Sonstiges"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(kvvBetrag(t))}</span></td>
       <td></td></tr>`;}).join('');
-  const gesamt=realSum+postenSum+spSum+kvvSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null,kvvSum>0?'Kartenvorverkauf':null].filter(Boolean).join(' & ');
-  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length||kvvInc.length)?`<table>
+  const fsRows=fsInc.map(f=>`<tr>
+      <td>${fmtDate(f.auktion_datum||f.gefunden_am)}</td><td>Fundsachen-Auktion</td>
+      <td><b>${esc(f.beschreibung)}</b> <span class="pill blue mini">Auktion</span><div class="submuted">${f.auktion_kaeufer?'an '+esc(f.auktion_kaeufer)+' · ':''}Verwaltung im Tab „Fundsachen"</div></td>
+      <td style="text-align:right"><span class="amount plus">+${eur(f.auktion_erloes)}</span></td>
+      <td><div class="row-actions"><button class="icon-btn" title="Fundsache öffnen" onclick="openFundsache('${f.id}')">✏️</button></div></td></tr>`).join('');
+  const gesamt=realSum+postenSum+spSum+kvvSum+fsSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null,kvvSum>0?'Kartenvorverkauf':null,fsSum>0?'Fundsachen-Auktion':null].filter(Boolean).join(' & ');
+  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length||kvvInc.length||fsInc.length)?`<table>
     <thead><tr><th>Datum</th><th>Kategorie</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
-    <tbody>${realRows}${postenRows}${spRows}${kvvRows}</tbody>
+    <tbody>${realRows}${postenRows}${spRows}${kvvRows}${fsRows}</tbody>
     <tfoot><tr><td colspan="3">Summe Einnahmen${extra?' (inkl. '+extra+')':''}</td><td style="text-align:right" class="amount plus">${eur(gesamt)}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
@@ -1416,6 +1452,87 @@ async function markZurueckgegeben(id){
 function delVerleih(id){ if(!confirm('Ausleihe wirklich löschen?'))return;
   sb.from('kleidung_verleih').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
+/* ---- Fundsachen & Auktion ---- */
+function fsStatusPill(s){
+  const c={'gefunden':'warn','abgeholt':'ok','auktioniert':'blue'}[s]||'gray';
+  const l={'gefunden':'Gefunden','abgeholt':'Abgeholt','auktioniert':'Auktioniert'}[s]||s;
+  return `<span class="pill ${c}">${esc(l)}</span>`;
+}
+function renderFundsachen(){
+  const el=document.getElementById('fundsachenTable'); if(!el) return;
+  const q=(val('fsSearch')).toLowerCase(); const f=val('fsFilter');
+  document.getElementById('fsCount').textContent=fundsachen.length;
+  document.getElementById('fsOffen').textContent=fundsachen.filter(x=>x.status==='gefunden').length;
+  document.getElementById('fsErloes').textContent=eur(fundsachenIncomeTotal());
+  const list=fundsachen.filter(x=>((x.beschreibung||'').toLowerCase().includes(q)||(x.gefunden_ort||'').toLowerCase().includes(q)) && (!f||x.status===f));
+  el.innerHTML = list.length ? `<table>
+    <thead><tr><th>Fundsache</th><th>Gefunden am</th><th>Ort</th><th>Status</th><th></th></tr></thead>
+    <tbody>${list.map(x=>`<tr><td><b>${esc(x.beschreibung)}</b>${x.notiz?`<div class="submuted">${esc(x.notiz)}</div>`:''}
+        ${x.status==='abgeholt'?`<div class="submuted">Abgeholt${x.abgeholt_von?' von '+esc(x.abgeholt_von):''}${x.abgeholt_am?' am '+fmtDate(x.abgeholt_am):''}</div>`:''}
+        ${x.status==='auktioniert'?`<div class="submuted">🔨 ${x.auktion_erloes!=null?eur(x.auktion_erloes):'–'}${x.auktion_kaeufer?' an '+esc(x.auktion_kaeufer):''}${x.auktion_datum?' · '+fmtDate(x.auktion_datum):''}</div>`:''}</td>
+      <td>${fmtDate(x.gefunden_am)}</td>
+      <td>${esc(x.gefunden_ort)||'–'}</td>
+      <td>${fsStatusPill(x.status)}</td>
+      <td><div class="row-actions"><button class="icon-btn" onclick="openFundsache('${x.id}')">✏️</button><button class="icon-btn" onclick="delFundsache('${x.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">Noch keine Fundsachen erfasst. Lege oben eine an.</div>';
+}
+function toggleFundsacheStatusFields(){
+  const st=val('fs_status');
+  document.getElementById('fs_abgeholtBox').style.display= st==='abgeholt' ? 'block':'none';
+  document.getElementById('fs_auktionBox').style.display= st==='auktioniert' ? 'block':'none';
+}
+function openFundsache(id){
+  const x=id?fundsachen.find(y=>y.id===id):{beschreibung:'',gefunden_am:todayISO(),gefunden_ort:'',status:'gefunden',abgeholt_von:'',abgeholt_am:'',auktion_datum:'',auktion_erloes:'',auktion_kaeufer:'',notiz:''};
+  const st=x.status||'gefunden';
+  openModal(`<h3>${id?'Fundsache bearbeiten':'Neue Fundsache'}</h3>
+    <label class="field"><span>Beschreibung *</span><input id="fs_beschr" value="${esc(x.beschreibung)}" placeholder="z. B. Schlüsselbund, blaue Jacke…"></label>
+    <div class="grid2">
+      <label class="field"><span>Gefunden am</span><input type="date" id="fs_gefunden_am" value="${x.gefunden_am||todayISO()}"></label>
+      <label class="field"><span>Fundort</span><input id="fs_ort" value="${esc(x.gefunden_ort)}"></label>
+    </div>
+    <label class="field"><span>Status</span><select id="fs_status" onchange="toggleFundsacheStatusFields()">
+      <option value="gefunden" ${st==='gefunden'?'selected':''}>Gefunden</option>
+      <option value="abgeholt" ${st==='abgeholt'?'selected':''}>Abgeholt</option>
+      <option value="auktioniert" ${st==='auktioniert'?'selected':''}>Auktioniert</option>
+    </select></label>
+    <div id="fs_abgeholtBox" style="display:${st==='abgeholt'?'block':'none'}">
+      <div class="grid2">
+        <label class="field"><span>Abgeholt von</span><input id="fs_abgeholt_von" value="${esc(x.abgeholt_von)}"></label>
+        <label class="field"><span>Abgeholt am</span><input type="date" id="fs_abgeholt_am" value="${x.abgeholt_am||''}"></label>
+      </div>
+    </div>
+    <div id="fs_auktionBox" style="display:${st==='auktioniert'?'block':'none'}">
+      <div class="grid2">
+        <label class="field"><span>Auktions-Erlös (€)</span><input type="number" step="0.01" min="0" id="fs_erloes" value="${x.auktion_erloes??''}"></label>
+        <label class="field"><span>Käufer</span><input id="fs_kaeufer" value="${esc(x.auktion_kaeufer)}"></label>
+      </div>
+      <label class="field"><span>Auktionsdatum</span><input type="date" id="fs_auktion_datum" value="${x.auktion_datum||todayISO()}"></label>
+      <div class="submuted">Der Erlös fließt automatisch als Einnahme in die Kasse (wie bei Sponsoren/Posten/Kartenvorverkauf).</div>
+    </div>
+    <label class="field"><span>Notiz</span><textarea id="fs_notiz" rows="2">${esc(x.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveFundsache('${id||''}',this)">Speichern</button></div>`);
+}
+function saveFundsache(id,btn){
+  const beschr=val('fs_beschr'); if(!beschr){ alert('Bitte eine Beschreibung eingeben.'); return; }
+  const status=val('fs_status');
+  const erl=val('fs_erloes');
+  const row={beschreibung:beschr, gefunden_am:val('fs_gefunden_am')||null, gefunden_ort:val('fs_ort')||null, status,
+    abgeholt_von: status==='abgeholt' ? (val('fs_abgeholt_von')||null) : null,
+    abgeholt_am: status==='abgeholt' ? (val('fs_abgeholt_am')||null) : null,
+    auktion_datum: status==='auktioniert' ? (val('fs_auktion_datum')||null) : null,
+    auktion_erloes: status==='auktioniert' ? (erl===''?null:parseFloat(erl)) : null,
+    auktion_kaeufer: status==='auktioniert' ? (val('fs_kaeufer')||null) : null,
+    notiz: val('fs_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('fundsachen').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('fundsachen').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delFundsache(id){ if(!confirm('Fundsache wirklich löschen?'))return;
+  sb.from('fundsachen').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
 /* ---- Sonstiges: Kartenvorverkauf ---- */
 function setSonstBereich(v){ sonstBereich=v; renderSonstiges(); }
 function renderSonstiges(){
@@ -1637,6 +1754,7 @@ function catSums(art,jahr){
     sponsorIncomeRows().filter(s=>jahr==='all'||(s.jahr||new Date().getFullYear())===jahr).forEach(s=>{map['Sponsoring']=(map['Sponsoring']||0)+Number(s.betrag);});
     kvvPaidRows().filter(t=>{ if(jahr==='all') return true; const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===jahr; })
       .forEach(t=>{map['Kartenvorverkauf']=(map['Kartenvorverkauf']||0)+kvvBetrag(t);});
+    fundsachenIncomeRows().filter(f=>jahr==='all'||yearOf(f.auktion_datum||f.gefunden_am)===jahr).forEach(f=>{map['Fundsachen-Auktion']=(map['Fundsachen-Auktion']||0)+Number(f.auktion_erloes);});
   }
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
