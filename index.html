@@ -448,8 +448,8 @@
       <div class="sectionbar" style="margin:0 0 16px">
         <button class="btn ghost sm active" id="fsTabFund" onclick="setFsBereich('fund')">📦 Fundsachen</button>
         <button class="btn ghost sm" id="fsTabAuktion" onclick="setFsBereich('auktion')">🔨 Auktion</button>
-        <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
         <button class="btn ghost sm" id="fsTabWillWieder" onclick="setFsBereich('willwieder')">🙋 Will ich wieder</button>
+        <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
       </div>
       <div id="fsBereichFund">
         <div class="cards">
@@ -471,15 +471,6 @@
         </div>
         <div class="panel"><div id="auktionTable"></div></div>
       </div>
-      <div id="fsBereichUebergeben" style="display:none">
-        <div class="cards">
-          <div class="card"><div class="label">Übergeben</div><div class="value green" id="fsUebergebenCount">–</div></div>
-        </div>
-        <div class="filterbar">
-          <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
-        </div>
-        <div class="panel"><div id="uebergebenTable"></div></div>
-      </div>
       <div id="fsBereichWillWieder" style="display:none">
         <div class="note">Offene Fundsachen, bei denen mindestens ein Mitglied „🙋 Will ich wieder" abgestimmt hat. Sobald die Sache tatsächlich zurückgegeben wurde, hier abhaken.</div>
         <div class="cards">
@@ -489,6 +480,15 @@
           <input id="fsWillWiederSearch" placeholder="🔍 Suche nach Beschreibung, Finder, Person…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="willWiederTable"></div></div>
+      </div>
+      <div id="fsBereichUebergeben" style="display:none">
+        <div class="cards">
+          <div class="card"><div class="label">Übergeben</div><div class="value green" id="fsUebergebenCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="uebergebenTable"></div></div>
       </div>
     </section>
 
@@ -1532,13 +1532,16 @@ function fsWillWiederRow(x){
       <input type="checkbox" style="width:auto" onchange="fsCheckZurueck('${x.id}',this.checked,this)"> zurückgegeben</label></td>
     <td><div class="row-actions"><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button></div></td></tr>`;
 }
-function fsRow(x){
+function fsRow(x,showVotes){
   const st=fsStatusOf(x);
-  const votes=fundsachenVotes.filter(v=>v.fundsache_id===x.id);
-  const voteBadges=Object.entries(FS_VOTE_LABEL).map(([k,[l,col]])=>{
-    const vv=votes.filter(v=>v.vote_type===k);
-    return vv.length?`<span class="pill mini" style="background:${col}22;color:${col}" title="${esc(vv.map(v=>memberName(v.voter_id)).join(', '))}">${vv.length} ${l}</span>`:'';
-  }).filter(Boolean).join(' ');
+  let votesCell='';
+  if(showVotes){
+    const votes=fundsachenVotes.filter(v=>v.fundsache_id===x.id);
+    votesCell=Object.entries(FS_VOTE_LABEL).map(([k,[l,col]])=>{
+      const vv=votes.filter(v=>v.vote_type===k);
+      return vv.length?`<span class="pill mini" style="background:${col}22;color:${col}" title="${esc(vv.map(v=>memberName(v.voter_id)).join(', '))}">${vv.length} ${l}</span>`:'';
+    }).filter(Boolean).join(' ');
+  }
   let actions='';
   if(st==='offen') actions+=`<button class="icon-btn" title="Übergeben" onclick="fsSetFlag('${x.id}','uebergeben')">🤝</button><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button>`;
   else if(st==='auktion') actions+=`<button class="btn sm" onclick="openFundsacheVerkauf('${x.id}')">💰 Verkauf erfassen</button>`;
@@ -1550,18 +1553,22 @@ function fsRow(x){
     <td>${x.bild_url?`<a href="${esc(x.bild_url)}" target="_blank" rel="noopener"><img src="${esc(x.bild_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></a>`:''}</td>
     <td><b>${esc(x.beschreibung)}</b><div class="submuted">${esc(memberName(x.erstellt_von))} · ${fmtDate(x.created_at)}</div>
       ${st==='verkauft'?`<div class="submuted">🔨 ${x.erloes!=null?eur(x.erloes):'–'}${x.kaeufer?' an '+esc(x.kaeufer):''}${x.verkauft_am?' · '+fmtDate(x.verkauft_am):''}</div>`:''}</td>
-    <td>${voteBadges||'<span class="submuted">–</span>'}</td>
+    ${showVotes?`<td>${votesCell||'<span class="submuted">–</span>'}</td>`:''}
     <td>${fsStatusPill(x)}</td>
     <td><div class="row-actions">${actions}</div></td></tr>`;
 }
-function fsTable(list){
-  return list.length ? `<table><thead><tr><th></th><th>Fundsache</th><th>Stimmen</th><th>Status</th><th></th></tr></thead>
-    <tbody>${list.map(fsRow).join('')}</tbody></table>` : '';
+function fsTable(list,showVotes){
+  showVotes=showVotes!==false;
+  return list.length ? `<table><thead><tr><th></th><th>Fundsache</th>${showVotes?'<th>Stimmen</th>':''}<th>Status</th><th></th></tr></thead>
+    <tbody>${list.map(x=>fsRow(x,showVotes)).join('')}</tbody></table>` : '';
 }
 function renderFundsachen(){
   const elF=document.getElementById('fundsachenTable'); if(!elF) return; // View noch nicht im DOM
   const q=(val('fsSearch')).toLowerCase();
-  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
+  // Sachen mit "will ich wieder"-Stimme wandern in den eigenen Tab, statt hier zusätzlich aufzutauchen
+  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben
+    && !fundsachenVotes.some(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder')
+    && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
   document.getElementById('fsCount').textContent=fundList.filter(x=>fsStatusOf(x)==='offen').length;
   elF.innerHTML = fsTable(fundList) || '<div class="empty">Noch keine Fundsachen gemeldet. Mitglieder können das in der App tun.</div>';
 
@@ -1575,7 +1582,7 @@ function renderFundsachen(){
   const qu=(val('fsUebergebenSearch')).toLowerCase();
   const uebergebenList=fundsachen.filter(x=>x.uebergeben && !x.auktion && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qu));
   document.getElementById('fsUebergebenCount').textContent=uebergebenList.length;
-  document.getElementById('uebergebenTable').innerHTML = fsTable(uebergebenList) || '<div class="empty">Noch nichts übergeben.</div>';
+  document.getElementById('uebergebenTable').innerHTML = fsTable(uebergebenList,false) || '<div class="empty">Noch nichts übergeben.</div>';
 
   const qw=(val('fsWillWiederSearch')).toLowerCase();
   const willList=fundsachen.filter(x=>!x.uebergeben && !x.auktion && !x.entsorgt
