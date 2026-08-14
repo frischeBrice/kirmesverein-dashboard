@@ -449,6 +449,7 @@
         <button class="btn ghost sm active" id="fsTabFund" onclick="setFsBereich('fund')">📦 Fundsachen</button>
         <button class="btn ghost sm" id="fsTabAuktion" onclick="setFsBereich('auktion')">🔨 Auktion</button>
         <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
+        <button class="btn ghost sm" id="fsTabWillWieder" onclick="setFsBereich('willwieder')">🙋 Will ich wieder</button>
       </div>
       <div id="fsBereichFund">
         <div class="cards">
@@ -478,6 +479,16 @@
           <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="uebergebenTable"></div></div>
+      </div>
+      <div id="fsBereichWillWieder" style="display:none">
+        <div class="note">Offene Fundsachen, bei denen mindestens ein Mitglied „🙋 Will ich wieder" abgestimmt hat. Sobald die Sache tatsächlich zurückgegeben wurde, hier abhaken.</div>
+        <div class="cards">
+          <div class="card"><div class="label">Offene Ansprüche</div><div class="value orange" id="fsWillWiederCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="fsWillWiederSearch" placeholder="🔍 Suche nach Beschreibung, Finder, Person…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="willWiederTable"></div></div>
       </div>
     </section>
 
@@ -1499,9 +1510,27 @@ function setFsBereich(v){
   document.getElementById('fsBereichFund').style.display=v==='fund'?'block':'none';
   document.getElementById('fsBereichAuktion').style.display=v==='auktion'?'block':'none';
   document.getElementById('fsBereichUebergeben').style.display=v==='uebergeben'?'block':'none';
+  document.getElementById('fsBereichWillWieder').style.display=v==='willwieder'?'block':'none';
   document.getElementById('fsTabFund').classList.toggle('active',v==='fund');
   document.getElementById('fsTabAuktion').classList.toggle('active',v==='auktion');
   document.getElementById('fsTabUebergeben').classList.toggle('active',v==='uebergeben');
+  document.getElementById('fsTabWillWieder').classList.toggle('active',v==='willwieder');
+}
+async function fsCheckZurueck(id,checked,cbEl){
+  if(!checked) return; // Häkchen bestätigt nur die Rückgabe; rückgängig machen geht über den ↩️-Button im Tab "Übergeben"
+  const {error}=await sb.from('fundsachen').update({uebergeben:true}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); cbEl.checked=false; return; }
+  await loadAll();
+}
+function fsWillWiederRow(x){
+  const claimants=fundsachenVotes.filter(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder').map(v=>memberName(v.voter_id));
+  return `<tr>
+    <td>${x.bild_url?`<a href="${esc(x.bild_url)}" target="_blank" rel="noopener"><img src="${esc(x.bild_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></a>`:''}</td>
+    <td><b>${esc(x.beschreibung)}</b><div class="submuted">gefunden von ${esc(memberName(x.erstellt_von))} · ${fmtDate(x.created_at)}</div></td>
+    <td><b style="color:var(--green)">${esc(claimants.join(', ')||'–')}</b></td>
+    <td style="text-align:center"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;justify-content:center">
+      <input type="checkbox" style="width:auto" onchange="fsCheckZurueck('${x.id}',this.checked,this)"> zurückgegeben</label></td>
+    <td><div class="row-actions"><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button></div></td></tr>`;
 }
 function fsRow(x){
   const st=fsStatusOf(x);
@@ -1514,6 +1543,8 @@ function fsRow(x){
   if(st==='offen') actions+=`<button class="icon-btn" title="Übergeben" onclick="fsSetFlag('${x.id}','uebergeben')">🤝</button><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button>`;
   else if(st==='auktion') actions+=`<button class="btn sm" onclick="openFundsacheVerkauf('${x.id}')">💰 Verkauf erfassen</button>`;
   else if(st==='verkauft') actions+=`<button class="icon-btn" title="Verkauf bearbeiten" onclick="openFundsacheVerkauf('${x.id}')">✏️</button>`;
+  else if(st==='uebergeben') actions+=`<button class="icon-btn" title="Rückgängig (wieder offen)" onclick="fsSetFlag('${x.id}','uebergeben',false)">↩️</button>`;
+  else if(st==='entsorgt') actions+=`<button class="icon-btn" title="Rückgängig (wieder offen)" onclick="fsSetFlag('${x.id}','entsorgt',false)">↩️</button>`;
   actions+=`<button class="icon-btn" title="Löschen" onclick="delFundsache('${x.id}')">🗑️</button>`;
   return `<tr>
     <td>${x.bild_url?`<a href="${esc(x.bild_url)}" target="_blank" rel="noopener"><img src="${esc(x.bild_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></a>`:''}</td>
@@ -1545,9 +1576,18 @@ function renderFundsachen(){
   const uebergebenList=fundsachen.filter(x=>x.uebergeben && !x.auktion && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qu));
   document.getElementById('fsUebergebenCount').textContent=uebergebenList.length;
   document.getElementById('uebergebenTable').innerHTML = fsTable(uebergebenList) || '<div class="empty">Noch nichts übergeben.</div>';
+
+  const qw=(val('fsWillWiederSearch')).toLowerCase();
+  const willList=fundsachen.filter(x=>!x.uebergeben && !x.auktion && !x.entsorgt
+    && fundsachenVotes.some(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder')
+    && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)+' '+fundsachenVotes.filter(v=>v.fundsache_id===x.id&&v.vote_type==='will_wieder').map(v=>memberName(v.voter_id)).join(' ')).toLowerCase().includes(qw));
+  document.getElementById('fsWillWiederCount').textContent=willList.length;
+  document.getElementById('willWiederTable').innerHTML = willList.length
+    ? `<table><thead><tr><th></th><th>Fundsache</th><th>Beansprucht von</th><th style="text-align:center">Zurückgegeben?</th><th></th></tr></thead><tbody>${willList.map(fsWillWiederRow).join('')}</tbody></table>`
+    : '<div class="empty">Aktuell beansprucht niemand eine offene Fundsache.</div>';
 }
-async function fsSetFlag(id,field){
-  const {error}=await sb.from('fundsachen').update({[field]:true}).eq('id',id);
+async function fsSetFlag(id,field,value=true){
+  const {error}=await sb.from('fundsachen').update({[field]:value}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
