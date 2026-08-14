@@ -54,6 +54,7 @@
   .btn{background:var(--accent);color:#1a1206;border:none;padding:9px 15px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
   .btn:hover{filter:brightness(1.08)} .btn:disabled{opacity:.6;cursor:default}
   .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  .btn.ghost.active{border-color:var(--accent2);color:var(--accent2);background:rgba(58,134,232,.12)}
   .btn.sm{padding:7px 12px;font-size:13px}
   .btn.green{background:var(--green);color:#062015}
   .btn.danger{background:var(--red);color:#fff}
@@ -412,16 +413,31 @@
     <!-- INVENTUR -->
     <section class="view" id="inventur">
       <div class="view-head"><h2>Inventur</h2>
-        <div class="actions"><button class="btn" onclick="openInv()">＋ Artikel</button></div></div>
-      <div class="cards">
-        <div class="card"><div class="label">Artikel</div><div class="value" id="invCount">–</div></div>
-        <div class="card"><div class="label">Niedriger Bestand</div><div class="value orange" id="invLow">–</div></div>
+        <div class="actions" id="invActions"></div></div>
+      <div class="sectionbar" style="margin:0 0 16px">
+        <button class="btn ghost sm active" id="invTabLager" onclick="setInvBereich('lager')">📦 Lagerbestand</button>
+        <button class="btn ghost sm" id="invTabKleidung" onclick="setInvBereich('kleidung')">👕 Kleiderverleih</button>
       </div>
-      <div class="filterbar">
-        <input id="invSearch" placeholder="🔍 Suche nach Artikel…" oninput="renderInventur()">
-        <select id="invFilter" onchange="renderInventur()"><option value="">Alle Kategorien</option></select>
+      <div id="invBereichLager">
+        <div class="cards">
+          <div class="card"><div class="label">Artikel</div><div class="value" id="invCount">–</div></div>
+          <div class="card"><div class="label">Niedriger Bestand</div><div class="value orange" id="invLow">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="invSearch" placeholder="🔍 Suche nach Artikel…" oninput="renderInventur()">
+          <select id="invFilter" onchange="renderInventur()"><option value="">Alle Kategorien</option></select>
+        </div>
+        <div class="panel"><div id="inventurTable"></div></div>
       </div>
-      <div class="panel"><div id="inventurTable"></div></div>
+      <div id="invBereichKleidung" style="display:none">
+        <div class="cards">
+          <div class="card"><div class="label">Kleidungsstücke</div><div class="value" id="klGesamt">–</div></div>
+          <div class="card"><div class="label">Verliehen</div><div class="value orange" id="klVerliehen">–</div></div>
+          <div class="card"><div class="label">Verfügbar</div><div class="value green" id="klVerfuegbar">–</div></div>
+        </div>
+        <div class="panel"><h3>👕 Bestand</h3><div id="kleidungTable"></div></div>
+        <div class="panel"><h3>📋 Aktive Ausleihen</h3><div id="verleihTable"></div></div>
+      </div>
     </section>
 
     <!-- SONSTIGES -->
@@ -468,6 +484,8 @@ let members = [], transactions = [], events = [];
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
 let inventar = [];
+let kleidung = [], kleidungVerleih = [];
+let invBereich = 'lager';
 let sponsoren = [];
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
@@ -594,7 +612,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -605,11 +623,16 @@ async function loadAll(){
     sb.from('sponsoren').select('*').order('name'),
     sb.from('kartenvorverkauf').select('*').order('datum',{ascending:false}),
     sb.from('kartenvorverkauf_teilnehmer').select('*'),
+    sb.from('kleidung').select('*').order('typ'),
+    sb.from('kleidung_verleih').select('*').order('ausgegeben_am',{ascending:false}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
   posten = pd.data||[]; postenBuchungen = pb.data||[];
   inventar = (inv&&inv.data)||[];
+  kleidung = (kl&&kl.data)||[]; kleidungVerleih = (klv&&klv.data)||[];
+  if(kl&&kl.error) console.warn('kleidung:',kl.error.message);
+  if(klv&&klv.error) console.warn('kleidung_verleih:',klv.error.message);
   sponsoren = (sp&&sp.data)||[];
   kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
@@ -631,7 +654,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderSonstiges(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderSonstiges(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -1013,7 +1036,9 @@ function freikartenCell(s){
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(s.freikarten_anzahl)||2);
-    html+=`<div style="margin-top:4px"><input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)"></div>`;
+    html+=`<div style="margin-top:4px;display:flex;align-items:center;gap:4px">
+      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
+      ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
     if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
   }
   return html;
@@ -1027,15 +1052,23 @@ async function setSponsorFkJaNein(id,value){
 }
 async function setSponsorFkNummern(id,value,inputEl){
   const nums=parseFreikarten(value);
+  const sp=sponsoren.find(x=>x.id===id);
+  const oldVal=sp?(sp.freikarten_nummern||''):'';
+  const newVal=nums.join(', ')||null;
+  const hadValue=oldVal!=='';
+  if(hadValue && oldVal!==(newVal||'')){
+    const ok=confirm(`Bereits eingetragene Kartennummer(n) sind gesperrt.\n\nWirklich von "${oldVal}" auf "${newVal||'– (leer)'}" ändern?`);
+    if(!ok){ if(inputEl) inputEl.value=oldVal; return; }
+  }
   const konflikte=nums.length?freikartenKonflikte(nums,id):[];
   if(konflikte.length){
     const liste=konflikte.map(k=>`#${k.nr} → bereits bei „${k.name}"`).join('\n');
     if(!confirm(`Diese Kartennummer(n) sind schon einem anderen Sponsor zugeordnet:\n\n${liste}\n\nTrotzdem speichern?`)){
-      const sp=sponsoren.find(x=>x.id===id); if(inputEl) inputEl.value=sp?(sp.freikarten_nummern||''):''; return;
+      if(inputEl) inputEl.value=oldVal; return;
     }
   }
-  const {error}=await sb.from('sponsoren').update({freikarten_nummern:nums.join(', ')||null}).eq('id',id);
-  if(error){ alert('Fehler: '+error.message); return; }
+  const {error}=await sb.from('sponsoren').update({freikarten_nummern:newVal}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); if(inputEl) inputEl.value=oldVal; return; }
   await loadAll();
 }
 // ℹ️ neben dem Namen zeigt eine reine Lese-Visitenkarte (Kontaktdaten) – zum Bearbeiten gibt's weiterhin ✏️.
@@ -1193,8 +1226,23 @@ function delSponsor(id){ if(!confirm('Sponsor wirklich löschen?'))return;
   sb.from('sponsoren').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Inventur ---- */
+function setInvBereich(v){
+  invBereich=v;
+  document.getElementById('invBereichLager').style.display=v==='lager'?'block':'none';
+  document.getElementById('invBereichKleidung').style.display=v==='kleidung'?'block':'none';
+  document.getElementById('invTabLager').classList.toggle('active',v==='lager');
+  document.getElementById('invTabKleidung').classList.toggle('active',v==='kleidung');
+  updateInvActions();
+}
+function updateInvActions(){
+  const el=document.getElementById('invActions'); if(!el) return;
+  el.innerHTML = invBereich==='kleidung'
+    ? '<button class="btn" onclick="openKleidung()">＋ Kleidungsstück</button>'
+    : '<button class="btn" onclick="openInv()">＋ Artikel</button>';
+}
 const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
 function renderInventur(){
+  updateInvActions();
   const q=(val('invSearch')).toLowerCase(); const sel=document.getElementById('invFilter'); const cur=sel.value; const f=cur;
   const cats=[...new Set(inventar.map(i=>i.kategorie).filter(Boolean))].sort();
   sel.innerHTML='<option value="">Alle Kategorien</option>'+cats.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
@@ -1264,6 +1312,96 @@ function saveInv(id,btn){
 }
 function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
   sb.from('inventar').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+/* ---- Kleiderverleih (Kirmesleihklamotten: Shirts/Jacken) ---- */
+function verliehenAnzahl(kleidungId){
+  return kleidungVerleih.filter(v=>v.kleidung_id===kleidungId && !v.zurueckgegeben).reduce((a,v)=>a+Number(v.anzahl||0),0);
+}
+function renderKleiderverleih(){
+  const gEl=document.getElementById('klGesamt'); if(!gEl) return; // Inventur-View noch nicht im DOM
+  const gesamt=kleidung.reduce((a,k)=>a+Number(k.anzahl_gesamt||0),0);
+  const verliehen=kleidungVerleih.filter(v=>!v.zurueckgegeben).reduce((a,v)=>a+Number(v.anzahl||0),0);
+  gEl.textContent=gesamt;
+  document.getElementById('klVerliehen').textContent=verliehen;
+  document.getElementById('klVerfuegbar').textContent=Math.max(0,gesamt-verliehen);
+  document.getElementById('kleidungTable').innerHTML = kleidung.length ? `<table>
+    <thead><tr><th>Kleidungsstück</th><th style="text-align:right">Gesamt</th><th style="text-align:right">Verliehen</th><th style="text-align:right">Verfügbar</th><th></th></tr></thead>
+    <tbody>${kleidung.map(k=>{
+      const v=verliehenAnzahl(k.id); const frei=Math.max(0,Number(k.anzahl_gesamt||0)-v);
+      return `<tr><td><b>${esc(k.typ)}</b>${k.groesse?` <span class="pill gray mini">${esc(k.groesse)}</span>`:''}${k.notiz?`<div class="submuted">${esc(k.notiz)}</div>`:''}</td>
+        <td style="text-align:right">${Number(k.anzahl_gesamt||0)}</td>
+        <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
+        <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
+        <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button></div></td></tr>`;
+    }).join('')}</tbody></table>` : '<div class="empty">Noch keine Kleidungsstücke. Lege oben eines an.</div>';
+  const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben);
+  document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
+    <thead><tr><th>Mitglied</th><th>Kleidungsstück</th><th style="text-align:right">Anzahl</th><th>Ausgegeben am</th><th></th></tr></thead>
+    <tbody>${offen.map(v=>{ const k=kleidung.find(x=>x.id===v.kleidung_id);
+      return `<tr><td>${esc(memberName(v.mitglied_id))}</td><td>${k?esc(k.typ)+(k.groesse?' ('+esc(k.groesse)+')':''):'–'}</td>
+        <td style="text-align:right">${Number(v.anzahl||0)}</td><td>${fmtDate(v.ausgegeben_am)}</td>
+        <td><div class="row-actions"><button class="btn green sm" onclick="markZurueckgegeben('${v.id}')">✅ Zurückgegeben</button><button class="icon-btn" onclick="delVerleih('${v.id}')">🗑️</button></div></td></tr>`;
+    }).join('')}</tbody></table>` : '<div class="empty">Aktuell nichts verliehen.</div>';
+}
+function openKleidung(id){
+  const k=id?kleidung.find(x=>x.id===id):{typ:'',groesse:'',anzahl_gesamt:0,notiz:''};
+  openModal(`<h3>${id?'Kleidungsstück bearbeiten':'Neues Kleidungsstück'}</h3>
+    <div class="grid2">
+      <label class="field"><span>Typ *</span><input id="kl_typ" list="kltypen" value="${esc(k.typ)}">
+        <datalist id="kltypen"><option>Shirt</option><option>Jacke</option></datalist></label>
+      <label class="field"><span>Größe</span><input id="kl_groesse" list="klgroessen" value="${esc(k.groesse)}">
+        <datalist id="klgroessen"><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option></datalist></label>
+    </div>
+    <label class="field"><span>Anzahl gesamt</span><input type="number" step="1" min="0" id="kl_anzahl" value="${k.anzahl_gesamt}"></label>
+    <label class="field"><span>Notiz</span><textarea id="kl_notiz" rows="2">${esc(k.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveKleidung('${id||''}',this)">Speichern</button></div>`);
+}
+function saveKleidung(id,btn){
+  const typ=val('kl_typ'); if(!typ){ alert('Bitte einen Typ eingeben (z. B. Shirt oder Jacke).'); return; }
+  const row={typ,groesse:val('kl_groesse')||null,anzahl_gesamt:num('kl_anzahl'),notiz:val('kl_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('kleidung').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('kleidung').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delKleidung(id){ if(!confirm('Kleidungsstück wirklich löschen? (bestehende Ausleihen bleiben ggf. verwaist)'))return;
+  sb.from('kleidung').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+function openVerleih(kleidungId){
+  const k=kleidung.find(x=>x.id===kleidungId); if(!k) return;
+  const frei=Math.max(0,Number(k.anzahl_gesamt||0)-verliehenAnzahl(k.id));
+  openModal(`<h3>Ausleihen: ${esc(k.typ)}${k.groesse?' ('+esc(k.groesse)+')':''}</h3>
+    <div class="submuted" style="margin-bottom:10px">Verfügbar: ${frei}</div>
+    <label class="field"><span>Mitglied *</span><input id="vl_mitglied" list="memberNames" placeholder="Name eingeben"></label>
+    <div class="grid2">
+      <label class="field"><span>Anzahl</span><input type="number" step="1" min="1" id="vl_anzahl" value="1"></label>
+      <label class="field"><span>Ausgegeben am</span><input type="date" id="vl_datum" value="${todayISO()}"></label>
+    </div>
+    <label class="field"><span>Notiz</span><input id="vl_notiz"></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveVerleih('${kleidungId}',this)">Ausleihen</button></div>`);
+}
+function saveVerleih(kleidungId,btn){
+  const name=val('vl_mitglied'); const m=members.find(x=>(x.display_name||x.username)===name);
+  if(!m){ alert('Bitte ein gültiges Mitglied aus der Liste wählen.'); return; }
+  const anzahl=num('vl_anzahl')||1;
+  const k=kleidung.find(x=>x.id===kleidungId);
+  const frei=k?Math.max(0,Number(k.anzahl_gesamt||0)-verliehenAnzahl(kleidungId)):0;
+  if(anzahl>frei){ alert(`Nur noch ${frei} verfügbar.`); return; }
+  const row={kleidung_id:kleidungId, mitglied_id:m.id, anzahl, ausgegeben_am:val('vl_datum')||todayISO(), notiz:val('vl_notiz')||null, created_by:me.id};
+  withBtn(btn,async()=>{
+    const {error}=await sb.from('kleidung_verleih').insert(row); if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+async function markZurueckgegeben(id){
+  const {error}=await sb.from('kleidung_verleih').update({zurueckgegeben:true, zurueckgegeben_am:todayISO()}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+function delVerleih(id){ if(!confirm('Ausleihe wirklich löschen?'))return;
+  sb.from('kleidung_verleih').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Sonstiges: Kartenvorverkauf ---- */
 function setSonstBereich(v){ sonstBereich=v; renderSonstiges(); }
