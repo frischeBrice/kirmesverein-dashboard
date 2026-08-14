@@ -1317,6 +1317,9 @@ function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
 function verliehenAnzahl(kleidungId){
   return kleidungVerleih.filter(v=>v.kleidung_id===kleidungId && !v.zurueckgegeben).reduce((a,v)=>a+Number(v.anzahl||0),0);
 }
+function kleidungLabel(k){
+  return `${esc(k.typ)}${k.geschlecht?' ('+esc(k.geschlecht)+')':''}${k.groesse?' '+esc(k.groesse):''}`;
+}
 function renderKleiderverleih(){
   const gEl=document.getElementById('klGesamt'); if(!gEl) return; // Inventur-View noch nicht im DOM
   const gesamt=kleidung.reduce((a,k)=>a+Number(k.anzahl_gesamt||0),0);
@@ -1328,7 +1331,7 @@ function renderKleiderverleih(){
     <thead><tr><th>Kleidungsstück</th><th style="text-align:right">Gesamt</th><th style="text-align:right">Verliehen</th><th style="text-align:right">Verfügbar</th><th></th></tr></thead>
     <tbody>${kleidung.map(k=>{
       const v=verliehenAnzahl(k.id); const frei=Math.max(0,Number(k.anzahl_gesamt||0)-v);
-      return `<tr><td><b>${esc(k.typ)}</b>${k.groesse?` <span class="pill gray mini">${esc(k.groesse)}</span>`:''}${k.notiz?`<div class="submuted">${esc(k.notiz)}</div>`:''}</td>
+      return `<tr><td><b>${esc(k.typ)}</b>${k.geschlecht?` <span class="pill blue mini">${esc(k.geschlecht)}</span>`:''}${k.groesse?` <span class="pill gray mini">${esc(k.groesse)}</span>`:''}${k.notiz?`<div class="submuted">${esc(k.notiz)}</div>`:''}</td>
         <td style="text-align:right">${Number(k.anzahl_gesamt||0)}</td>
         <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
         <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
@@ -1338,20 +1341,26 @@ function renderKleiderverleih(){
   document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
     <thead><tr><th>Mitglied</th><th>Kleidungsstück</th><th style="text-align:right">Anzahl</th><th>Ausgegeben am</th><th></th></tr></thead>
     <tbody>${offen.map(v=>{ const k=kleidung.find(x=>x.id===v.kleidung_id);
-      return `<tr><td>${esc(memberName(v.mitglied_id))}</td><td>${k?esc(k.typ)+(k.groesse?' ('+esc(k.groesse)+')':''):'–'}</td>
+      return `<tr><td>${esc(memberName(v.mitglied_id))}</td><td>${k?kleidungLabel(k):'–'}</td>
         <td style="text-align:right">${Number(v.anzahl||0)}</td><td>${fmtDate(v.ausgegeben_am)}</td>
         <td><div class="row-actions"><button class="btn green sm" onclick="markZurueckgegeben('${v.id}')">✅ Zurückgegeben</button><button class="icon-btn" onclick="delVerleih('${v.id}')">🗑️</button></div></td></tr>`;
     }).join('')}</tbody></table>` : '<div class="empty">Aktuell nichts verliehen.</div>';
 }
 function openKleidung(id){
-  const k=id?kleidung.find(x=>x.id===id):{typ:'',groesse:'',anzahl_gesamt:0,notiz:''};
+  const k=id?kleidung.find(x=>x.id===id):{typ:'',geschlecht:'',groesse:'',anzahl_gesamt:0,notiz:''};
   openModal(`<h3>${id?'Kleidungsstück bearbeiten':'Neues Kleidungsstück'}</h3>
     <div class="grid2">
       <label class="field"><span>Typ *</span><input id="kl_typ" list="kltypen" value="${esc(k.typ)}">
         <datalist id="kltypen"><option>Shirt</option><option>Jacke</option></datalist></label>
-      <label class="field"><span>Größe</span><input id="kl_groesse" list="klgroessen" value="${esc(k.groesse)}">
-        <datalist id="klgroessen"><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option></datalist></label>
+      <label class="field"><span>Geschlecht</span><select id="kl_geschlecht">
+        <option value="" ${!k.geschlecht?'selected':''}>– keine Angabe –</option>
+        <option value="Herren" ${k.geschlecht==='Herren'?'selected':''}>Herren</option>
+        <option value="Damen" ${k.geschlecht==='Damen'?'selected':''}>Damen</option>
+        <option value="Unisex" ${k.geschlecht==='Unisex'?'selected':''}>Unisex</option>
+      </select></label>
     </div>
+    <label class="field"><span>Größe</span><input id="kl_groesse" list="klgroessen" value="${esc(k.groesse)}">
+      <datalist id="klgroessen"><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option></datalist></label>
     <label class="field"><span>Anzahl gesamt</span><input type="number" step="1" min="0" id="kl_anzahl" value="${k.anzahl_gesamt}"></label>
     <label class="field"><span>Notiz</span><textarea id="kl_notiz" rows="2">${esc(k.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
@@ -1359,7 +1368,7 @@ function openKleidung(id){
 }
 function saveKleidung(id,btn){
   const typ=val('kl_typ'); if(!typ){ alert('Bitte einen Typ eingeben (z. B. Shirt oder Jacke).'); return; }
-  const row={typ,groesse:val('kl_groesse')||null,anzahl_gesamt:num('kl_anzahl'),notiz:val('kl_notiz')||null};
+  const row={typ,geschlecht:val('kl_geschlecht')||null,groesse:val('kl_groesse')||null,anzahl_gesamt:num('kl_anzahl'),notiz:val('kl_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('kleidung').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('kleidung').insert(row); if(error) throw error; }
@@ -1371,7 +1380,7 @@ function delKleidung(id){ if(!confirm('Kleidungsstück wirklich löschen? (beste
 function openVerleih(kleidungId){
   const k=kleidung.find(x=>x.id===kleidungId); if(!k) return;
   const frei=Math.max(0,Number(k.anzahl_gesamt||0)-verliehenAnzahl(k.id));
-  openModal(`<h3>Ausleihen: ${esc(k.typ)}${k.groesse?' ('+esc(k.groesse)+')':''}</h3>
+  openModal(`<h3>Ausleihen: ${kleidungLabel(k)}</h3>
     <div class="submuted" style="margin-bottom:10px">Verfügbar: ${frei}</div>
     <label class="field"><span>Mitglied *</span><input id="vl_mitglied" list="memberNames" placeholder="Name eingeben"></label>
     <div class="grid2">
