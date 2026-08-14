@@ -964,6 +964,17 @@ function freikartenKonflikte(nummern,excludeId){
   });
   return conflicts;
 }
+// Höchste bisher vergebene Kartennummer über alle Sponsoren hinweg – Basis für den Vorschlag der nächsten Nummer(n).
+function maxFreikartenNummer(){
+  let max=0;
+  sponsoren.forEach(sp=>{ parseFreikarten(sp.freikarten_nummern).forEach(n=>{ const num=parseInt(n,10); if(!isNaN(num)&&num>max) max=num; }); });
+  return max;
+}
+function nextFreikartenNummern(anzahl){
+  const max=maxFreikartenNummer(); const anz=Number(anzahl)||2; const arr=[];
+  for(let i=1;i<=anz;i++) arr.push(max+i);
+  return arr.join(', ');
+}
 async function setSponsorBetrag(id,value,inputEl){
   const sp=sponsoren.find(x=>x.id===id);
   const oldVal=sp?sp.betrag:null;
@@ -1001,7 +1012,8 @@ function freikartenCell(s){
   </select>`;
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
-    html+=`<div style="margin-top:4px"><input type="text" value="${esc(s.freikarten_nummern)}" placeholder="#Nummern" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)"></div>`;
+    const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(s.freikarten_anzahl)||2);
+    html+=`<div style="margin-top:4px"><input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)"></div>`;
     if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
   }
   return html;
@@ -1135,7 +1147,7 @@ function openSponsor(id){
     <div class="grid2">
       <label class="field"><span>Freikarten (Anzahl)</span><input type="number" step="1" min="0" id="sp_fk_anzahl" value="${fkAnzahl}" placeholder="0">
         <div class="submuted" style="margin-top:4px">ab 50 € + Status „Zugesagt"/„Erhalten" meist 2 Freikarten</div></label>
-      <label class="field"><span>Kartennummern</span><input id="sp_fk_nummern" value="${esc(s.freikarten_nummern)}" placeholder="z. B. 1042, 1043"></label>
+      <label class="field"><span>Kartennummern</span><input id="sp_fk_nummern" value="${esc(s.freikarten_nummern)}" placeholder="${esc(s.freikarten_nummern?'':nextFreikartenNummern(fkAnzahl))}"></label>
     </div>
     <div class="grid2">
       <label class="field"><span>Jahr</span><input type="number" id="sp_jahr" value="${s.jahr||''}"></label>
