@@ -448,11 +448,11 @@
       <div class="sectionbar" style="margin:0 0 16px">
         <button class="btn ghost sm active" id="fsTabFund" onclick="setFsBereich('fund')">📦 Fundsachen</button>
         <button class="btn ghost sm" id="fsTabAuktion" onclick="setFsBereich('auktion')">🔨 Auktion</button>
+        <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
       </div>
       <div id="fsBereichFund">
         <div class="cards">
           <div class="card"><div class="label">Offene Fundsachen</div><div class="value" id="fsCount">–</div></div>
-          <div class="card"><div class="label">Übergeben</div><div class="value green" id="fsUebergeben">–</div></div>
         </div>
         <div class="filterbar">
           <input id="fsSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
@@ -469,6 +469,15 @@
           <input id="fsAuktionSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="auktionTable"></div></div>
+      </div>
+      <div id="fsBereichUebergeben" style="display:none">
+        <div class="cards">
+          <div class="card"><div class="label">Übergeben</div><div class="value green" id="fsUebergebenCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="uebergebenTable"></div></div>
       </div>
     </section>
 
@@ -1489,8 +1498,10 @@ function setFsBereich(v){
   fsBereich=v;
   document.getElementById('fsBereichFund').style.display=v==='fund'?'block':'none';
   document.getElementById('fsBereichAuktion').style.display=v==='auktion'?'block':'none';
+  document.getElementById('fsBereichUebergeben').style.display=v==='uebergeben'?'block':'none';
   document.getElementById('fsTabFund').classList.toggle('active',v==='fund');
   document.getElementById('fsTabAuktion').classList.toggle('active',v==='auktion');
+  document.getElementById('fsTabUebergeben').classList.toggle('active',v==='uebergeben');
 }
 function fsRow(x){
   const st=fsStatusOf(x);
@@ -1519,9 +1530,8 @@ function fsTable(list){
 function renderFundsachen(){
   const elF=document.getElementById('fundsachenTable'); if(!elF) return; // View noch nicht im DOM
   const q=(val('fsSearch')).toLowerCase();
-  const fundList=fundsachen.filter(x=>!x.auktion && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
+  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
   document.getElementById('fsCount').textContent=fundList.filter(x=>fsStatusOf(x)==='offen').length;
-  document.getElementById('fsUebergeben').textContent=fundsachen.filter(x=>x.uebergeben).length;
   elF.innerHTML = fsTable(fundList) || '<div class="empty">Noch keine Fundsachen gemeldet. Mitglieder können das in der App tun.</div>';
 
   const qa=(val('fsAuktionSearch')).toLowerCase();
@@ -1530,6 +1540,11 @@ function renderFundsachen(){
   document.getElementById('fsVerkauftCount').textContent=auktionList.filter(x=>x.verkauft).length;
   document.getElementById('fsErloes').textContent=eur(fundsachenIncomeTotal());
   document.getElementById('auktionTable').innerHTML = fsTable(auktionList) || '<div class="empty">Noch keine Fundsachen zur Auktion freigegeben.</div>';
+
+  const qu=(val('fsUebergebenSearch')).toLowerCase();
+  const uebergebenList=fundsachen.filter(x=>x.uebergeben && !x.auktion && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qu));
+  document.getElementById('fsUebergebenCount').textContent=uebergebenList.length;
+  document.getElementById('uebergebenTable').innerHTML = fsTable(uebergebenList) || '<div class="empty">Noch nichts übergeben.</div>';
 }
 async function fsSetFlag(id,field){
   const {error}=await sb.from('fundsachen').update({[field]:true}).eq('id',id);
