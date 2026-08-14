@@ -353,7 +353,7 @@
     <!-- SPONSOREN -->
     <section class="view" id="sponsoren">
       <div class="view-head"><h2>Sponsoren</h2>
-        <div class="actions"><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
+        <div class="actions"><button class="btn ghost" onclick="printFreikartenChecklist()">🎫 Freikarten-Checkliste</button><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
       <div class="cards">
         <div class="card"><div class="label">Sponsoren</div><div class="value" id="spCount">–</div></div>
         <div class="card"><div class="label">Zugesagt</div><div class="value" id="spZugesagt">–</div></div>
@@ -419,7 +419,6 @@
       <div class="view-head"><h2>Sonstiges</h2>
         <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
           <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
-          <option value="freikarten">🎫 Freikarten</option>
         </select></span>
       </div>
       <div id="sonstBody"></div>
@@ -438,6 +437,8 @@
 
     <!-- Druckfläche für den Kartenvorverkauf (nur beim Drucken sichtbar) -->
     <div class="only-print" id="kvvPrintArea"></div>
+    <!-- Druckfläche für die Freikarten-Checkliste (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="fkPrintArea"></div>
   </main>
 </div>
 
@@ -464,7 +465,6 @@ let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
-  {key:'freikarten', label:'🎫 Freikarten'},
   // weitere „Sonstiges"-Unterseiten hier ergänzen
 ];
 let flyoutHideTimer = null;
@@ -1250,28 +1250,6 @@ function renderSonstiges(){
   const sel=document.getElementById('sonstBereichSel');
   if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
   if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
-  else if(sonstBereich==='freikarten') renderFreikartenUebersicht();
-}
-function renderFreikartenUebersicht(){
-  const body=document.getElementById('sonstBody'); if(!body) return;
-  const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
-  if(!list.length){
-    body.innerHTML=`<div class="note">Noch keine Freikarten vergeben. Ab 50 € + Status „Zugesagt"/„Erhalten" werden bei Sponsoren automatisch 2 Freikarten vorgeschlagen.</div>`;
-    return;
-  }
-  const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
-  body.innerHTML=`
-    <div class="note">Übersicht aller vergebenen Sponsoren-Freikarten – schneller Überblick ohne die Sponsoren-Tabelle zu durchsuchen.</div>
-    <div class="cards">
-      <div class="card"><div class="label">Sponsoren mit Freikarten</div><div class="value">${list.length}</div></div>
-      <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
-    </div>
-    <div class="panel"><table><thead><tr><th>Sponsor</th><th>Betrag</th><th>Sponsor-Status</th><th>Anzahl</th><th>Nummern</th></tr></thead>
-      <tbody>${list.map(s=>{
-        const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
-        return `<tr><td><b>${esc(s.name)}</b></td><td>${s.betrag!=null&&s.betrag!==''?eur(s.betrag):'–'}</td><td>${sponsorStatusPill(s.status)}</td>
-          <td>${anz}</td><td>${nums.length?'#'+nums.join(', #'):'<span style="color:var(--muted)">–</span>'}</td></tr>`;
-      }).join('')}</tbody></table></div>`;
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
 function showSonstFlyout(btn){
@@ -1448,7 +1426,34 @@ function printKvvAktion(){
   document.getElementById('kvvPrintArea').classList.add('show');
   window.print();
 }
-window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show'); });
+window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
+  const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show'); });
+function printFreikartenChecklist(){
+  const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
+  if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
+  const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
+  document.getElementById('fkPrintArea').innerHTML=`
+    <div class="panel">
+      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Freikarten-Checkliste</h3>
+      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
+      <div class="cards" style="margin-top:14px">
+        <div class="card"><div class="label">Sponsoren mit Freikarten</div><div class="value">${list.length}</div></div>
+        <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <table><thead><tr><th>Sponsor</th><th>Nummern</th><th style="text-align:right">Anzahl</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+        <tbody>${list.map(s=>{
+          const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
+          return `<tr><td>${esc(s.name)}</td><td>${nums.length?'#'+nums.join(', #'):'–'}</td>
+            <td style="text-align:right">${anz}</td><td>${'<span class="chk-box"></span>'.repeat(anz)}</td></tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr><td colspan="2">Summe</td><td style="text-align:right">${totalKarten}</td><td></td></tr></tfoot>
+      </table>
+    </div>`;
+  document.getElementById('fkPrintArea').classList.add('show');
+  window.print();
+}
 
 /* ---- Bericht ---- */
 function catSums(art,jahr){
