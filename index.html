@@ -159,6 +159,16 @@
   .subfields{border-left:2px solid var(--line);padding-left:12px;margin:0 0 13px}
   .spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .group-toggle{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px;flex:none;
+    background:var(--panel2);border:1.5px solid var(--line);border-radius:9px;padding:7px 12px;cursor:pointer;
+    white-space:nowrap;user-select:none;transition:border-color .15s,color .15s,background .15s}
+  .group-toggle input{display:none}
+  .group-toggle .gt-box{width:15px;height:15px;border:1.5px solid var(--line);border-radius:4px;flex:none;
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:transparent;
+    transition:background .15s,border-color .15s}
+  .group-toggle:hover{border-color:var(--accent2)}
+  .group-toggle:has(input:checked){border-color:var(--accent2);color:var(--accent2);background:rgba(58,134,232,.12)}
+  .group-toggle:has(input:checked) .gt-box{background:var(--accent2);border-color:var(--accent2);color:#fff}
   .beitrag-inp{max-width:110px;padding:6px 9px;font-size:13px}
   .status-select{width:auto;max-width:130px;padding:5px 8px;font-size:12.5px;font-weight:600;
     background:var(--panel2);border-width:1.5px;border-radius:8px}
@@ -378,9 +388,9 @@
           <option value="ja">Freikarten: Ja</option>
           <option value="nein">Freikarten: Nein</option>
         </select>
-        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px;flex:none;
-          background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="spGroup" style="width:auto" onchange="renderSponsoren()"> 👤 gruppieren</label>
+        <label class="group-toggle">
+          <input type="checkbox" id="spGroup" onchange="renderSponsoren()">
+          <span class="gt-box">✓</span>👤 gruppieren</label>
         <button class="btn ghost" style="flex:none" onclick="resetSponsorFilters()">✕ Filter zurücksetzen</button>
       </div>
       <div class="panel"><div id="sponsorenTable"></div></div>
