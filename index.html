@@ -2076,10 +2076,13 @@ function printAnwesenheitsliste(veranstaltungId){
   const art=ev.art||'optional';
   const artWord=(label,key)=> key===art ? `<u><b>${label}</b></u>` : label;
   document.getElementById('anwPrintArea').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:24px;margin-bottom:8px">
       <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
-      <h2 style="margin:0;text-decoration:underline;white-space:nowrap;font-size:19px">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
-      <div style="white-space:nowrap;font-size:12.5px">am: <b>${fmtDate(ev.datum)}</b> um: __________ Uhr</div>
+      <div style="text-align:center;white-space:nowrap">
+        <h2 style="margin:0;text-decoration:underline;font-size:19px">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
+        <div style="font-size:12.5px;margin-top:2px">am: <b>${fmtDate(ev.datum)}</b> um: __________ Uhr</div>
+      </div>
+      <div></div>
     </div>
     <table class="anw-table">
       <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
