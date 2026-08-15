@@ -2066,7 +2066,6 @@ function printAnwesenheitsliste(veranstaltungId){
   else if(zg.length===1 && zg[0]==='Mädels') pool=aktiv.filter(m=>m.geschlecht==='w');
   const sorted=[...pool].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
   const rows=sorted.map(m=>splitVorNachname(m.display_name||m.username));
-  rows.push({vor:'',nach:''}); // eine leere Zeile zum handschriftlichen Ergänzen, wie in der Papier-Vorlage
   const art=ev.art||'optional';
   const artWord=(label,key)=> key===art ? `<u><b>${label}</b></u>` : label;
   document.getElementById('anwPrintArea').innerHTML=`
