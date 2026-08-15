@@ -497,6 +497,30 @@
     <section class="view" id="dokumente">
       <div class="view-head"><h2>Dokumente</h2>
         <div class="actions"><button class="btn" onclick="openDok()">＋ Dokument</button></div></div>
+
+      <div class="panel">
+        <h3>🧾 Automatisch erstellte Dokumente</h3>
+        <div class="note" style="margin-top:0">Werden live aus den Daten in anderen Tabs erzeugt (nichts wird hier gespeichert) – zum Drucken/als PDF.</div>
+        <table>
+          <tbody>
+            <tr>
+              <td><b>🎫 Freikarten-Checkliste</b><div class="submuted">Alle Sponsoren-Freikarten, zum Abhaken am Einlass</div></td>
+              <td style="text-align:right"><button class="btn ghost sm" onclick="printFreikartenChecklist()">🖨 Drucken</button></td>
+            </tr>
+            <tr>
+              <td><b>🎟 Kartenvorverkauf</b><div class="submuted">Teilnehmerliste einer Vorverkaufs-Aktion</div></td>
+              <td style="text-align:right"><select id="dokKvvSel" style="width:auto;min-width:180px;display:inline-block"></select>
+                <button class="btn ghost sm" onclick="printKvvAktion(val('dokKvvSel'))">🖨 Drucken</button></td>
+            </tr>
+            <tr>
+              <td><b>🧍 Anwesenheitsliste</b><div class="submuted">Mitgliederliste zum Ankreuzen für eine Veranstaltung</div></td>
+              <td style="text-align:right"><select id="dokEventSel" style="width:auto;min-width:180px;display:inline-block"></select>
+                <button class="btn ghost sm" onclick="printAnwesenheitsliste(val('dokEventSel'))">🖨 Drucken</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <div class="cards">
         <div class="card"><div class="label">Dokumente</div><div class="value" id="dokCount">–</div></div>
       </div>
@@ -532,6 +556,8 @@
     <div class="only-print" id="kvvPrintArea"></div>
     <!-- Druckfläche für die Freikarten-Checkliste (nur beim Drucken sichtbar) -->
     <div class="only-print" id="fkPrintArea"></div>
+    <!-- Druckfläche für die Anwesenheitsliste (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="anwPrintArea"></div>
   </main>
 </div>
 
@@ -1676,6 +1702,19 @@ function dokIcon(name){
 }
 function renderDokumente(){
   const el=document.getElementById('dokumenteTable'); if(!el) return;
+  const kvvSelEl=document.getElementById('dokKvvSel');
+  if(kvvSelEl){ const curKvv=kvvSelEl.value;
+    kvvSelEl.innerHTML = kartenvorverkauf.length
+      ? kartenvorverkauf.map(a=>`<option value="${a.id}" ${a.id===curKvv?'selected':''}>${esc(a.titel)}${a.datum?' ('+fmtDate(a.datum)+')':''}</option>`).join('')
+      : '<option value="">– keine Aktion angelegt –</option>';
+  }
+  const evSelEl=document.getElementById('dokEventSel');
+  if(evSelEl){ const curEv=evSelEl.value;
+    const sortedEvents=[...events].sort((a,b)=>new Date(b.datum||0)-new Date(a.datum||0));
+    evSelEl.innerHTML = sortedEvents.length
+      ? sortedEvents.map(e=>`<option value="${e.id}" ${e.id===curEv?'selected':''}>${esc(e.titel)}${e.datum?' ('+fmtDate(e.datum)+')':''}</option>`).join('')
+      : '<option value="">– keine Veranstaltung angelegt –</option>';
+  }
   const q=(val('dokSearch')).toLowerCase(); const sel=document.getElementById('dokFilter'); const cur=sel.value;
   const cats=[...new Set(dokumente.map(d=>d.kategorie).filter(Boolean))].sort();
   sel.innerHTML='<option value="">Alle Kategorien</option>'+cats.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
@@ -1882,10 +1921,11 @@ async function toggleKvvBezahlt(id){
 function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
   sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
-function printKvvAktion(){
-  const aktion=kvvAktion(kvvSel);
+function printKvvAktion(aktionId){
+  const id=aktionId||kvvSel;
+  const aktion=kvvAktion(id);
   if(!aktion){ alert('Bitte zuerst eine Aktion auswählen.'); return; }
-  const rows=kvTeilnehmer.filter(t=>t.aktion_id===kvvSel);
+  const rows=kvTeilnehmer.filter(t=>t.aktion_id===id);
   const totalKarten=rows.reduce((s,t)=>s+kvvKarten(t),0);
   const totalBetrag=rows.reduce((s,t)=>s+kvvBetrag(t),0);
   const bezahltBetrag=rows.filter(t=>t.bezahlt).reduce((s,t)=>s+kvvBetrag(t),0);
@@ -1927,7 +1967,30 @@ function printKvvAktion(){
   window.print();
 }
 window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
-  const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show'); });
+  const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
+  const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show'); });
+function printAnwesenheitsliste(veranstaltungId){
+  const ev=events.find(e=>e.id===veranstaltungId);
+  if(!ev){ alert('Bitte zuerst eine Veranstaltung auswählen.'); return; }
+  const sorted=[...members].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+  document.getElementById('anwPrintArea').innerHTML=`
+    <div class="panel">
+      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Anwesenheitsliste</h3>
+      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
+      <div class="cards" style="margin-top:14px">
+        <div class="card"><div class="label">Veranstaltung</div><div class="value" style="font-size:17px">${esc(ev.titel)}</div></div>
+        <div class="card"><div class="label">Datum</div><div class="value" style="font-size:17px">${fmtDate(ev.datum)}</div></div>
+        <div class="card"><div class="label">Mitglieder</div><div class="value">${sorted.length}</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <table><thead><tr><th>#</th><th>Name</th><th>Anwesend</th><th>Unterschrift</th></tr></thead>
+        <tbody>${sorted.map((m,i)=>`<tr><td>${i+1}</td><td>${esc(m.display_name||m.username)}</td><td><span class="chk-box"></span></td><td></td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  document.getElementById('anwPrintArea').classList.add('show');
+  window.print();
+}
 function printFreikartenChecklist(){
   const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
   if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
