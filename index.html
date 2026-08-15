@@ -76,7 +76,7 @@
   td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
   tbody tr:hover td{background:#1a2028}
-  .anw-table th,.anw-table td{padding:3px 8px;font-size:12.5px}
+  .compact-table th,.compact-table td{padding:3px 8px;font-size:12.5px}
   .anw-table td:first-child{width:32px}
   tfoot td{border-top:2px solid var(--line);font-weight:700}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
@@ -2013,38 +2013,29 @@ function printKvvAktion(aktionId){
   const bezahltBetrag=rows.filter(t=>t.bezahlt).reduce((s,t)=>s+kvvBetrag(t),0);
   const offenBetrag=totalBetrag-bezahltBetrag;
   document.getElementById('kvvPrintArea').innerHTML=`
-    <div class="panel">
-      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Kartenvorverkauf</h3>
-      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
-      <div class="cards" style="margin-top:14px">
-        <div class="card"><div class="label">Veranstaltung</div><div class="value" style="font-size:17px">${esc(aktion.titel)}</div></div>
-        <div class="card"><div class="label">Datum</div><div class="value" style="font-size:17px">${fmtDate(aktion.datum)}</div></div>
-        <div class="card"><div class="label">Preis pro Karte</div><div class="value">${eur(aktion.preis)}</div></div>
-        <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:8px">
+      <div>
+        <h3 style="margin:0;font-size:16px">Apfelstädter Jugendkirmesgesellschaft e.V. – Kartenvorverkauf</h3>
+        <div class="submuted" style="font-size:11.5px">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
+        ${aktion.notiz?`<div class="submuted" style="font-size:11.5px">${esc(aktion.notiz)}</div>`:''}
       </div>
-      ${aktion.notiz?`<div class="submuted" style="margin-top:10px">${esc(aktion.notiz)}</div>`:''}
-    </div>
-    <div class="panel">
-      <h3>Teilnehmer</h3>
-      ${rows.length?`<table>
-        <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
-        <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id); const karten=kvvKarten(t);
-          return `<tr><td>${esc(m?(m.display_name||m.username):'—')}</td>
-            <td style="text-align:right">${t.externe_anzahl}</td>
-            <td style="text-align:right">${karten}</td>
-            <td style="text-align:right">${eur(kvvBetrag(t))}</td>
-            <td>${t.bezahlt?'☑ bezahlt':'☐ offen'}</td>
-            <td>${'<span class="chk-box"></span>'.repeat(karten)}</td></tr>`;}).join('')}</tbody>
-        <tfoot><tr><td>Summe</td><td></td><td style="text-align:right">${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td colspan="2"></td></tr></tfoot>
-      </table>`:'<div class="empty">Keine Teilnehmer erfasst.</div>'}
-    </div>
-    <div class="panel">
-      <div class="cards">
-        <div class="card"><div class="label">Erlös gesamt</div><div class="value">${eur(totalBetrag)}</div></div>
-        <div class="card"><div class="label">Bezahlt</div><div class="value">${eur(bezahltBetrag)}</div></div>
-        <div class="card"><div class="label">Offen</div><div class="value">${eur(offenBetrag)}</div></div>
+      <div style="text-align:right;font-size:12.5px;white-space:nowrap">
+        <div><b>${esc(aktion.titel)}</b> · ${fmtDate(aktion.datum)}</div>
+        <div>Preis/Karte ${eur(aktion.preis)} · Karten gesamt ${totalKarten}</div>
       </div>
-    </div>`;
+    </div>
+    ${rows.length?`<table class="compact-table">
+      <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+      <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id); const karten=kvvKarten(t);
+        return `<tr><td>${esc(m?(m.display_name||m.username):'—')}</td>
+          <td style="text-align:right">${t.externe_anzahl}</td>
+          <td style="text-align:right">${karten}</td>
+          <td style="text-align:right">${eur(kvvBetrag(t))}</td>
+          <td>${t.bezahlt?'☑ bezahlt':'☐ offen'}</td>
+          <td>${'<span class="chk-box"></span>'.repeat(karten)}</td></tr>`;}).join('')}</tbody>
+      <tfoot><tr><td>Summe</td><td></td><td style="text-align:right">${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td colspan="2"></td></tr></tfoot>
+    </table>`:'<div class="empty">Keine Teilnehmer erfasst.</div>'}
+    <div style="margin-top:8px;font-size:12.5px">Erlös gesamt <b>${eur(totalBetrag)}</b> · Bezahlt <b>${eur(bezahltBetrag)}</b> · Offen <b>${eur(offenBetrag)}</b></div>`;
   document.getElementById('kvvPrintArea').classList.add('show');
   window.print();
 }
@@ -2084,7 +2075,7 @@ function printAnwesenheitsliste(veranstaltungId){
       </div>
       <div></div>
     </div>
-    <table class="anw-table">
+    <table class="compact-table anw-table">
       <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
       <tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.vor)}</td><td>${esc(r.nach)}</td><td></td></tr>`).join('')}</tbody>
     </table>
