@@ -1076,7 +1076,7 @@ async function togglePosten(buchungId){
 /* ---- Veranstaltungen ---- */
 function artPill(a){const m={optional:['Optional','gray'],pflicht:['❗ Pflicht','no'],offiziell:['🏛 Offiziell','blue']}[a||'optional']||['Optional','gray'];return `<span class="pill ${m[1]} mini">${m[0]}</span>`;}
 function sichtPill(s){return s==='public'?'<span class="pill blue mini">🌐 Public</span>':'<span class="pill gray mini">Intern</span>';}
-const ZIELGRUPPEN_OPTS=['Vorstand','Helfer','Jungs','Mädels','Alle Mitglieder'];
+const ZIELGRUPPEN_OPTS=['Vorstand','Helfer','Jungs','Mädels'];
 function parseZielgruppen(text){ return (text||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function zielgruppenPills(e){
   return parseZielgruppen(e.zielgruppen).map(g=>`<span class="pill blue mini">${esc(g)}</span>`).join(' ');
