@@ -76,6 +76,8 @@
   td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
   tbody tr:hover td{background:#1a2028}
+  .anw-table th,.anw-table td{padding:3px 8px;font-size:12.5px}
+  .anw-table td:first-child{width:32px}
   tfoot td{border-top:2px solid var(--line);font-weight:700}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
   .pill.mini{font-size:11px;padding:2px 7px}
@@ -2072,17 +2074,15 @@ function printAnwesenheitsliste(veranstaltungId){
   const art=ev.art||'optional';
   const artWord=(label,key)=> key===art ? `<u><b>${label}</b></u>` : label;
   document.getElementById('anwPrintArea').innerHTML=`
-    <div class="panel" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
-      <div>Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
-      <h2 style="margin:0;text-decoration:underline;white-space:nowrap">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
-      <div style="text-align:right;white-space:nowrap">am: <b>${fmtDate(ev.datum)}</b><br>um: __________ Uhr</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+      <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
+      <h2 style="margin:0;text-decoration:underline;white-space:nowrap;font-size:19px">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
+      <div style="white-space:nowrap;font-size:12.5px">am: <b>${fmtDate(ev.datum)}</b> um: __________ Uhr</div>
     </div>
-    <div class="panel">
-      <table>
-        <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
-        <tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.vor)}</td><td>${esc(r.nach)}</td><td></td></tr>`).join('')}</tbody>
-      </table>
-    </div>
+    <table class="anw-table">
+      <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.vor)}</td><td>${esc(r.nach)}</td><td></td></tr>`).join('')}</tbody>
+    </table>
     <div class="submuted" style="margin-top:6px">${artWord('Optional','optional')} / ${artWord('Pflicht','pflicht')} / ${artWord('Offiziell','offiziell')}</div>`;
   document.getElementById('anwPrintArea').classList.add('show');
   window.print();
