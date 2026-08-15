@@ -2049,6 +2049,13 @@ function printKvvAktion(aktionId){
 window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
   const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
   const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show'); });
+// Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
+// Tabelle Nr./Vorname/Nachname/Unterschrift, Fußzeile Optional/Pflicht/Offiziell).
+function splitVorNachname(full){
+  const parts=(full||'').trim().split(/\s+/).filter(Boolean);
+  if(parts.length<=1) return {vor:full||'',nach:''};
+  return {vor:parts[0], nach:parts.slice(1).join(' ')};
+}
 function printAnwesenheitsliste(veranstaltungId){
   const ev=events.find(e=>e.id===veranstaltungId);
   if(!ev){ alert('Bitte zuerst eine Veranstaltung auswählen.'); return; }
@@ -2058,22 +2065,23 @@ function printAnwesenheitsliste(veranstaltungId){
   let pool=members;
   if(zg.length===1 && zg[0]==='Vorstand') pool=members.filter(m=>['vorstand','admin'].includes(m.role));
   const sorted=[...pool].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+  const rows=sorted.map(m=>splitVorNachname(m.display_name||m.username));
+  rows.push({vor:'',nach:''}); // eine leere Zeile zum handschriftlichen Ergänzen, wie in der Papier-Vorlage
+  const art=ev.art||'optional';
+  const artWord=(label,key)=> key===art ? `<u><b>${label}</b></u>` : label;
   document.getElementById('anwPrintArea').innerHTML=`
-    <div class="panel">
-      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Anwesenheitsliste</h3>
-      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
-      <div class="cards" style="margin-top:14px">
-        <div class="card"><div class="label">Veranstaltung</div><div class="value" style="font-size:17px">${esc(ev.titel)}</div></div>
-        <div class="card"><div class="label">Datum</div><div class="value" style="font-size:17px">${fmtDate(ev.datum)}</div></div>
-        <div class="card"><div class="label">Zielgruppe</div><div class="value" style="font-size:17px">${zg.length?esc(zg.join(', ')):'Alle Mitglieder'}</div></div>
-        <div class="card"><div class="label">Mitglieder</div><div class="value">${sorted.length}</div></div>
-      </div>
+    <div class="panel" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
+      <div>Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
+      <h2 style="margin:0;text-decoration:underline;white-space:nowrap">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
+      <div style="text-align:right;white-space:nowrap">am: <b>${fmtDate(ev.datum)}</b><br>um: __________ Uhr</div>
     </div>
     <div class="panel">
-      <table><thead><tr><th>#</th><th>Name</th><th>Anwesend</th><th>Unterschrift</th></tr></thead>
-        <tbody>${sorted.map((m,i)=>`<tr><td>${i+1}</td><td>${esc(m.display_name||m.username)}</td><td><span class="chk-box"></span></td><td></td></tr>`).join('')}</tbody>
+      <table>
+        <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
+        <tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.vor)}</td><td>${esc(r.nach)}</td><td></td></tr>`).join('')}</tbody>
       </table>
-    </div>`;
+    </div>
+    <div class="submuted" style="margin-top:6px">${artWord('Optional','optional')} / ${artWord('Pflicht','pflicht')} / ${artWord('Offiziell','offiziell')}</div>`;
   document.getElementById('anwPrintArea').classList.add('show');
   window.print();
 }
