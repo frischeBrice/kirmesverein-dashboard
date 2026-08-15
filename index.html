@@ -471,6 +471,7 @@
         <button class="btn ghost sm" id="fsTabAuktion" onclick="setFsBereich('auktion')">🔨 Auktion</button>
         <button class="btn ghost sm" id="fsTabWillWieder" onclick="setFsBereich('willwieder')">🙋 Will ich wieder</button>
         <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
+        <button class="btn ghost sm" id="fsTabEntsorgt" onclick="setFsBereich('entsorgt')">🗑 Entsorgt</button>
       </div>
       <div id="fsBereichFund">
         <div class="cards">
@@ -510,6 +511,15 @@
           <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="uebergebenTable"></div></div>
+      </div>
+      <div id="fsBereichEntsorgt" style="display:none">
+        <div class="cards">
+          <div class="card"><div class="label">Entsorgt</div><div class="value" id="fsEntsorgtCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="fsEntsorgtSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="entsorgtTable"></div></div>
       </div>
     </section>
 
@@ -1142,10 +1152,10 @@ const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e
 function sponsorStatusSelect(s){
   const cur=s.status||'offen'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
   const opts=[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
-  return `<select class="status-select" style="border-color:${col};color:${col}" onchange="setSponsorStatus('${s.id}',this.value)">
+  return `<select class="status-select" style="border-color:${col};color:${col}" onchange="setSponsorStatus('${s.id}',this.value,this)">
     ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
-async function setSponsorStatus(id,status){
+async function setSponsorStatus(id,status,selectEl){
   const patch={status};
   const sp=sponsoren.find(x=>x.id===id);
   // ab 50 € + Status "zugesagt" oder "erhalten" bekommt der Sponsor automatisch 2 Freikarten vorgeschlagen
@@ -1153,8 +1163,18 @@ async function setSponsorStatus(id,status){
   if(sp && ['zugesagt','erhalten'].includes(status) && (sp.freikarten_anzahl==null||sp.freikarten_anzahl==='') && suggestedFreikarten(sp.betrag)>0){
     patch.freikarten_anzahl=suggestedFreikarten(sp.betrag);
   }
+  // Verlässt der Status zugesagt/erhalten, verliert der Sponsor die Freikarten-Berechtigung (siehe
+  // freikartenCell/eligible) – die Spalte zeigt dann nur noch "–". Ohne aktives Aufräumen bleiben
+  // Anzahl/Nummern aber in der DB stehen und tauchen z.B. in der Freikarten-Checkliste weiter auf,
+  // obwohl in der Tabelle nichts mehr davon zu sehen ist. Deshalb hier mit aufräumen.
+  if(sp && !['zugesagt','erhalten'].includes(status) && (Number(sp.freikarten_anzahl)>0 || parseFreikarten(sp.freikarten_nummern).length)){
+    const nums=parseFreikarten(sp.freikarten_nummern);
+    const ok=confirm(`Damit verliert der Sponsor die Freikarten-Berechtigung.\n\nZugeordnete Freikarten${nums.length?' (#'+nums.join(', #')+')':''} werden dabei ebenfalls entfernt. Fortfahren?`);
+    if(!ok){ if(selectEl) selectEl.value=sp.status||'offen'; return; }
+    patch.freikarten_anzahl=0; patch.freikarten_nummern=null;
+  }
   const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
-  if(error){ alert('Fehler: '+error.message); return; }
+  if(error){ alert('Fehler: '+error.message); if(selectEl && sp) selectEl.value=sp.status||'offen'; return; }
   await loadAll();
 }
 async function setSponsorField(id,field,value){
@@ -1208,7 +1228,18 @@ async function setSponsorBetrag(id,value,inputEl){
     const ok=confirm(`Bereits eingetragener Betrag ist gesperrt.\n\nWirklich von ${eur(oldVal)} auf ${newVal!=null?eur(newVal):'– (leer)'} ändern?`);
     if(!ok){ if(inputEl) inputEl.value=oldVal; return; }
   }
-  const {error}=await sb.from('sponsoren').update({betrag:newVal}).eq('id',id);
+  const patch={betrag:newVal};
+  // Unter 50 € verliert der Sponsor die Freikarten-Berechtigung (siehe freikartenCell/eligible) – die
+  // Spalte zeigt dann nur noch "–". Ohne aktives Aufräumen bleiben Anzahl/Nummern aber in der DB stehen
+  // und tauchen z.B. in der Freikarten-Checkliste weiter auf, obwohl in der Tabelle nichts mehr davon
+  // zu sehen ist. Deshalb hier mit aufräumen.
+  if(sp && Number(newVal||0)<50 && (Number(sp.freikarten_anzahl)>0 || parseFreikarten(sp.freikarten_nummern).length)){
+    const nums=parseFreikarten(sp.freikarten_nummern);
+    const ok2=confirm(`Damit fällt der Sponsor unter 50 € und verliert die Freikarten-Berechtigung.\n\nZugeordnete Freikarten${nums.length?' (#'+nums.join(', #')+')':''} werden dabei ebenfalls entfernt. Fortfahren?`);
+    if(!ok2){ if(inputEl) inputEl.value=oldVal??''; return; }
+    patch.freikarten_anzahl=0; patch.freikarten_nummern=null;
+  }
+  const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); if(inputEl) inputEl.value=oldVal??''; return; }
   await loadAll();
 }
@@ -1618,6 +1649,16 @@ function delVerleih(id){ if(!confirm('Ausleihe wirklich löschen?'))return;
    ergänzt die Verkaufserfassung (verkauft/verkauft_am/erloes/kaeufer), die
    es in der App noch nicht gibt. */
 const FS_VOTE_LABEL={will_wieder:['🙋 Will ich wieder','#22c55e'],versteigern:['🔨 Versteigern','#f59e0b'],weg_damit:['🗑 Weg damit','#ef4444'],nicht_meins:['❌ Nicht meins','#ef4444']};
+/* Aufbewahrungsfrist (frist_tage, App-Feature): rein clientseitig berechnet,
+   kein Automatismus/Server-Job – nur Hinweis-Badge, wenn abgelaufen. */
+function fsFristAbgelaufen(x){
+  const tage=x.frist_tage||30;
+  return Date.now() > new Date(x.created_at).getTime() + tage*24*60*60*1000;
+}
+function fsFristDatum(x){
+  const tage=x.frist_tage||30;
+  return fmtDate(new Date(x.created_at).getTime() + tage*24*60*60*1000);
+}
 function fsStatusOf(x){
   if(x.entsorgt) return 'entsorgt';
   if(x.verkauft) return 'verkauft';
@@ -1638,10 +1679,12 @@ function setFsBereich(v){
   document.getElementById('fsBereichAuktion').style.display=v==='auktion'?'block':'none';
   document.getElementById('fsBereichUebergeben').style.display=v==='uebergeben'?'block':'none';
   document.getElementById('fsBereichWillWieder').style.display=v==='willwieder'?'block':'none';
+  document.getElementById('fsBereichEntsorgt').style.display=v==='entsorgt'?'block':'none';
   document.getElementById('fsTabFund').classList.toggle('active',v==='fund');
   document.getElementById('fsTabAuktion').classList.toggle('active',v==='auktion');
   document.getElementById('fsTabUebergeben').classList.toggle('active',v==='uebergeben');
   document.getElementById('fsTabWillWieder').classList.toggle('active',v==='willwieder');
+  document.getElementById('fsTabEntsorgt').classList.toggle('active',v==='entsorgt');
 }
 async function fsCheckZurueck(id,checked,cbEl){
   if(!checked) return; // Häkchen bestätigt nur die Rückgabe; rückgängig machen geht über den ↩️-Button im Tab "Übergeben"
@@ -1679,7 +1722,8 @@ function fsRow(x,showVotes){
   return `<tr>
     <td>${x.bild_url?`<a href="${esc(x.bild_url)}" target="_blank" rel="noopener"><img src="${esc(x.bild_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></a>`:''}</td>
     <td><b>${esc(x.beschreibung)}</b><div class="submuted">${esc(memberName(x.erstellt_von))} · ${fmtDate(x.created_at)}</div>
-      ${st==='verkauft'?`<div class="submuted">🔨 ${x.erloes!=null?eur(x.erloes):'–'}${x.kaeufer?' an '+esc(x.kaeufer):''}${x.verkauft_am?' · '+fmtDate(x.verkauft_am):''}</div>`:''}</td>
+      ${st==='verkauft'?`<div class="submuted">🔨 ${x.erloes!=null?eur(x.erloes):'–'}${x.kaeufer?' an '+esc(x.kaeufer):''}${x.verkauft_am?' · '+fmtDate(x.verkauft_am):''}</div>`:''}
+      ${st==='offen'&&fsFristAbgelaufen(x)?`<div class="submuted" style="color:var(--red)">⏰ Frist abgelaufen seit ${fsFristDatum(x)}</div>`:''}</td>
     ${showVotes?`<td>${votesCell||'<span class="submuted">–</span>'}</td>`:''}
     <td>${fsStatusPill(x)}</td>
     <td><div class="row-actions">${actions}</div></td></tr>`;
@@ -1715,8 +1759,9 @@ function fsAuktionTable(list){
 function renderFundsachen(){
   const elF=document.getElementById('fundsachenTable'); if(!elF) return; // View noch nicht im DOM
   const q=(val('fsSearch')).toLowerCase();
-  // Sachen mit "will ich wieder"-Stimme wandern in den eigenen Tab, statt hier zusätzlich aufzutauchen
-  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben
+  // Sachen mit "will ich wieder"-Stimme wandern in den eigenen Tab, entsorgte in ihren eigenen,
+  // statt hier zusätzlich/dauerhaft aufzutauchen
+  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben && !x.entsorgt
     && !fundsachenVotes.some(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder')
     && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
   document.getElementById('fsCount').textContent=fundList.filter(x=>fsStatusOf(x)==='offen').length;
@@ -1742,6 +1787,11 @@ function renderFundsachen(){
   document.getElementById('willWiederTable').innerHTML = willList.length
     ? `<table><thead><tr><th></th><th>Fundsache</th><th>Beansprucht von</th><th style="text-align:center">Zurückgegeben?</th><th></th></tr></thead><tbody>${willList.map(fsWillWiederRow).join('')}</tbody></table>`
     : '<div class="empty">Aktuell beansprucht niemand eine offene Fundsache.</div>';
+
+  const qe=(val('fsEntsorgtSearch')).toLowerCase();
+  const entsorgtList=fundsachen.filter(x=>x.entsorgt && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qe));
+  document.getElementById('fsEntsorgtCount').textContent=entsorgtList.length;
+  document.getElementById('entsorgtTable').innerHTML = fsTable(entsorgtList,false) || '<div class="empty">Noch nichts entsorgt.</div>';
 }
 async function fsSetFlag(id,field,value=true){
   const {error}=await sb.from('fundsachen').update({[field]:value}).eq('id',id);
@@ -2085,7 +2135,11 @@ function printAnwesenheitsliste(veranstaltungId){
   printDoc('Anwesenheit – '+(ev.titel||''));
 }
 function printFreikartenChecklist(){
-  const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
+  // Zusätzlich zur reinen Freikarten-Anzahl/Nummern auch die Berechtigung prüfen (wie freikartenCell) –
+  // Sicherheitsnetz gegen verwaiste Werte, falls ein Sponsor mal ohne Aufräumen unter 50 €/Status
+  // gerutscht ist (z.B. Altdaten von vor diesem Fix).
+  const eligible=s=>Number(s.betrag||0)>=50 && ['zugesagt','erhalten'].includes(s.status);
+  const list=sponsoren.filter(s=>eligible(s) && (Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length));
   if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
   const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
   document.getElementById('fkPrintArea').innerHTML=`
