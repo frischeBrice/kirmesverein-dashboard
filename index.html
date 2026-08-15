@@ -1076,7 +1076,7 @@ async function togglePosten(buchungId){
 /* ---- Veranstaltungen ---- */
 function artPill(a){const m={optional:['Optional','gray'],pflicht:['❗ Pflicht','no'],offiziell:['🏛 Offiziell','blue']}[a||'optional']||['Optional','gray'];return `<span class="pill ${m[1]} mini">${m[0]}</span>`;}
 function sichtPill(s){return s==='public'?'<span class="pill blue mini">🌐 Public</span>':'<span class="pill gray mini">Intern</span>';}
-const ZIELGRUPPEN_OPTS=['Vorstand','Helfer','Alle Mitglieder'];
+const ZIELGRUPPEN_OPTS=['Vorstand','Helfer','Jungs','Mädels','Alle Mitglieder'];
 function parseZielgruppen(text){ return (text||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function zielgruppenPills(e){
   return parseZielgruppen(e.zielgruppen).map(g=>`<span class="pill blue mini">${esc(g)}</span>`).join(' ');
@@ -2060,10 +2060,12 @@ function printAnwesenheitsliste(veranstaltungId){
   const ev=events.find(e=>e.id===veranstaltungId);
   if(!ev){ alert('Bitte zuerst eine Veranstaltung auswählen.'); return; }
   const zg=parseZielgruppen(ev.zielgruppen);
-  // "Vorstand" lässt sich über die Mitglieder-Rolle filtern; für Helfer gibt es (noch) keine
-  // hinterlegte Mitgliederliste, daher bleibt der Pool dann bei allen Mitgliedern.
+  // "Vorstand" filtert über die Mitglieder-Rolle, "Jungs"/"Mädels" über das Geschlecht (wie in der App: m/w).
+  // Für Helfer gibt es (noch) keine hinterlegte Mitgliederliste, daher bleibt der Pool dann bei allen Mitgliedern.
   let pool=members;
   if(zg.length===1 && zg[0]==='Vorstand') pool=members.filter(m=>['vorstand','admin'].includes(m.role));
+  else if(zg.length===1 && zg[0]==='Jungs') pool=members.filter(m=>m.geschlecht==='m');
+  else if(zg.length===1 && zg[0]==='Mädels') pool=members.filter(m=>m.geschlecht==='w');
   const sorted=[...pool].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
   const rows=sorted.map(m=>splitVorNachname(m.display_name||m.username));
   rows.push({vor:'',nach:''}); // eine leere Zeile zum handschriftlichen Ergänzen, wie in der Papier-Vorlage
