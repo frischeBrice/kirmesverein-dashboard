@@ -566,7 +566,7 @@
       <div class="view-head"><h2>Kassenbericht</h2>
         <div class="actions">
           <select id="reportJahrSel" onchange="setReportJahr(this.value)" style="width:auto"></select>
-          <button class="btn" onclick="window.print()">🖨 Drucken / PDF</button>
+          <button class="btn" onclick="printDoc('Kassenbericht '+(reportJahr==='all'?'Alle Jahre':reportJahr))">🖨 Drucken / PDF</button>
         </div>
       </div>
       <div id="reportBody"></div>
@@ -2037,9 +2037,12 @@ function printKvvAktion(aktionId){
     </table>`:'<div class="empty">Keine Teilnehmer erfasst.</div>'}
     <div style="margin-top:8px;font-size:12.5px">Erlös gesamt <b>${eur(totalBetrag)}</b> · Bezahlt <b>${eur(bezahltBetrag)}</b> · Offen <b>${eur(offenBetrag)}</b></div>`;
   document.getElementById('kvvPrintArea').classList.add('show');
-  window.print();
+  printDoc('Kartenvorverkauf – '+aktion.titel);
 }
-window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
+const __origTitle=document.title;
+function printDoc(title){ if(title) document.title=title; window.print(); }
+window.addEventListener('afterprint',()=>{ document.title=__origTitle;
+  const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
   const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
   const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show'); });
 // Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
@@ -2067,13 +2070,12 @@ function printAnwesenheitsliste(veranstaltungId){
   const art=ev.art||'optional';
   const artWord=(label,key)=> key===art ? `<u><b>${label}</b></u>` : label;
   document.getElementById('anwPrintArea').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:24px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
       <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
-      <div style="text-align:center;white-space:nowrap">
+      <div style="text-align:right;white-space:nowrap">
         <h2 style="margin:0;text-decoration:underline;font-size:19px">Anwesenheit${ev.titel?' – '+esc(ev.titel):''}</h2>
         <div style="font-size:12.5px;margin-top:2px">am: <b>${fmtDate(ev.datum)}</b> um: __________ Uhr</div>
       </div>
-      <div></div>
     </div>
     <table class="compact-table anw-table">
       <thead><tr><th style="background:#ccc">Nr.</th><th style="background:#ccc">Vorname</th><th style="background:#ccc">Nachname</th><th style="background:#ccc">Unterschrift</th></tr></thead>
@@ -2081,7 +2083,7 @@ function printAnwesenheitsliste(veranstaltungId){
     </table>
     <div class="submuted" style="margin-top:6px">${artWord('Optional','optional')} / ${artWord('Pflicht','pflicht')} / ${artWord('Offiziell','offiziell')}</div>`;
   document.getElementById('anwPrintArea').classList.add('show');
-  window.print();
+  printDoc('Anwesenheit – '+(ev.titel||''));
 }
 function printFreikartenChecklist(){
   const list=sponsoren.filter(s=>Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length);
@@ -2107,7 +2109,7 @@ function printFreikartenChecklist(){
       </table>
     </div>`;
   document.getElementById('fkPrintArea').classList.add('show');
-  window.print();
+  printDoc('Freikarten-Checkliste');
 }
 
 /* ---- Bericht ---- */
