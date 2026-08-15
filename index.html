@@ -238,7 +238,6 @@
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
-    <button data-view="events" onclick="show('events')">🎪 Veranstaltungen</button>
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="fundsachen" onclick="show('fundsachen')">🧦 Fundsachen</button>
@@ -344,25 +343,6 @@
       </div>
     </section>
 
-    <!-- EVENTS -->
-    <section class="view" id="events">
-      <div class="view-head"><h2>Veranstaltungen</h2>
-        <div class="actions"><button class="btn" onclick="openEvent()">＋ Veranstaltung</button></div></div>
-      <div class="filterbar">
-        <input id="evSearch" placeholder="🔍 Suche…" oninput="renderEvents()">
-        <select id="evArtFilter" onchange="renderEvents()">
-          <option value="">Alle Arten</option>
-          <option value="optional">Optional</option><option value="pflicht">Pflicht</option><option value="offiziell">Offiziell</option>
-        </select>
-        <select id="evSichtFilter" onchange="renderEvents()">
-          <option value="">Intern & Public</option>
-          <option value="intern">Nur Intern</option><option value="public">Nur Public</option>
-        </select>
-      </div>
-      <div class="note">🌐 <b>Public</b> markiert Veranstaltungen, die künftig auch anderen Vereinen extern angezeigt werden sollen (z. B. eure Kirmesdisco). Das eigentliche vereinsübergreifende Teilen ist noch nicht angebunden – hier wird die Markierung schon mal gesetzt.</div>
-      <div class="panel"><div id="eventsTable"></div></div>
-    </section>
-
     <!-- SPONSOREN -->
     <section class="view" id="sponsoren">
       <div class="view-head"><h2>Sponsoren</h2>
@@ -401,15 +381,36 @@
 
     <!-- KALENDER -->
     <section class="view" id="kalender">
-      <div class="view-head"><h2>Kalender</h2>
+      <div class="view-head"><h2>Kalender &amp; Veranstaltungen</h2>
         <div class="actions"><button class="btn" onclick="openEvent()">＋ Termin</button></div></div>
-      <div class="cal-head">
-        <button class="btn ghost sm" onclick="calNav(-1)">‹ zurück</button>
-        <div class="title" id="calTitle"></div>
-        <button class="btn ghost sm" onclick="calNav(1)">vor ›</button>
-        <button class="btn ghost sm" onclick="calToday()">Heute</button>
+      <div class="sectionbar" style="margin:0 0 16px">
+        <button class="btn ghost sm active" id="calTabKalender" onclick="setCalBereich('kalender')">📅 Kalender</button>
+        <button class="btn ghost sm" id="calTabListe" onclick="setCalBereich('liste')">📋 Liste</button>
       </div>
-      <div class="panel"><div class="cal-grid" id="calGrid"></div></div>
+      <div id="calBereichKalender">
+        <div class="cal-head">
+          <button class="btn ghost sm" onclick="calNav(-1)">‹ zurück</button>
+          <div class="title" id="calTitle"></div>
+          <button class="btn ghost sm" onclick="calNav(1)">vor ›</button>
+          <button class="btn ghost sm" onclick="calToday()">Heute</button>
+        </div>
+        <div class="panel"><div class="cal-grid" id="calGrid"></div></div>
+      </div>
+      <div id="calBereichListe" style="display:none">
+        <div class="filterbar">
+          <input id="evSearch" placeholder="🔍 Suche…" oninput="renderEvents()">
+          <select id="evArtFilter" onchange="renderEvents()">
+            <option value="">Alle Arten</option>
+            <option value="optional">Optional</option><option value="pflicht">Pflicht</option><option value="offiziell">Offiziell</option>
+          </select>
+          <select id="evSichtFilter" onchange="renderEvents()">
+            <option value="">Intern & Public</option>
+            <option value="intern">Nur Intern</option><option value="public">Nur Public</option>
+          </select>
+        </div>
+        <div class="note">🌐 <b>Public</b> markiert Veranstaltungen, die künftig auch anderen Vereinen extern angezeigt werden sollen (z. B. eure Kirmesdisco). Das eigentliche vereinsübergreifende Teilen ist noch nicht angebunden – hier wird die Markierung schon mal gesetzt.</div>
+        <div class="panel"><div id="eventsTable"></div></div>
+      </div>
     </section>
 
     <!-- INVENTUR -->
@@ -1009,6 +1010,11 @@ async function togglePosten(buchungId){
 /* ---- Veranstaltungen ---- */
 function artPill(a){const m={optional:['Optional','gray'],pflicht:['❗ Pflicht','no'],offiziell:['🏛 Offiziell','blue']}[a||'optional']||['Optional','gray'];return `<span class="pill ${m[1]} mini">${m[0]}</span>`;}
 function sichtPill(s){return s==='public'?'<span class="pill blue mini">🌐 Public</span>':'<span class="pill gray mini">Intern</span>';}
+const ZIELGRUPPEN_OPTS=['Vorstand','Kirmesausschuss','Helfer','Alle Mitglieder'];
+function parseZielgruppen(text){ return (text||'').split(',').map(x=>x.trim()).filter(Boolean); }
+function zielgruppenPills(e){
+  return parseZielgruppen(e.zielgruppen).map(g=>`<span class="pill blue mini">${esc(g)}</span>`).join(' ');
+}
 function renderEvents(){
   const q=(val('evSearch')).toLowerCase(); const af=val('evArtFilter'); const sf=val('evSichtFilter');
   const list=events.filter(e=>((e.titel||'').toLowerCase().includes(q)||(e.ort||'').toLowerCase().includes(q)) && (!af||(e.art||'optional')===af) && (!sf||(e.sichtbarkeit||'intern')===sf));
@@ -1016,15 +1022,22 @@ function renderEvents(){
   if(!events.length){ el.innerHTML='<div class="empty">Noch keine Veranstaltungen. Lege oben eine an.</div>'; return; }
   if(!list.length){ el.innerHTML='<div class="empty">Keine Veranstaltungen für diesen Filter.</div>'; return; }
   el.innerHTML=`<table>
-    <thead><tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th><th>Status</th><th>Art</th><th>Sichtbarkeit</th><th>Notiz</th><th></th></tr></thead>
+    <thead><tr><th>Datum</th><th>Veranstaltung</th><th>Ort</th><th>Status</th><th>Art</th><th>Sichtbarkeit</th><th>Zielgruppe</th><th>Notiz</th><th></th></tr></thead>
     <tbody>${list.map(e=>`<tr><td>${fmtDate(e.datum)}</td><td><b>${esc(e.titel)}</b></td>
       <td>${esc(e.ort)||'–'}</td><td>${statusPill(e.status)}</td>
       <td>${artPill(e.art)}</td><td>${sichtPill(e.sichtbarkeit)}</td>
+      <td>${zielgruppenPills(e)||'<span class="submuted">–</span>'}</td>
       <td style="color:var(--muted);max-width:220px">${esc(e.notiz)||''}</td>
       <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`;
 }
 
 /* ---- Kalender ---- */
+function setCalBereich(v){
+  document.getElementById('calBereichKalender').style.display=v==='kalender'?'block':'none';
+  document.getElementById('calBereichListe').style.display=v==='liste'?'block':'none';
+  document.getElementById('calTabKalender').classList.toggle('active',v==='kalender');
+  document.getElementById('calTabListe').classList.toggle('active',v==='liste');
+}
 function calColor(s){return {geplant:'#c47a1e','bestätigt':'#3a86e8',abgeschlossen:'#2e8b63',abgesagt:'#b23636'}[s]||'#c47a1e';}
 function calNav(delta){ calMonth=new Date(calMonth.getFullYear(),calMonth.getMonth()+delta,1); renderKalender(); }
 function calToday(){ calMonth=new Date(); renderKalender(); }
@@ -1048,7 +1061,8 @@ function renderKalender(){
     return `<div class="cal-cell${other?' other':''}${iso===today?' today':''}" onclick="openEvent('','${iso}')">
       <div class="cal-daynum">${d.getDate()}</div>
       ${evs.map(e=>{const artIcon=e.art==='pflicht'?'❗':e.art==='offiziell'?'🏛':''; const sichtIcon=e.sichtbarkeit==='public'?'🌐':'';
-        return `<div class="cal-ev" style="background:${calColor(e.status)}" title="${esc(e.titel)}${e.ort?' · '+esc(e.ort):''}" onclick="event.stopPropagation();openEvent('${e.id}')">${artIcon}${sichtIcon}${esc(e.titel)}</div>`;}).join('')}
+        const zg=parseZielgruppen(e.zielgruppen);
+        return `<div class="cal-ev" style="background:${calColor(e.status)}" title="${esc(e.titel)}${e.ort?' · '+esc(e.ort):''}${zg.length?' · '+esc(zg.join(', ')):''}" onclick="event.stopPropagation();openEvent('${e.id}')">${artIcon}${sichtIcon}${esc(e.titel)}</div>`;}).join('')}
     </div>`;
   }).join('');
   document.getElementById('calGrid').innerHTML=wd+grid;
@@ -2374,7 +2388,8 @@ async function delTx(id){
 
 /* ---- Veranstaltungen bearbeiten ---- */
 function openEvent(id,dateStr){
-  const e=id?events.find(x=>x.id===id):{titel:'',datum:dateStr||todayISO(),ort:'',status:'geplant',notiz:'',art:'optional',sichtbarkeit:'intern'};
+  const e=id?events.find(x=>x.id===id):{titel:'',datum:dateStr||todayISO(),ort:'',status:'geplant',notiz:'',art:'optional',sichtbarkeit:'intern',zielgruppen:''};
+  const zg=parseZielgruppen(e.zielgruppen);
   openModal(`<h3>${id?'Veranstaltung bearbeiten':'Neue Veranstaltung'}</h3>
     <label class="field"><span>Titel *</span><input id="e_titel" value="${esc(e.titel)}"></label>
     <div class="grid2">
@@ -2392,13 +2407,21 @@ function openEvent(id,dateStr){
         <option value="public" ${e.sichtbarkeit==='public'?'selected':''}>🌐 Public (für andere Vereine, extern)</option></select></label>
     </div>
     <label class="field"><span>Ort</span><input id="e_ort" value="${esc(e.ort)}"></label>
+    <label class="field"><span>Personengruppen</span>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px">
+        ${ZIELGRUPPEN_OPTS.map(g=>`<label style="display:inline-flex;align-items:center;gap:6px;font-weight:400;color:var(--text);cursor:pointer">
+          <input type="checkbox" class="e_zg" value="${esc(g)}" style="width:auto" ${zg.includes(g)?'checked':''}>${esc(g)}</label>`).join('')}
+      </div>
+      <div class="submuted" style="margin-top:4px">Leer lassen = betrifft alle Mitglieder wie gewohnt. Beispiel: nur „Vorstand" ankreuzen für eine Vorstandssitzung.</div>
+    </label>
     <label class="field"><span>Notiz</span><textarea id="e_notiz" rows="3">${esc(e.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveEvent('${id||''}',this)">Speichern</button></div>`);
 }
 function saveEvent(id,btn){
   const titel=val('e_titel'); if(!titel){ alert('Bitte einen Titel eingeben.'); return; }
-  const row={titel,datum:val('e_datum')||null,ort:val('e_ort')||null,status:val('e_status'),notiz:val('e_notiz')||null,art:val('e_art'),sichtbarkeit:val('e_sicht')};
+  const zg=[...document.querySelectorAll('.e_zg:checked')].map(el=>el.value);
+  const row={titel,datum:val('e_datum')||null,ort:val('e_ort')||null,status:val('e_status'),notiz:val('e_notiz')||null,art:val('e_art'),sichtbarkeit:val('e_sicht'),zielgruppen:zg.join(', ')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('veranstaltungen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('veranstaltungen').insert(row); if(error) throw error; }
