@@ -1010,7 +1010,7 @@ async function togglePosten(buchungId){
 /* ---- Veranstaltungen ---- */
 function artPill(a){const m={optional:['Optional','gray'],pflicht:['❗ Pflicht','no'],offiziell:['🏛 Offiziell','blue']}[a||'optional']||['Optional','gray'];return `<span class="pill ${m[1]} mini">${m[0]}</span>`;}
 function sichtPill(s){return s==='public'?'<span class="pill blue mini">🌐 Public</span>':'<span class="pill gray mini">Intern</span>';}
-const ZIELGRUPPEN_OPTS=['Vorstand','Kirmesausschuss','Helfer','Alle Mitglieder'];
+const ZIELGRUPPEN_OPTS=['Vorstand','Helfer','Alle Mitglieder'];
 function parseZielgruppen(text){ return (text||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function zielgruppenPills(e){
   return parseZielgruppen(e.zielgruppen).map(g=>`<span class="pill blue mini">${esc(g)}</span>`).join(' ');
@@ -1986,7 +1986,12 @@ window.addEventListener('afterprint',()=>{ const el=document.getElementById('kvv
 function printAnwesenheitsliste(veranstaltungId){
   const ev=events.find(e=>e.id===veranstaltungId);
   if(!ev){ alert('Bitte zuerst eine Veranstaltung auswählen.'); return; }
-  const sorted=[...members].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+  const zg=parseZielgruppen(ev.zielgruppen);
+  // "Vorstand" lässt sich über die Mitglieder-Rolle filtern; für Helfer gibt es (noch) keine
+  // hinterlegte Mitgliederliste, daher bleibt der Pool dann bei allen Mitgliedern.
+  let pool=members;
+  if(zg.length===1 && zg[0]==='Vorstand') pool=members.filter(m=>['vorstand','admin'].includes(m.role));
+  const sorted=[...pool].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
   document.getElementById('anwPrintArea').innerHTML=`
     <div class="panel">
       <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Anwesenheitsliste</h3>
@@ -1994,6 +1999,7 @@ function printAnwesenheitsliste(veranstaltungId){
       <div class="cards" style="margin-top:14px">
         <div class="card"><div class="label">Veranstaltung</div><div class="value" style="font-size:17px">${esc(ev.titel)}</div></div>
         <div class="card"><div class="label">Datum</div><div class="value" style="font-size:17px">${fmtDate(ev.datum)}</div></div>
+        <div class="card"><div class="label">Zielgruppe</div><div class="value" style="font-size:17px">${zg.length?esc(zg.join(', ')):'Alle Mitglieder'}</div></div>
         <div class="card"><div class="label">Mitglieder</div><div class="value">${sorted.length}</div></div>
       </div>
     </div>
