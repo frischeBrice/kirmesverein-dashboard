@@ -736,7 +736,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 async function loadAll(){
   const nowISO=new Date().toISOString();
   const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf] = await Promise.all([
-    sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
+    sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
@@ -2062,12 +2062,14 @@ function printAnwesenheitsliste(veranstaltungId){
   const ev=events.find(e=>e.id===veranstaltungId);
   if(!ev){ alert('Bitte zuerst eine Veranstaltung auswählen.'); return; }
   const zg=parseZielgruppen(ev.zielgruppen);
+  // Pausierte Mitglieder und Test-Accounts gehören nicht auf die Anwesenheitsliste.
+  const aktiv=members.filter(m=>!m.pausiert && (m.display_name||'').trim().toLowerCase()!=='test test');
   // "Vorstand" filtert über die Mitglieder-Rolle, "Jungs"/"Mädels" über das Geschlecht (wie in der App: m/w).
   // Für Helfer gibt es (noch) keine hinterlegte Mitgliederliste, daher bleibt der Pool dann bei allen Mitgliedern.
-  let pool=members;
-  if(zg.length===1 && zg[0]==='Vorstand') pool=members.filter(m=>['vorstand','admin'].includes(m.role));
-  else if(zg.length===1 && zg[0]==='Jungs') pool=members.filter(m=>m.geschlecht==='m');
-  else if(zg.length===1 && zg[0]==='Mädels') pool=members.filter(m=>m.geschlecht==='w');
+  let pool=aktiv;
+  if(zg.length===1 && zg[0]==='Vorstand') pool=aktiv.filter(m=>['vorstand','admin'].includes(m.role));
+  else if(zg.length===1 && zg[0]==='Jungs') pool=aktiv.filter(m=>m.geschlecht==='m');
+  else if(zg.length===1 && zg[0]==='Mädels') pool=aktiv.filter(m=>m.geschlecht==='w');
   const sorted=[...pool].sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
   const rows=sorted.map(m=>splitVorNachname(m.display_name||m.username));
   rows.push({vor:'',nach:''}); // eine leere Zeile zum handschriftlichen Ergänzen, wie in der Papier-Vorlage
