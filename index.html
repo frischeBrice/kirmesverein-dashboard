@@ -269,16 +269,33 @@
 
     <!-- MEMBERS -->
     <section class="view" id="members">
-      <div class="view-head"><h2>Mitglieder</h2></div>
-      <div class="note">Mitglieder werden aus der App (Supabase <b>profiles</b>) gespiegelt – hier nur Ansicht.</div>
-      <div class="filterbar">
-        <input id="memberSearch" placeholder="🔍 Suche nach Name…" oninput="renderMembers()" style="flex:3;min-width:220px">
-        <select id="memberFilter" onchange="renderMembers()" style="flex:0.6;min-width:110px">
-          <option value="">Alle Rollen</option>
-          <option value="admin">Admin</option><option value="vorstand">Vorstand</option><option value="member">Mitglied</option>
-        </select>
+      <div class="view-head"><h2>Mitglieder</h2>
+        <div class="actions" id="memActions"></div></div>
+      <div class="sectionbar" style="margin:0 0 16px">
+        <button class="btn ghost sm active" id="memTabMitglieder" onclick="setMemBereich('mitglieder')">👥 Mitglieder</button>
+        <button class="btn ghost sm" id="memTabHelfer" onclick="setMemBereich('helfer')">🙋 Kirmeshelfer</button>
       </div>
-      <div class="panel"><div id="membersTable"></div></div>
+      <div id="memBereichMitglieder">
+        <div class="note">Mitglieder werden aus der App (Supabase <b>profiles</b>) gespiegelt – hier nur Ansicht.</div>
+        <div class="filterbar">
+          <input id="memberSearch" placeholder="🔍 Suche nach Name…" oninput="renderMembers()" style="flex:3;min-width:220px">
+          <select id="memberFilter" onchange="renderMembers()" style="flex:0.6;min-width:110px">
+            <option value="">Alle Rollen</option>
+            <option value="admin">Admin</option><option value="vorstand">Vorstand</option><option value="member">Mitglied</option>
+          </select>
+        </div>
+        <div class="panel"><div id="membersTable"></div></div>
+      </div>
+      <div id="memBereichHelfer" style="display:none">
+        <div class="note">Personen, die bei der Kirmes helfen, aber keine Vereinsmitglieder (kein App-Account) sind – eigene, unabhängige Liste.</div>
+        <div class="cards">
+          <div class="card"><div class="label">Kirmeshelfer</div><div class="value" id="helferCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="helferSearch" placeholder="🔍 Suche nach Name…" oninput="renderHelfer()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="helferTable"></div></div>
+      </div>
     </section>
 
     <!-- FINANCE -->
@@ -582,6 +599,7 @@ let kleidung = [], kleidungVerleih = [];
 let invBereich = 'lager';
 let fundsachen = [], fundsachenVotes = [];
 let dokumente = [];
+let kirmeshelfer = [];
 let sponsoren = [];
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
@@ -715,7 +733,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -731,6 +749,7 @@ async function loadAll(){
     sb.from('fundsachen').select('*').order('created_at',{ascending:false}),
     sb.from('fundsachen_votes').select('*'),
     sb.from('dokumente').select('*').order('titel'),
+    sb.from('kirmeshelfer').select('*').order('name'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -744,6 +763,8 @@ async function loadAll(){
   if(fsv&&fsv.error) console.warn('fundsachen_votes:',fsv.error.message);
   dokumente = (dk&&dk.data)||[];
   if(dk&&dk.error) console.warn('dokumente:',dk.error.message);
+  kirmeshelfer = (hf&&hf.data)||[];
+  if(hf&&hf.error) console.warn('kirmeshelfer:',hf.error.message);
   sponsoren = (sp&&sp.data)||[];
   kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
@@ -766,7 +787,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderSonstiges(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderSonstiges(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -852,6 +873,51 @@ function openMemberCard(id){
     ${postenRows?`<div style="margin-top:12px"><div class="submuted" style="margin-bottom:2px">Posten im Detail</div>${postenRows}</div>`:''}
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Schließen</button></div>`);
 }
+
+/* ---- Kirmeshelfer (unabhängig von den App-Mitgliedern) ---- */
+function setMemBereich(v){
+  document.getElementById('memBereichMitglieder').style.display=v==='mitglieder'?'block':'none';
+  document.getElementById('memBereichHelfer').style.display=v==='helfer'?'block':'none';
+  document.getElementById('memTabMitglieder').classList.toggle('active',v==='mitglieder');
+  document.getElementById('memTabHelfer').classList.toggle('active',v==='helfer');
+  document.getElementById('memActions').innerHTML = v==='helfer' ? '<button class="btn" onclick="openHelfer()">＋ Kirmeshelfer</button>' : '';
+}
+function renderHelfer(){
+  const el=document.getElementById('helferTable'); if(!el) return;
+  const q=(val('helferSearch')).toLowerCase();
+  document.getElementById('helferCount').textContent=kirmeshelfer.length;
+  const list=kirmeshelfer.filter(h=>(h.name||'').toLowerCase().includes(q));
+  el.innerHTML = list.length ? `<table>
+    <thead><tr><th>Name</th><th>Kontakt</th><th></th></tr></thead>
+    <tbody>${list.map(h=>`<tr>
+      <td><b>${esc(h.name)}</b>${h.notiz?`<div class="submuted">${esc(h.notiz)}</div>`:''}</td>
+      <td>${h.telefon?esc(h.telefon):''}${h.email?`<div class="submuted">${esc(h.email)}</div>`:''}${(!h.telefon&&!h.email)?'–':''}</td>
+      <td><div class="row-actions"><button class="icon-btn" onclick="openHelfer('${h.id}')">✏️</button><button class="icon-btn" onclick="delHelfer('${h.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">Noch keine Kirmeshelfer. Lege oben einen an.</div>';
+}
+function openHelfer(id){
+  const h=id?kirmeshelfer.find(x=>x.id===id):{name:'',telefon:'',email:'',notiz:''};
+  openModal(`<h3>${id?'Kirmeshelfer bearbeiten':'Neuer Kirmeshelfer'}</h3>
+    <label class="field"><span>Name *</span><input id="hf_name" value="${esc(h.name)}"></label>
+    <div class="grid2">
+      <label class="field"><span>Telefon</span><input id="hf_tel" value="${esc(h.telefon)}"></label>
+      <label class="field"><span>E-Mail</span><input id="hf_email" value="${esc(h.email)}"></label>
+    </div>
+    <label class="field"><span>Notiz</span><textarea id="hf_notiz" rows="2">${esc(h.notiz)}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveHelfer('${id||''}',this)">Speichern</button></div>`);
+}
+function saveHelfer(id,btn){
+  const name=val('hf_name'); if(!name){ alert('Bitte einen Namen eingeben.'); return; }
+  const row={name,telefon:val('hf_tel')||null,email:val('hf_email')||null,notiz:val('hf_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('kirmeshelfer').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('kirmeshelfer').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delHelfer(id){ if(!confirm('Kirmeshelfer wirklich löschen?'))return;
+  sb.from('kirmeshelfer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Finanzen ---- */
 function zahlPill(z){const m={bar:['Bar','gray'],karte:['Karte','blue'],ueberweisung:['Überweisung','gray']}[z];return m?`<span class="pill ${m[1]} mini">${m[0]}</span>`:'';}
