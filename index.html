@@ -2152,19 +2152,29 @@ function essenRundeById(id){ return essenRunden.find(r=>r.id===id); }
 function essenMenuOfRunde(id){ return essenMenu.filter(x=>x.runde_id===id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0)); }
 function essenBestellungenOfRunde(id){ return essenBestellungen.filter(x=>x.runde_id===id); }
 function essenOptionText(b){ return [b.option1_wert,b.option2_wert].filter(Boolean).join(', '); }
+/* Preis einer Bestellzeile: falls das Gericht je Wert der 1. Optionsgruppe unterschiedliche
+   Preise hat (z. B. Pizzagröße 26/30 cm), wird der passende Preis nachgeschlagen. */
+function essenLinePreis(item,o1){
+  if(item.option1_preise && o1 && item.option1_werte){
+    const idx=item.option1_werte.indexOf(o1);
+    if(idx!==-1 && item.option1_preise[idx]!=null) return item.option1_preise[idx];
+  }
+  return item.preis;
+}
 function essenByMember(rundeId){
   const map={};
   essenBestellungenOfRunde(rundeId).forEach(b=>{
     const item=essenMenu.find(m=>m.id===b.menu_id); if(!item) return;
     const opt=essenOptionText(b);
+    const preis=essenLinePreis(item,b.option1_wert);
     if(!map[b.mitglied_id]) map[b.mitglied_id]={items:[],total:0};
-    map[b.mitglied_id].items.push({name:opt?`${item.name} (${opt})`:item.name, anzahl:b.anzahl, preis:item.preis});
-    map[b.mitglied_id].total += b.anzahl*item.preis;
+    map[b.mitglied_id].items.push({name:opt?`${item.name} (${opt})`:item.name, anzahl:b.anzahl, preis});
+    map[b.mitglied_id].total += b.anzahl*preis;
   });
   return map;
 }
 function essenGrandTotal(rundeId){
-  return essenBestellungenOfRunde(rundeId).reduce((s,b)=>{ const item=essenMenu.find(m=>m.id===b.menu_id); return s+(item?b.anzahl*item.preis:0); },0);
+  return essenBestellungenOfRunde(rundeId).reduce((s,b)=>{ const item=essenMenu.find(m=>m.id===b.menu_id); return s+(item?b.anzahl*essenLinePreis(item,b.option1_wert):0); },0);
 }
 const ESSEN_ZAHLART_LABEL={selbst:'Jeder zahlt selbst',ausgelegt:'Ausgelegt',kasse:'Kirmeskasse'};
 const ESSEN_ZAHLART_PILL={selbst:'gray',ausgelegt:'warn',kasse:'ok'};
@@ -2217,7 +2227,8 @@ function renderEssen(){
       <div class="submuted" style="margin-bottom:8px">Gerichte werden nur im Restaurant (🏬) bearbeitet oder gelöscht.</div>
       ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th></tr></thead>
       <tbody>${menu.map(item=>{const anz=bestellungen.filter(b=>b.menu_id===item.id).reduce((s,b)=>s+b.anzahl,0);
-        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc((item.option1_werte||[]).join('/'))}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td></tr>`;}).join('')}</tbody></table>`
+        const opt1Text=(item.option1_werte||[]).map((w,i)=>item.option1_preise?`${w} (${eur(item.option1_preise[i])})`:w).join(' / ');
+        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc(opt1Text)}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${item.option1_preise?'ab '+eur(Math.min(...item.option1_preise)):eur(item.preis)}</td><td style="text-align:right">${anz}</td></tr>`;}).join('')}</tbody></table>`
       :'<div class="empty">Noch kein Menü angelegt.</div>'}
     </div>
     <div class="panel">
@@ -2321,7 +2332,7 @@ async function saveEssenRunde(btn){
     if(error) throw error;
     const menuRows = restaurantItems
       ? restaurantItems.map((g,i)=>({runde_id:runde.id, name:g.name, preis:g.preis, reihenfolge:i, zusatz:g.zusatz,
-          option1_label:g.option1_label, option1_werte:g.option1_werte, option2_label:g.option2_label, option2_werte:g.option2_werte}))
+          option1_label:g.option1_label, option1_werte:g.option1_werte, option1_preise:g.option1_preise, option2_label:g.option2_label, option2_werte:g.option2_werte}))
       : validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i, zusatz:r.zusatz.trim()||null}));
     const {error:menuErr}=await sb.from('essen_menu').insert(menuRows);
     if(menuErr) throw menuErr;
@@ -2388,7 +2399,8 @@ function essenRestaurantCardHtml(r){
         <label class="field"><span>Ort / Adresse</span><input id="er_ort_${r.id}" value="${esc(r.ort||'')}" placeholder="optional" onchange="saveEssenRestaurantInfo('${r.id}')"></label>
       </div>
       ${gerichte.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th></th></tr></thead>
-        <tbody>${gerichte.map(g=>`<tr><td>${esc(g.name)}${g.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(g.zusatz)}</div>`:''}${g.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(g.option1_label)}: ${esc((g.option1_werte||[]).join('/'))}${g.option2_label?` · ${esc(g.option2_label)}: ${esc((g.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>`
+        <tbody>${gerichte.map(g=>{const opt1Text=(g.option1_werte||[]).map((w,i)=>g.option1_preise?`${w} (${eur(g.option1_preise[i])})`:w).join(' / ');
+          return `<tr><td>${esc(g.name)}${g.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(g.zusatz)}</div>`:''}${g.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(g.option1_label)}: ${esc(opt1Text)}${g.option2_label?` · ${esc(g.option2_label)}: ${esc((g.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${g.option1_preise?'ab '+eur(Math.min(...g.option1_preise)):eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`;}).join('')}</tbody></table>`
         :'<div class="empty">Noch kein Menü hinterlegt.</div>'}
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <input id="er_item_name_${r.id}" placeholder="Gericht" style="width:auto;min-width:140px">
@@ -2401,6 +2413,7 @@ function essenRestaurantCardHtml(r){
         <input id="er_item_opt1label_${r.id}" placeholder="Gruppe 1, z. B. Fleisch">
         <input id="er_item_opt1werte_${r.id}" placeholder="Kalb, Pute">
       </div>
+      <input id="er_item_opt1preise_${r.id}" placeholder="Preise für Gruppe 1 (optional, je Wert, z. B. 8,00, 9,00 – bei Preisunterschied wie Pizzagröße)" style="margin-top:6px">
       <div class="grid2" style="margin-top:6px">
         <input id="er_item_opt2label_${r.id}" placeholder="Gruppe 2, z. B. Soße">
         <input id="er_item_opt2werte_${r.id}" placeholder="Knoblauch, Joghurt, Scharf">
@@ -2438,15 +2451,18 @@ async function saveEssenRestaurantInfo(id){
   await loadAll(); renderEssenRestaurantsModal();
 }
 async function addEssenRestGericht(restaurantId){
-  const name=val('er_item_name_'+restaurantId); const preis=num('er_item_preis_'+restaurantId);
-  if(!name||preis<=0){ alert('Bitte Gericht und Preis eingeben.'); return; }
-  const reihenfolge=essenRestaurantGerichte.filter(g=>g.restaurant_id===restaurantId).length;
+  const name=val('er_item_name_'+restaurantId); const preisInput=num('er_item_preis_'+restaurantId);
   const opt1Label=val('er_item_opt1label_'+restaurantId), opt2Label=val('er_item_opt2label_'+restaurantId);
   const opt1Werte=val('er_item_opt1werte_'+restaurantId).split(',').map(s=>s.trim()).filter(Boolean);
+  const opt1PreiseRaw=val('er_item_opt1preise_'+restaurantId).split(',').map(s=>parseFloat(s.trim().replace(',','.'))).filter(n=>!isNaN(n));
   const opt2Werte=val('er_item_opt2werte_'+restaurantId).split(',').map(s=>s.trim()).filter(Boolean);
+  const hasOpt1Preise = opt1Label && opt1Werte.length && opt1PreiseRaw.length===opt1Werte.length;
+  if(!name || (!hasOpt1Preise && preisInput<=0)){ alert('Bitte Gericht und Preis eingeben.'); return; }
+  const reihenfolge=essenRestaurantGerichte.filter(g=>g.restaurant_id===restaurantId).length;
   const {error}=await sb.from('essen_restaurant_gerichte').insert({
-    restaurant_id:restaurantId, name, preis, reihenfolge, zusatz: val('er_item_zusatz_'+restaurantId)||null,
+    restaurant_id:restaurantId, name, preis: hasOpt1Preise?opt1PreiseRaw[0]:preisInput, reihenfolge, zusatz: val('er_item_zusatz_'+restaurantId)||null,
     option1_label: opt1Label||null, option1_werte: (opt1Label&&opt1Werte.length)?opt1Werte:null,
+    option1_preise: hasOpt1Preise?opt1PreiseRaw:null,
     option2_label: opt2Label||null, option2_werte: (opt2Label&&opt2Werte.length)?opt2Werte:null,
   });
   if(error){ alert('Fehler: '+error.message); return; }
