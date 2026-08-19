@@ -236,11 +236,11 @@
 
   <nav>
     <button class="active" data-view="dashboard" onclick="show('dashboard')">📊 Übersicht</button>
+    <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="members" onclick="show('members')">👥 Mitglieder</button>
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
-    <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="fundsachen" onclick="show('fundsachen')">🧦 Fundsachen</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
@@ -567,6 +567,7 @@
         <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
           <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
           <option value="essen">🍔 Essen bestellen</option>
+          <option value="staendchen">🎶 Ständchen</option>
         </select></span>
       </div>
       <div id="sonstBody"></div>
@@ -619,10 +620,12 @@ let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let essenRunden = [], essenMenu = [], essenBestellungen = [], essenSel = null, essenDraft = null;
 let essenRestaurants = [], essenRestaurantGerichte = [];
+let staendchen = [];
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
   {key:'essen', label:'🍔 Essen bestellen'},
+  {key:'staendchen', label:'🎶 Ständchen'},
   // weitere „Sonstiges"-Unterseiten hier ergänzen
 ];
 let flyoutHideTimer = null;
@@ -749,7 +752,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -771,6 +774,7 @@ async function loadAll(){
     sb.from('essen_bestellungen').select('*'),
     sb.from('essen_restaurants').select('*').order('name'),
     sb.from('essen_restaurant_gerichte').select('*'),
+    sb.from('staendchen').select('*').order('erledigt').order('name'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -795,6 +799,8 @@ async function loadAll(){
   if(eb&&eb.error) console.warn('essen_bestellungen:',eb.error.message);
   if(ers&&ers.error) console.warn('essen_restaurants:',ers.error.message);
   if(erg&&erg.error) console.warn('essen_restaurant_gerichte:',erg.error.message);
+  staendchen = (st&&st.data)||[];
+  if(st&&st.error) console.warn('staendchen:',st.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1938,6 +1944,7 @@ function renderSonstiges(){
   if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
   if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
   if(sonstBereich==='essen') renderEssen();
+  if(sonstBereich==='staendchen') renderStaendchen();
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
 function showSonstFlyout(btn){
@@ -2141,12 +2148,14 @@ function printKvvAktion(aktionId){
 function essenRundeById(id){ return essenRunden.find(r=>r.id===id); }
 function essenMenuOfRunde(id){ return essenMenu.filter(x=>x.runde_id===id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0)); }
 function essenBestellungenOfRunde(id){ return essenBestellungen.filter(x=>x.runde_id===id); }
+function essenOptionText(b){ return [b.option1_wert,b.option2_wert].filter(Boolean).join(', '); }
 function essenByMember(rundeId){
   const map={};
   essenBestellungenOfRunde(rundeId).forEach(b=>{
     const item=essenMenu.find(m=>m.id===b.menu_id); if(!item) return;
+    const opt=essenOptionText(b);
     if(!map[b.mitglied_id]) map[b.mitglied_id]={items:[],total:0};
-    map[b.mitglied_id].items.push({name:item.name, anzahl:b.anzahl, preis:item.preis});
+    map[b.mitglied_id].items.push({name:opt?`${item.name} (${opt})`:item.name, anzahl:b.anzahl, preis:item.preis});
     map[b.mitglied_id].total += b.anzahl*item.preis;
   });
   return map;
@@ -2210,7 +2219,7 @@ function renderEssen(){
         </div>`:''}
       ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th>${runde.status==='offen'?'<th></th>':''}</tr></thead>
       <tbody>${menu.map(item=>{const anz=bestellungen.filter(b=>b.menu_id===item.id).reduce((s,b)=>s+b.anzahl,0);
-        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td>${runde.status==='offen'?`<td><button class="icon-btn" onclick="delEssenMenuItem('${item.id}')">🗑️</button></td>`:''}</tr>`;}).join('')}</tbody></table>`
+        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc((item.option1_werte||[]).join('/'))}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td>${runde.status==='offen'?`<td><button class="icon-btn" onclick="delEssenMenuItem('${item.id}')">🗑️</button></td>`:''}</tr>`;}).join('')}</tbody></table>`
       :'<div class="empty">Noch kein Menü angelegt.</div>'}
     </div>
     <div class="panel">
@@ -2313,7 +2322,8 @@ async function saveEssenRunde(btn){
     }).select().single();
     if(error) throw error;
     const menuRows = restaurantItems
-      ? restaurantItems.map((g,i)=>({runde_id:runde.id, name:g.name, preis:g.preis, reihenfolge:i, zusatz:g.zusatz}))
+      ? restaurantItems.map((g,i)=>({runde_id:runde.id, name:g.name, preis:g.preis, reihenfolge:i, zusatz:g.zusatz,
+          option1_label:g.option1_label, option1_werte:g.option1_werte, option2_label:g.option2_label, option2_werte:g.option2_werte}))
       : validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i, zusatz:r.zusatz.trim()||null}));
     const {error:menuErr}=await sb.from('essen_menu').insert(menuRows);
     if(menuErr) throw menuErr;
@@ -2391,7 +2401,7 @@ function essenRestaurantCardHtml(r){
         <label class="field"><span>Ort / Adresse</span><input id="er_ort_${r.id}" value="${esc(r.ort||'')}" placeholder="optional" onchange="saveEssenRestaurantInfo('${r.id}')"></label>
       </div>
       ${gerichte.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th></th></tr></thead>
-        <tbody>${gerichte.map(g=>`<tr><td>${esc(g.name)}${g.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(g.zusatz)}</div>`:''}</td><td style="text-align:right">${eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>`
+        <tbody>${gerichte.map(g=>`<tr><td>${esc(g.name)}${g.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(g.zusatz)}</div>`:''}${g.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(g.option1_label)}: ${esc((g.option1_werte||[]).join('/'))}${g.option2_label?` · ${esc(g.option2_label)}: ${esc((g.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>`
         :'<div class="empty">Noch kein Menü hinterlegt.</div>'}
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <input id="er_item_name_${r.id}" placeholder="Gericht" style="width:auto;min-width:140px">
@@ -2399,6 +2409,15 @@ function essenRestaurantCardHtml(r){
         <button class="btn sm" onclick="addEssenRestGericht('${r.id}')">＋</button>
       </div>
       <input id="er_item_zusatz_${r.id}" placeholder="Beschreibung für das neue Gericht (optional)" style="margin-top:6px">
+      <div class="submuted" style="margin-top:8px">Auswahl-Optionen (optional, z. B. Fleisch/Soße):</div>
+      <div class="grid2" style="margin-top:4px">
+        <input id="er_item_opt1label_${r.id}" placeholder="Gruppe 1, z. B. Fleisch">
+        <input id="er_item_opt1werte_${r.id}" placeholder="Kalb, Pute">
+      </div>
+      <div class="grid2" style="margin-top:6px">
+        <input id="er_item_opt2label_${r.id}" placeholder="Gruppe 2, z. B. Soße">
+        <input id="er_item_opt2werte_${r.id}" placeholder="Knoblauch, Joghurt, Scharf">
+      </div>
       <button class="btn ghost sm" style="margin-top:12px;color:var(--red)" onclick="delEssenRestaurant('${r.id}')">🗑 Restaurant löschen</button>
     `:''}
   </div>`;
@@ -2435,7 +2454,14 @@ async function addEssenRestGericht(restaurantId){
   const name=val('er_item_name_'+restaurantId); const preis=num('er_item_preis_'+restaurantId);
   if(!name||preis<=0){ alert('Bitte Gericht und Preis eingeben.'); return; }
   const reihenfolge=essenRestaurantGerichte.filter(g=>g.restaurant_id===restaurantId).length;
-  const {error}=await sb.from('essen_restaurant_gerichte').insert({restaurant_id:restaurantId, name, preis, reihenfolge, zusatz: val('er_item_zusatz_'+restaurantId)||null});
+  const opt1Label=val('er_item_opt1label_'+restaurantId), opt2Label=val('er_item_opt2label_'+restaurantId);
+  const opt1Werte=val('er_item_opt1werte_'+restaurantId).split(',').map(s=>s.trim()).filter(Boolean);
+  const opt2Werte=val('er_item_opt2werte_'+restaurantId).split(',').map(s=>s.trim()).filter(Boolean);
+  const {error}=await sb.from('essen_restaurant_gerichte').insert({
+    restaurant_id:restaurantId, name, preis, reihenfolge, zusatz: val('er_item_zusatz_'+restaurantId)||null,
+    option1_label: opt1Label||null, option1_werte: (opt1Label&&opt1Werte.length)?opt1Werte:null,
+    option2_label: opt2Label||null, option2_werte: (opt2Label&&opt2Werte.length)?opt2Werte:null,
+  });
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll(); renderEssenRestaurantsModal();
 }
@@ -2452,6 +2478,68 @@ async function delEssenRestaurant(id){
   essenRestExpanded=null;
   await loadAll(); renderEssenRestaurantsModal();
 }
+
+/* ---- Sonstiges: Ständchen (Checkliste, wem eins gebracht werden soll) ---- */
+function renderStaendchen(){
+  const body=document.getElementById('sonstBody');
+  const offen=staendchen.filter(x=>!x.erledigt);
+  const erledigt=staendchen.filter(x=>x.erledigt);
+  function row(x){
+    return `<tr${x.erledigt?' style="opacity:.55"':''}>
+      <td>${x.erledigt?'<s>'+esc(x.name)+'</s>':'<b>'+esc(x.name)+'</b>'}</td>
+      <td>${esc(x.adresse||'–')}</td>
+      <td class="submuted">${esc(x.notiz||'')}</td>
+      <td><div class="row-actions">
+        <button class="btn ghost sm" onclick="toggleStaendchenErledigt('${x.id}')">${x.erledigt?'↩ offen':'✓ erledigt'}</button>
+        <button class="icon-btn" onclick="openStaendchen('${x.id}')">✏️</button>
+        <button class="icon-btn" onclick="delStaendchen('${x.id}')">🗑️</button>
+      </div></td></tr>`;
+  }
+  body.innerHTML=`
+    <div class="note">Wem noch ein Ständchen gebracht werden soll – abhaken, sobald erledigt.</div>
+    <div class="cards">
+      <div class="card"><div class="label">Offen</div><div class="value">${offen.length}</div></div>
+      <div class="card"><div class="label">Erledigt</div><div class="value green">${erledigt.length}</div></div>
+    </div>
+    <div class="panel">
+      <h3>🎶 Ständchen
+        <span class="grow"><button class="btn sm" onclick="openStaendchen()">＋ Neuer Eintrag</button></span>
+      </h3>
+      ${staendchen.length?`<table>
+        <thead><tr><th>Name</th><th>Adresse</th><th>Notiz</th><th></th></tr></thead>
+        <tbody>${offen.map(row).join('')}${erledigt.map(row).join('')}</tbody>
+      </table>`:'<div class="empty">Noch keine Einträge. Oben hinzufügen.</div>'}
+    </div>`;
+}
+function staendchenById(id){ return staendchen.find(x=>x.id===id); }
+function openStaendchen(id){
+  const x=id?staendchenById(id):{name:'',adresse:'',notiz:''};
+  openModal(`<h3>${id?'Eintrag bearbeiten':'Neuer Ständchen-Eintrag'}</h3>
+    <label class="field"><span>Name *</span><input id="st_name" value="${esc(x.name)}" placeholder="z. B. Familie Müller"></label>
+    <label class="field"><span>Adresse</span><input id="st_adresse" value="${esc(x.adresse||'')}" placeholder="optional"></label>
+    <label class="field"><span>Notiz</span><textarea id="st_notiz" rows="2" placeholder="z. B. Anlass">${esc(x.notiz||'')}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveStaendchen('${id||''}',this)">Speichern</button></div>`);
+}
+function saveStaendchen(id,btn){
+  const name=val('st_name');
+  if(!name){ alert('Bitte einen Namen eingeben.'); return; }
+  const row={name, adresse:val('st_adresse')||null, notiz:val('st_notiz')||null};
+  withBtn(btn,async()=>{
+    if(id){ const {error}=await sb.from('staendchen').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('staendchen').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+async function toggleStaendchenErledigt(id){
+  const x=staendchenById(id); if(!x) return;
+  const erledigt=!x.erledigt;
+  const {error}=await sb.from('staendchen').update({erledigt, erledigt_at: erledigt?new Date().toISOString():null}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+function delStaendchen(id){ if(!confirm('Eintrag wirklich entfernen?'))return;
+  sb.from('staendchen').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 const __origTitle=document.title;
 function printDoc(title){ if(title) document.title=title; window.print(); }
