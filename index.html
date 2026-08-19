@@ -2580,9 +2580,21 @@ function staendchenHausnrSort(a,b){
   if(pa!==pb) return pa-pb;
   return String(a||'').localeCompare(String(b||''),'de');
 }
+function staendchenAddrText(x){ return `${x.strasse||''} ${x.hausnummer||''}, Nesse-Apfelstädt OT Apfelstädt`.trim(); }
 function staendchenMapsUrl(x){
-  const q=encodeURIComponent(`${x.strasse||''} ${x.hausnummer||''}, Nesse-Apfelstädt OT Apfelstädt`.trim());
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(staendchenAddrText(x))}`;
+}
+// Alle Adressen als eine zusammenhängende Route (Start = 1. Adresse, Ziel = letzte, Rest als Zwischenstopps) –
+// öffnet in Google Maps, wo die Reihenfolge der Stopps per Drag&Drop noch selbst angepasst werden kann.
+// Google Maps unterstützt über die URL nur eine begrenzte Anzahl Zwischenstopps (praktisch bis ca. 25).
+function staendchenFullRouteUrl(sorted){
+  if(sorted.length<2) return null;
+  const origin=encodeURIComponent(staendchenAddrText(sorted[0]));
+  const destination=encodeURIComponent(staendchenAddrText(sorted[sorted.length-1]));
+  const waypoints=sorted.slice(1,-1).map(x=>encodeURIComponent(staendchenAddrText(x))).join('|');
+  let url=`https://www.google.com/maps/dir/?api=1&travelmode=walking&origin=${origin}&destination=${destination}`;
+  if(waypoints) url+=`&waypoints=${waypoints}`;
+  return url;
 }
 function renderStaendchenRoute(){
   const body=document.getElementById('stBereichRoute'); if(!body) return;
@@ -2590,17 +2602,19 @@ function renderStaendchenRoute(){
     const sc=(a.strasse||'').localeCompare(b.strasse||'','de');
     return sc!==0 ? sc : staendchenHausnrSort(a.hausnummer,b.hausnummer);
   });
+  const fullRouteUrl=staendchenFullRouteUrl(sorted);
   body.innerHTML=`
-    <div class="note">Route sortiert nach Straße und Hausnummer – so lässt sich effizient von Haus zu Haus abklappern. Karte und 🗺-Links führen zu Google Maps.</div>
+    <div class="note">Route sortiert nach Straße und Hausnummer – so lässt sich effizient von Haus zu Haus abklappern. Karte und 🗺-Links führen zu Google Maps; die Reihenfolge der Stopps kannst du dort per Drag&amp;Drop noch selbst anpassen (bei mehr als ~25 Adressen ggf. in Teilrouten aufteilen).</div>
     <div class="panel">
       <div style="border-radius:12px;overflow:hidden;aspect-ratio:16/7">
         <iframe src="https://www.google.com/maps?q=Nesse-Apfelst%C3%A4dt%20OT%20Apfelst%C3%A4dt&output=embed" width="100%" height="100%" style="border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       </div>
+      ${fullRouteUrl?`<div style="margin-top:12px"><a href="${fullRouteUrl}" target="_blank" rel="noopener" class="btn">🗺 Gesamte Route (${sorted.length} Stopps) in Google Maps öffnen</a></div>`:''}
     </div>
     <div class="panel">
       ${sorted.length?`<table>
         <thead><tr><th>#</th><th>Straße</th><th>Hausnr.</th><th>Name</th><th>Notiz</th><th></th></tr></thead>
-        <tbody>${sorted.map((x,i)=>`<tr><td class="submuted">${i+1}</td><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺 Route</a></td></tr>`).join('')}</tbody>
+        <tbody>${sorted.map((x,i)=>`<tr><td class="submuted">${i+1}</td><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺 Stopp</a></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Adressen erfasst – unter „Adresslisten" hinzufügen.</div>'}
     </div>`;
 }
