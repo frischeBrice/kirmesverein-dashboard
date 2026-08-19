@@ -2235,7 +2235,8 @@ function renderEssen(){
         ${runde.ort?' · 📍 '+esc(runde.ort):''}
         ${runde.status==='geschlossen'?' · <span class="pill gray">geschlossen</span>':' · <span class="pill ok">offen</span>'}
       </div>` : ''}
-      ${runde && runde.status==='offen' ? `<div style="display:flex;gap:8px;margin-top:10px">
+      ${runde && runde.status==='offen' ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${runde.restaurant_id?`<button class="btn ghost sm" onclick="syncEssenMenuWithRestaurant('${runde.id}')">🔄 Menü aktualisieren</button>`:''}
         <button class="btn ghost sm" onclick="closeEssenRunde('${runde.id}')">✓ Schließen</button>
         <button class="btn ghost sm" onclick="discardEssenRunde('${runde.id}')">🗑 Verwerfen</button>
       </div>` : ''}
@@ -2402,6 +2403,27 @@ async function finalizeEssenRunde(rundeId, withBooking){
 function discardEssenRunde(rundeId){
   if(!confirm('Die gesamte Bestellrunde inkl. aller Bestellungen wird gelöscht (keine Buchung). Fortfahren?')) return;
   sb.from('essen_runden').delete().eq('id',rundeId).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { essenSel=null; loadAll(); } });
+}
+/* Menü einer laufenden Runde mit dem aktuellen Restaurant-Stand abgleichen: neue Gerichte
+   ergänzen, vorhandene aktualisieren (Preis/Beschreibung/Optionen) – löscht nichts, damit
+   bereits bestellte Gerichte nicht verschwinden. */
+async function syncEssenMenuWithRestaurant(rundeId){
+  const runde=essenRundeById(rundeId); if(!runde || !runde.restaurant_id) return;
+  const restItems=essenRestaurantGerichte.filter(g=>g.restaurant_id===runde.restaurant_id);
+  if(!restItems.length){ alert('Dieses Restaurant hat kein Menü hinterlegt.'); return; }
+  const menuNow=essenMenuOfRunde(rundeId);
+  const byName={}; menuNow.forEach(m=>{ byName[m.name]=m; });
+  const toInsert=[]; const updates=[];
+  restItems.forEach((g,i)=>{
+    const fields={preis:g.preis, reihenfolge:i, zusatz:g.zusatz, option1_label:g.option1_label, option1_werte:g.option1_werte, option1_preise:g.option1_preise, option2_label:g.option2_label, option2_werte:g.option2_werte};
+    const existing=byName[g.name];
+    if(existing) updates.push({id:existing.id, ...fields});
+    else toInsert.push({runde_id:rundeId, name:g.name, ...fields});
+  });
+  if(toInsert.length){ const {error}=await sb.from('essen_menu').insert(toInsert); if(error){ alert('Fehler: '+error.message); return; } }
+  for(const u of updates){ const {id,...rest}=u; await sb.from('essen_menu').update(rest).eq('id',id); }
+  alert(`Menü aktualisiert: ${toInsert.length} neu hinzugefügt, ${updates.length} aktualisiert.`);
+  await loadAll();
 }
 
 /* ---- Restaurants mit wiederverwendbarem Menü (App und Web teilen sich dieselben Tabellen) ---- */
