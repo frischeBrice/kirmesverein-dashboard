@@ -2232,31 +2232,39 @@ function essenSelectRestaurant(id){
   essenSyncDraft();
   essenDraft.restaurantId = id || null;
   if(id){
-    const items=essenRestaurantGerichte.filter(g=>g.restaurant_id===id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0));
-    essenDraft.rows = items.length ? items.map(g=>({name:g.name, preis:String(g.preis).replace('.',','), zusatz:g.zusatz||''})) : [{name:'',preis:'',zusatz:''}];
     const rest=essenRestaurants.find(r=>r.id===id);
-    if(rest && rest.ort) essenDraft.ort = rest.ort;
+    essenDraft.ort = rest ? (rest.ort ? rest.name+' – '+rest.ort : rest.name) : '';
   } else {
-    essenDraft.rows = [{name:'',preis:'',zusatz:''}];
+    essenDraft.ort = '';
   }
   renderEssenModal();
 }
 function essenSyncDraft(){
   if(!essenDraft) return;
   essenDraft.titel = val('es_titel');
-  essenDraft.ort = val('es_ort');
+  if(!essenDraft.restaurantId) essenDraft.ort = val('es_ort');
   essenDraft.zahlart = val('es_zahlart') || essenDraft.zahlart;
   essenDraft.ausgelegtVon = val('es_ausgelegt');
-  essenDraft.rows.forEach((r,i)=>{ r.name = val('es_row_name_'+i); r.preis = val('es_row_preis_'+i); r.zusatz = val('es_row_zusatz_'+i); });
+  if(!essenDraft.restaurantId){
+    essenDraft.rows.forEach((r,i)=>{ r.name = val('es_row_name_'+i); r.preis = val('es_row_preis_'+i); r.zusatz = val('es_row_zusatz_'+i); });
+  }
 }
 function essenAddRow(){ essenSyncDraft(); essenDraft.rows.push({name:'',preis:'',zusatz:''}); renderEssenModal(); }
 function essenRemoveRow(i){ essenSyncDraft(); if(essenDraft.rows.length>1) essenDraft.rows.splice(i,1); renderEssenModal(); }
 function essenZahlartChange(){ essenSyncDraft(); renderEssenModal(); }
 function renderEssenModal(){
   const d=essenDraft;
+  const restName = d.restaurantId ? ((essenRestaurants.find(r=>r.id===d.restaurantId)||{}).name||'') : '';
+  const restCount = d.restaurantId ? essenRestaurantGerichte.filter(g=>g.restaurant_id===d.restaurantId).length : 0;
   openModal(`<h3>Neue Bestellrunde</h3>
     <label class="field"><span>Titel *</span><input id="es_titel" value="${esc(d.titel)}" placeholder="z. B. Pizza-Bestellung Freitag"></label>
-    <label class="field"><span>Wo bestellen?</span><input id="es_ort" value="${esc(d.ort)}" placeholder="Restaurant / Lieferdienst"></label>
+    <div class="field"><span>Wo bestellen?</span>
+      <select id="es_restaurant" onchange="essenSelectRestaurant(this.value)">
+        <option value="">Sonstiges</option>
+        ${essenRestaurants.map(r=>`<option value="${r.id}" ${d.restaurantId===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
+      </select>
+    </div>
+    ${!d.restaurantId?`<input id="es_ort" value="${esc(d.ort)}" placeholder="Ort / Lieferdienst" style="margin-top:6px">`:''}
     <label class="field"><span>Zahlart</span>
       <select id="es_zahlart" onchange="essenZahlartChange()">
         <option value="selbst" ${d.zahlart==='selbst'?'selected':''}>Jeder zahlt selbst</option>
@@ -2265,13 +2273,9 @@ function renderEssenModal(){
       </select>
     </label>
     ${d.zahlart==='ausgelegt'?`<label class="field"><span>Wer legt das Geld aus?</span><input id="es_ausgelegt" value="${esc(d.ausgelegtVon)}" placeholder="Name"></label>`:''}
-    <div class="field"><span>Restaurant (optional – füllt das Menü automatisch)</span>
-      <select id="es_restaurant" onchange="essenSelectRestaurant(this.value)">
-        <option value="">Eigenes Menü</option>
-        ${essenRestaurants.map(r=>`<option value="${r.id}" ${d.restaurantId===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
-      </select>
-    </div>
-    <div class="field"><span>Menü</span>
+    ${d.restaurantId
+      ? `<div class="note">🍽 ${restCount} Gerichte von <b>${esc(restName)}</b> werden übernommen.</div>`
+      : `<div class="field"><span>Menü</span>
       ${d.rows.map((r,i)=>`<div style="margin-bottom:10px">
         <div class="grid2" style="align-items:end;margin-bottom:6px">
           <input id="es_row_name_${i}" value="${esc(r.name)}" placeholder="Gericht">
@@ -2283,7 +2287,7 @@ function renderEssenModal(){
         <input id="es_row_zusatz_${i}" value="${esc(r.zusatz)}" placeholder="Beschreibung (optional)">
       </div>`).join('')}
       <button class="btn ghost sm" onclick="essenAddRow()">＋ Position</button>
-    </div>
+    </div>`}
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveEssenRunde(this)">Runde starten</button></div>`);
 }
@@ -2291,8 +2295,14 @@ async function saveEssenRunde(btn){
   essenSyncDraft();
   const d=essenDraft;
   if(!d.titel.trim()){ alert('Bitte einen Titel eingeben.'); return; }
+  const restaurantItems = d.restaurantId
+    ? essenRestaurantGerichte.filter(g=>g.restaurant_id===d.restaurantId).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0))
+    : null;
   const validRows=d.rows.filter(r=>r.name.trim() && r.preis!=='' && !isNaN(parseFloat(String(r.preis).replace(',','.'))));
-  if(!validRows.length){ alert('Bitte mindestens einen Menüpunkt mit Preis eingeben.'); return; }
+  if(restaurantItems ? !restaurantItems.length : !validRows.length){
+    alert(restaurantItems ? 'Dieses Restaurant hat noch kein Menü hinterlegt.' : 'Bitte mindestens einen Menüpunkt mit Preis eingeben.');
+    return;
+  }
   if(d.zahlart==='ausgelegt' && !d.ausgelegtVon.trim()){ alert('Bitte angeben, wer das Geld auslegt.'); return; }
   withBtn(btn, async()=>{
     const {data:runde,error}=await sb.from('essen_runden').insert({
@@ -2302,7 +2312,9 @@ async function saveEssenRunde(btn){
       restaurant_id: d.restaurantId || null,
     }).select().single();
     if(error) throw error;
-    const menuRows=validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i, zusatz:r.zusatz.trim()||null}));
+    const menuRows = restaurantItems
+      ? restaurantItems.map((g,i)=>({runde_id:runde.id, name:g.name, preis:g.preis, reihenfolge:i, zusatz:g.zusatz}))
+      : validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i, zusatz:r.zusatz.trim()||null}));
     const {error:menuErr}=await sb.from('essen_menu').insert(menuRows);
     if(menuErr) throw menuErr;
     essenSel=runde.id;
