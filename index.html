@@ -244,6 +244,7 @@
     <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
     <button data-view="fundsachen" onclick="show('fundsachen')">🧦 Fundsachen</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
+    <button data-view="staendchen" onclick="show('staendchen')">🎶 Ständchen</button>
     <button data-view="sonstiges" onclick="show('sonstiges')"
       onmouseenter="showSonstFlyout(this)" onmouseleave="scheduleHideFlyout()">🗂 Sonstiges ▾</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
@@ -561,13 +562,18 @@
       <div class="panel"><div id="dokumenteTable"></div></div>
     </section>
 
+    <!-- STÄNDCHEN -->
+    <section class="view" id="staendchen">
+      <div class="view-head"><h2>🎶 Ständchen</h2></div>
+      <div id="staendchenBody"></div>
+    </section>
+
     <!-- SONSTIGES -->
     <section class="view" id="sonstiges">
       <div class="view-head"><h2>Sonstiges</h2>
         <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
           <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
           <option value="essen">🍔 Essen bestellen</option>
-          <option value="staendchen">🎶 Ständchen</option>
         </select></span>
       </div>
       <div id="sonstBody"></div>
@@ -625,7 +631,6 @@ let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
   {key:'essen', label:'🍔 Essen bestellen'},
-  {key:'staendchen', label:'🎶 Ständchen'},
   // weitere „Sonstiges"-Unterseiten hier ergänzen
 ];
 let flyoutHideTimer = null;
@@ -821,7 +826,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderSonstiges(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderSonstiges(); renderReport(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -1944,7 +1949,6 @@ function renderSonstiges(){
   if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
   if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
   if(sonstBereich==='essen') renderEssen();
-  if(sonstBereich==='staendchen') renderStaendchen();
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
 function showSonstFlyout(btn){
@@ -2019,13 +2023,12 @@ function renderKartenvorverkauf(){
             ? `<div style="text-decoration:line-through;color:var(--muted);font-size:12px">${esc(memberName(t.vorheriger_mitglied_id))} <button class="icon-btn" style="padding:0 3px;font-size:10px" title="Hinweis ausblenden" onclick="clearKvvTauschHinweis('${t.id}')">✕</button></div><div>→ ${m?nameWithAvatar(m):'—'}</div>`
             : (m?nameWithAvatar(m):'—');
           return `<tr>
-            <td>${mitgliedCell}</td>
+            <td><div style="display:flex;align-items:center;gap:6px">${mitgliedCell}<button class="icon-btn" title="Teilnehmer ersetzen" onclick="openKvvTausch('${t.id}')">🔄</button></div></td>
             <td><input type="number" min="0" step="1" value="${t.externe_anzahl}" class="beitrag-inp" onchange="setKvvExterne('${t.id}',this.value)"></td>
             <td>${kvvKarten(t)}</td>
             <td style="text-align:right">${eur(kvvBetrag(t))}</td>
             <td>${t.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
             <td><div class="row-actions">
-              <button class="btn ghost sm" onclick="openKvvTausch('${t.id}')">🔄 Tauschen</button>
               <button class="btn ghost sm" onclick="toggleKvvBezahlt('${t.id}')">${t.bezahlt?'auf offen':'bezahlt ✓'}</button>
               <button class="icon-btn" onclick="delKvvTeilnehmer('${t.id}')">🗑️</button>
             </div></td></tr>`;}).join('')}</tbody>
@@ -2211,15 +2214,10 @@ function renderEssen(){
     </div>
     <div class="panel">
       <h3>Menü</h3>
-      ${runde.status==='offen'?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <input id="es_new_item_name" placeholder="Gericht" style="width:auto;min-width:140px">
-          <input id="es_new_item_preis" type="number" step="0.01" min="0" placeholder="Preis €" style="width:auto;min-width:90px">
-          <input id="es_new_item_zusatz" placeholder="Beschreibung (optional)" style="width:auto;min-width:200px">
-          <button class="btn sm" onclick="addEssenMenuItem('${runde.id}')">＋</button>
-        </div>`:''}
-      ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th>${runde.status==='offen'?'<th></th>':''}</tr></thead>
+      <div class="submuted" style="margin-bottom:8px">Gerichte werden nur im Restaurant (🏬) bearbeitet oder gelöscht.</div>
+      ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th></tr></thead>
       <tbody>${menu.map(item=>{const anz=bestellungen.filter(b=>b.menu_id===item.id).reduce((s,b)=>s+b.anzahl,0);
-        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc((item.option1_werte||[]).join('/'))}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td>${runde.status==='offen'?`<td><button class="icon-btn" onclick="delEssenMenuItem('${item.id}')">🗑️</button></td>`:''}</tr>`;}).join('')}</tbody></table>`
+        return `<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc((item.option1_werte||[]).join('/'))}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td></tr>`;}).join('')}</tbody></table>`
       :'<div class="empty">Noch kein Menü angelegt.</div>'}
     </div>
     <div class="panel">
@@ -2331,17 +2329,6 @@ async function saveEssenRunde(btn){
     closeModal(); await loadAll();
   });
 }
-async function addEssenMenuItem(rundeId){
-  const name=val('es_new_item_name'); const preis=num('es_new_item_preis');
-  if(!name||preis<=0){ alert('Bitte Gericht und Preis eingeben.'); return; }
-  const reihenfolge=essenMenuOfRunde(rundeId).length;
-  const {error}=await sb.from('essen_menu').insert({runde_id:rundeId, name, preis, reihenfolge, zusatz: val('es_new_item_zusatz')||null});
-  if(error){ alert('Fehler: '+error.message); return; }
-  await loadAll();
-}
-function delEssenMenuItem(id){ if(!confirm('Menüpunkt wirklich entfernen?'))return;
-  sb.from('essen_menu').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
-
 function closeEssenRunde(rundeId){
   const runde=essenRundeById(rundeId); if(!runde) return;
   const total=essenGrandTotal(rundeId);
@@ -2481,7 +2468,7 @@ async function delEssenRestaurant(id){
 
 /* ---- Sonstiges: Ständchen (Checkliste, wem eins gebracht werden soll) ---- */
 function renderStaendchen(){
-  const body=document.getElementById('sonstBody');
+  const body=document.getElementById('staendchenBody'); if(!body) return;
   const offen=staendchen.filter(x=>!x.erledigt);
   const erledigt=staendchen.filter(x=>x.erledigt);
   function row(x){
