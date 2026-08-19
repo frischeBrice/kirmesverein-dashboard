@@ -618,6 +618,7 @@ let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let essenRunden = [], essenMenu = [], essenBestellungen = [], essenSel = null, essenDraft = null;
+let essenRestaurants = [], essenRestaurantGerichte = [];
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
@@ -748,7 +749,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -768,6 +769,8 @@ async function loadAll(){
     sb.from('essen_runden').select('*').order('created_at',{ascending:false}),
     sb.from('essen_menu').select('*'),
     sb.from('essen_bestellungen').select('*'),
+    sb.from('essen_restaurants').select('*').order('name'),
+    sb.from('essen_restaurant_gerichte').select('*'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -786,9 +789,12 @@ async function loadAll(){
   sponsoren = (sp&&sp.data)||[];
   kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
   essenRunden = (er&&er.data)||[]; essenMenu = (em&&em.data)||[]; essenBestellungen = (eb&&eb.data)||[];
+  essenRestaurants = (ers&&ers.data)||[]; essenRestaurantGerichte = (erg&&erg.data)||[];
   if(er&&er.error) console.warn('essen_runden:',er.error.message);
   if(em&&em.error) console.warn('essen_menu:',em.error.message);
   if(eb&&eb.error) console.warn('essen_bestellungen:',eb.error.message);
+  if(ers&&ers.error) console.warn('essen_restaurants:',ers.error.message);
+  if(erg&&erg.error) console.warn('essen_restaurant_gerichte:',erg.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -2002,13 +2008,17 @@ function renderKartenvorverkauf(){
       ${rows.length?`<table>
         <thead><tr><th>Mitglied</th><th>Externe Personen</th><th>Karten</th><th style="text-align:right">Betrag</th><th>Status</th><th></th></tr></thead>
         <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id);
+          const mitgliedCell = t.vorheriger_mitglied_id
+            ? `<div style="text-decoration:line-through;color:var(--muted);font-size:12px">${esc(memberName(t.vorheriger_mitglied_id))} <button class="icon-btn" style="padding:0 3px;font-size:10px" title="Hinweis ausblenden" onclick="clearKvvTauschHinweis('${t.id}')">✕</button></div><div>→ ${m?nameWithAvatar(m):'—'}</div>`
+            : (m?nameWithAvatar(m):'—');
           return `<tr>
-            <td>${m?nameWithAvatar(m):'—'}</td>
+            <td>${mitgliedCell}</td>
             <td><input type="number" min="0" step="1" value="${t.externe_anzahl}" class="beitrag-inp" onchange="setKvvExterne('${t.id}',this.value)"></td>
             <td>${kvvKarten(t)}</td>
             <td style="text-align:right">${eur(kvvBetrag(t))}</td>
             <td>${t.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
             <td><div class="row-actions">
+              <button class="btn ghost sm" onclick="openKvvTausch('${t.id}')">🔄 Tauschen</button>
               <button class="btn ghost sm" onclick="toggleKvvBezahlt('${t.id}')">${t.bezahlt?'auf offen':'bezahlt ✓'}</button>
               <button class="icon-btn" onclick="delKvvTeilnehmer('${t.id}')">🗑️</button>
             </div></td></tr>`;}).join('')}</tbody>
@@ -2063,6 +2073,32 @@ async function toggleKvvBezahlt(id){
 }
 function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
   sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+/* ---- Kartenvorverkauf: Teilnehmer ersetzen (falls jemand abspringt) ---- */
+function openKvvTausch(teilnehmerId){
+  const t=kvTeilnehmer.find(x=>x.id===teilnehmerId); if(!t) return;
+  const usedIds=new Set(kvTeilnehmer.filter(x=>x.aktion_id===t.aktion_id).map(x=>x.mitglied_id));
+  const avail=members.filter(m=>!usedIds.has(m.id));
+  if(!avail.length){ alert('Alle Mitglieder sind bereits in dieser Aktion erfasst.'); return; }
+  openModal(`<h3>🔄 Teilnehmer ersetzen</h3>
+    <div class="submuted" style="margin-bottom:10px"><b>${esc(memberName(t.mitglied_id))}</b> springt ab – wer rückt nach? Externe Personen/Bezahlstatus übernimmt der Platz unverändert.</div>
+    <label class="field"><span>Neues Mitglied</span>
+      <select id="kvv_tausch_neu">${avail.map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}</select>
+    </label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="doKvvTausch('${teilnehmerId}')">Ersetzen</button></div>`);
+}
+async function doKvvTausch(teilnehmerId){
+  const neu=val('kvv_tausch_neu'); if(!neu) return;
+  const t=kvTeilnehmer.find(x=>x.id===teilnehmerId); if(!t) return;
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({mitglied_id:neu, vorheriger_mitglied_id:t.mitglied_id}).eq('id',teilnehmerId);
+  if(error){ alert('Fehler: '+error.message); return; }
+  closeModal(); await loadAll();
+}
+function clearKvvTauschHinweis(teilnehmerId){
+  sb.from('kartenvorverkauf_teilnehmer').update({vorheriger_mitglied_id:null}).eq('id',teilnehmerId)
+    .then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); });
+}
 
 function printKvvAktion(aktionId){
   const id=aktionId||kvvSel;
@@ -2129,7 +2165,7 @@ function renderEssen(){
   const body=document.getElementById('sonstBody');
   if(!essenRunden.length){
     body.innerHTML=`<div class="note">Bestellrunden werden hier UND in der App verwaltet – beide greifen auf dieselben Daten zu (live gekoppelt über Supabase).</div>
-      <div class="panel"><button class="btn" onclick="openEssenRunde()">＋ Neue Bestellrunde</button></div>`;
+      <div class="panel"><button class="btn" onclick="openEssenRunde()">＋ Neue Bestellrunde</button> <button class="btn ghost" onclick="openEssenRestaurants()">🏬 Restaurants</button></div>`;
     return;
   }
   const runde=essenRundeById(essenSel);
@@ -2146,6 +2182,7 @@ function renderEssen(){
             ${essenRunden.map(r=>`<option value="${r.id}" ${r.id===essenSel?'selected':''}>${esc(r.titel)}${r.status==='geschlossen'?' (geschlossen)':''} · ${fmtDate(r.created_at)}</option>`).join('')}
           </select>
           <button class="btn ghost sm" onclick="openEssenRunde()">＋ Neue Runde</button>
+          <button class="btn ghost sm" onclick="openEssenRestaurants()">🏬 Restaurants</button>
         </span>
       </h3>
       ${runde?`<div class="submuted">
@@ -2188,7 +2225,20 @@ function renderEssen(){
 }
 
 function openEssenRunde(){
-  essenDraft = {titel:'', ort:'', zahlart:'selbst', ausgelegtVon:'', rows:[{name:'',preis:''}]};
+  essenDraft = {titel:'', ort:'', zahlart:'selbst', ausgelegtVon:'', restaurantId:null, rows:[{name:'',preis:''}]};
+  renderEssenModal();
+}
+function essenSelectRestaurant(id){
+  essenSyncDraft();
+  essenDraft.restaurantId = id || null;
+  if(id){
+    const items=essenRestaurantGerichte.filter(g=>g.restaurant_id===id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0));
+    essenDraft.rows = items.length ? items.map(g=>({name:g.name, preis:String(g.preis).replace('.',',')})) : [{name:'',preis:''}];
+    const rest=essenRestaurants.find(r=>r.id===id);
+    if(rest && rest.ort) essenDraft.ort = rest.ort;
+  } else {
+    essenDraft.rows = [{name:'',preis:''}];
+  }
   renderEssenModal();
 }
 function essenSyncDraft(){
@@ -2215,6 +2265,12 @@ function renderEssenModal(){
       </select>
     </label>
     ${d.zahlart==='ausgelegt'?`<label class="field"><span>Wer legt das Geld aus?</span><input id="es_ausgelegt" value="${esc(d.ausgelegtVon)}" placeholder="Name"></label>`:''}
+    <div class="field"><span>Restaurant (optional – füllt das Menü automatisch)</span>
+      <select id="es_restaurant" onchange="essenSelectRestaurant(this.value)">
+        <option value="">Eigenes Menü</option>
+        ${essenRestaurants.map(r=>`<option value="${r.id}" ${d.restaurantId===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}
+      </select>
+    </div>
     <div class="field"><span>Menü</span>
       ${d.rows.map((r,i)=>`<div class="grid2" style="align-items:end;margin-bottom:6px">
         <input id="es_row_name_${i}" value="${esc(r.name)}" placeholder="Gericht">
@@ -2240,6 +2296,7 @@ async function saveEssenRunde(btn){
       titel:d.titel.trim(), ort:d.ort.trim()||null, zahlart:d.zahlart,
       ausgelegt_von: d.zahlart==='ausgelegt' ? d.ausgelegtVon.trim() : null,
       status:'offen', created_by: me.id,
+      restaurant_id: d.restaurantId || null,
     }).select().single();
     if(error) throw error;
     const menuRows=validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i}));
@@ -2299,6 +2356,85 @@ async function finalizeEssenRunde(rundeId, withBooking){
 function discardEssenRunde(rundeId){
   if(!confirm('Die gesamte Bestellrunde inkl. aller Bestellungen wird gelöscht (keine Buchung). Fortfahren?')) return;
   sb.from('essen_runden').delete().eq('id',rundeId).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { essenSel=null; loadAll(); } });
+}
+
+/* ---- Restaurants mit wiederverwendbarem Menü (App und Web teilen sich dieselben Tabellen) ---- */
+let essenRestExpanded = null;
+function toggleEssenRestExpand(id){ essenRestExpanded = (essenRestExpanded===id) ? null : id; renderEssenRestaurantsModal(); }
+
+function openEssenRestaurants(){ renderEssenRestaurantsModal(); }
+
+function essenRestaurantCardHtml(r){
+  const gerichte=essenRestaurantGerichte.filter(g=>g.restaurant_id===r.id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0));
+  const exp=essenRestExpanded===r.id;
+  return `<div class="panel">
+    <h3 style="cursor:pointer" onclick="toggleEssenRestExpand('${r.id}')">${esc(r.name)} <span class="submuted" style="font-weight:400">${exp?'▲':'▼'}</span></h3>
+    ${r.ort?`<div class="submuted">📍 ${esc(r.ort)}</div>`:''}
+    ${exp?`
+      <div class="grid2" style="margin-top:10px">
+        <label class="field"><span>Name</span><input id="er_name_${r.id}" value="${esc(r.name)}" onchange="saveEssenRestaurantInfo('${r.id}')"></label>
+        <label class="field"><span>Ort / Adresse</span><input id="er_ort_${r.id}" value="${esc(r.ort||'')}" placeholder="optional" onchange="saveEssenRestaurantInfo('${r.id}')"></label>
+      </div>
+      ${gerichte.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th></th></tr></thead>
+        <tbody>${gerichte.map(g=>`<tr><td>${esc(g.name)}</td><td style="text-align:right">${eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>`
+        :'<div class="empty">Noch kein Menü hinterlegt.</div>'}
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <input id="er_item_name_${r.id}" placeholder="Gericht" style="width:auto;min-width:140px">
+        <input id="er_item_preis_${r.id}" type="number" step="0.01" min="0" placeholder="Preis €" style="width:auto;min-width:90px">
+        <button class="btn sm" onclick="addEssenRestGericht('${r.id}')">＋</button>
+      </div>
+      <button class="btn ghost sm" style="margin-top:12px;color:var(--red)" onclick="delEssenRestaurant('${r.id}')">🗑 Restaurant löschen</button>
+    `:''}
+  </div>`;
+}
+
+function renderEssenRestaurantsModal(){
+  openModal(`<h3>🏬 Restaurants</h3>
+    <div class="submuted" style="margin-bottom:10px">Menü einmal hinterlegen – steht danach in App und Dashboard bei jeder neuen Bestellrunde direkt zur Auswahl.</div>
+    ${essenRestaurants.length ? essenRestaurants.map(essenRestaurantCardHtml).join('') : '<div class="empty">Noch keine Restaurants angelegt.</div>'}
+    <div class="panel">
+      <h3>＋ Neues Restaurant</h3>
+      <label class="field"><span>Name *</span><input id="er_new_name" placeholder="z. B. Pizzeria Roma"></label>
+      <label class="field"><span>Ort / Adresse</span><input id="er_new_ort" placeholder="optional"></label>
+      <button class="btn" onclick="addEssenRestaurant()">Anlegen</button>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fertig</button></div>`, true);
+}
+
+async function addEssenRestaurant(){
+  const name=val('er_new_name');
+  if(!name){ alert('Bitte einen Namen eingeben.'); return; }
+  const {error}=await sb.from('essen_restaurants').insert({name, ort: val('er_new_ort')||null, created_by: me.id});
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll(); renderEssenRestaurantsModal();
+}
+async function saveEssenRestaurantInfo(id){
+  const name=val('er_name_'+id);
+  if(!name){ alert('Name darf nicht leer sein.'); return; }
+  const {error}=await sb.from('essen_restaurants').update({name, ort: val('er_ort_'+id)||null}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll(); renderEssenRestaurantsModal();
+}
+async function addEssenRestGericht(restaurantId){
+  const name=val('er_item_name_'+restaurantId); const preis=num('er_item_preis_'+restaurantId);
+  if(!name||preis<=0){ alert('Bitte Gericht und Preis eingeben.'); return; }
+  const reihenfolge=essenRestaurantGerichte.filter(g=>g.restaurant_id===restaurantId).length;
+  const {error}=await sb.from('essen_restaurant_gerichte').insert({restaurant_id:restaurantId, name, preis, reihenfolge});
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll(); renderEssenRestaurantsModal();
+}
+async function delEssenRestGericht(id){
+  if(!confirm('Gericht wirklich entfernen?')) return;
+  const {error}=await sb.from('essen_restaurant_gerichte').delete().eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll(); renderEssenRestaurantsModal();
+}
+async function delEssenRestaurant(id){
+  if(!confirm('Restaurant inkl. gespeichertem Menü wirklich löschen? Vergangene Bestellrunden bleiben erhalten.')) return;
+  const {error}=await sb.from('essen_restaurants').delete().eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  essenRestExpanded=null;
+  await loadAll(); renderEssenRestaurantsModal();
 }
 
 const __origTitle=document.title;
