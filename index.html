@@ -565,7 +565,14 @@
     <!-- STÄNDCHEN -->
     <section class="view" id="staendchen">
       <div class="view-head"><h2>🎶 Ständchen</h2></div>
-      <div id="staendchenBody"></div>
+      <div class="sectionbar" style="margin:0 0 16px">
+        <button class="btn ghost sm active" id="stTabListe" onclick="setStaendchenBereich('liste')">📋 Adresslisten</button>
+        <button class="btn ghost sm" id="stTabRoute" onclick="setStaendchenBereich('route')">🗺 Routenplanung</button>
+        <button class="btn ghost sm" id="stTabSpenden" onclick="setStaendchenBereich('spenden')">🏺 Spendendosen</button>
+      </div>
+      <div id="stBereichListe"></div>
+      <div id="stBereichRoute" style="display:none"></div>
+      <div id="stBereichSpenden" style="display:none"></div>
     </section>
 
     <!-- SONSTIGES -->
@@ -627,6 +634,8 @@ let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
 let essenRunden = [], essenMenu = [], essenBestellungen = [], essenSel = null, essenDraft = null;
 let essenRestaurants = [], essenRestaurantGerichte = [];
 let staendchen = [];
+let staendchenSpendendosen = [];
+let staendchenBereich = 'liste';
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
@@ -673,7 +682,7 @@ function balance(){
     if(t.ausgelegt) return s - erstattetBetrag(t);                      // Auslage: nur der erstattete (Teil-)Betrag ist aus der Kasse geflossen
     return (t.bezahlt!==false) ? s - Number(t.betrag) : s;             // direkt aus Kasse: fließt wenn bezahlt (nicht „offen")
   },0);
-  return fin + postenIncomeTotal() + sponsorIncomeTotal() + kvvIncomeTotal() + fundsachenIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren + Kartenvorverkauf + Fundsachen-Auktion fließen als Einnahmen in die Kasse
+  return fin + postenIncomeTotal() + sponsorIncomeTotal() + kvvIncomeTotal() + fundsachenIncomeTotal() + spendendosenIncomeTotal();   // bezahlte Posten + erhaltene Sponsoren + Kartenvorverkauf + Fundsachen-Auktion + Spendendosen fließen als Einnahmen in die Kasse
 }
 function erstattetBetrag(t){ const b=Number(t.betrag)||0; if(t.erstattet===true) return b; return Math.min(b, Math.max(0, Number(t.erstattet_betrag)||0)); }
 function verrechnetProPerson(){ const m={}; transactions.filter(t=>t.art==='in'&&t.verrechnet).forEach(t=>{const p=t.verrechnet_mit||'Unbekannt';m[p]=(m[p]||0)+Number(t.betrag);}); return m; }
@@ -702,7 +711,11 @@ function kvvIncomeYear(jahr){ const y=jahr||new Date().getFullYear();
 function fundsachenIncomeRows(){ return fundsachen.filter(f=>f.verkauft && Number(f.erloes)>0); }
 function fundsachenIncomeTotal(){ return fundsachenIncomeRows().reduce((a,f)=>a+Number(f.erloes),0); }
 function fundsachenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return fundsachenIncomeRows().filter(f=>yearOf(f.verkauft_am||f.created_at)===y).reduce((a,f)=>a+Number(f.erloes),0); }
-function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y)+kvvIncomeYear(y)+fundsachenIncomeYear(y); }
+/* Eingesammelte Spendendosen als Einnahmequelle */
+function spendendosenIncomeRows(){ return staendchenSpendendosen.filter(d=>d.betrag!=null && Number(d.betrag)>0); }
+function spendendosenIncomeTotal(){ return spendendosenIncomeRows().reduce((s,d)=>s+Number(d.betrag),0); }
+function spendendosenIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return spendendosenIncomeRows().filter(d=>yearOf(d.betrag_am||d.created_at)===y).reduce((s,d)=>s+Number(d.betrag),0); }
+function incomeYear(jahr){ const y=jahr||new Date().getFullYear(); return yearSum('in',y)+postenIncomeYear(y)+sponsorIncomeYear(y)+kvvIncomeYear(y)+fundsachenIncomeYear(y)+spendendosenIncomeYear(y); }
 function postenIncomeByTitel(){ const map={}; paidPosten().forEach(b=>{ const k=b.titel||postenTitel(b.posten_id); if(!map[k])map[k]={sum:0,count:0}; map[k].sum+=Number(b.betrag); map[k].count++; }); return map; }
 function auslagenProPerson(){
   const aus={};
@@ -757,7 +770,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -779,7 +792,8 @@ async function loadAll(){
     sb.from('essen_bestellungen').select('*'),
     sb.from('essen_restaurants').select('*').order('name'),
     sb.from('essen_restaurant_gerichte').select('*'),
-    sb.from('staendchen').select('*').order('erledigt').order('name'),
+    sb.from('staendchen').select('*').order('name'),
+    sb.from('staendchen_spendendosen').select('*').order('created_at',{ascending:false}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -806,6 +820,8 @@ async function loadAll(){
   if(erg&&erg.error) console.warn('essen_restaurant_gerichte:',erg.error.message);
   staendchen = (st&&st.data)||[];
   if(st&&st.error) console.warn('staendchen:',st.error.message);
+  staendchenSpendendosen = (sd&&sd.data)||[];
+  if(sd&&sd.error) console.warn('staendchen_spendendosen:',sd.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1003,11 +1019,13 @@ function renderFinance(){
   const spInc=sponsorIncomeRows().filter(s=>(s.name||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q)||'sponsor'.includes(q));
   const kvvInc=kvvPaidRows().filter(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id); return (a&&(a.titel||'').toLowerCase().includes(q))||(m&&(m.display_name||m.username||'').toLowerCase().includes(q))||'kartenvorverkauf'.includes(q);});
   const fsInc=fundsachenIncomeRows().filter(f=>(f.beschreibung||'').toLowerCase().includes(q)||'fundsache'.includes(q)||'auktion'.includes(q));
+  const sdInc=spendendosenIncomeRows().filter(d=>(d.name||'').toLowerCase().includes(q)||'spendendose'.includes(q));
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
   const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
   const kvvSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
+  const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
@@ -1034,10 +1052,15 @@ function renderFinance(){
       <td><b>${esc(f.beschreibung)}</b> <span class="pill blue mini">Auktion</span><div class="submuted">${f.kaeufer?'an '+esc(f.kaeufer)+' · ':''}Verwaltung im Tab „Fundsachen"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(f.erloes)}</span></td>
       <td><div class="row-actions"><button class="icon-btn" title="Fundsache öffnen" onclick="openFundsacheVerkauf('${f.id}')">✏️</button></div></td></tr>`).join('');
-  const gesamt=realSum+postenSum+spSum+kvvSum+fsSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null,kvvSum>0?'Kartenvorverkauf':null,fsSum>0?'Fundsachen-Auktion':null].filter(Boolean).join(' & ');
-  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length||kvvInc.length||fsInc.length)?`<table>
+  const sdRows=sdInc.map(d=>`<tr>
+      <td>${fmtDate(d.betrag_am||d.created_at)}</td><td>Spendendose</td>
+      <td><b>${esc(d.name)}</b> <span class="pill blue mini">Spendendose</span><div class="submuted">${d.foto_pfad?'📷 Foto vorhanden · ':''}Verwaltung im Tab „Ständchen"</div></td>
+      <td style="text-align:right"><span class="amount plus">+${eur(d.betrag)}</span></td>
+      <td><div class="row-actions">${d.foto_pfad?`<button class="icon-btn" title="Foto ansehen" onclick="viewStaendchenFoto('${d.foto_pfad}')">📷</button>`:''}</div></td></tr>`).join('');
+  const gesamt=realSum+postenSum+spSum+kvvSum+fsSum+sdSum; const extra=[postenSum>0?'Posten':null,spSum>0?'Sponsoren':null,kvvSum>0?'Kartenvorverkauf':null,fsSum>0?'Fundsachen-Auktion':null,sdSum>0?'Spendendosen':null].filter(Boolean).join(' & ');
+  document.getElementById('incomeTable').innerHTML=(inc.length||postenAgg.length||spInc.length||kvvInc.length||fsInc.length||sdInc.length)?`<table>
     <thead><tr><th>Datum</th><th>Kategorie</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
-    <tbody>${realRows}${postenRows}${spRows}${kvvRows}${fsRows}</tbody>
+    <tbody>${realRows}${postenRows}${spRows}${kvvRows}${fsRows}${sdRows}</tbody>
     <tfoot><tr><td colspan="3">Summe Einnahmen${extra?' (inkl. '+extra+')':''}</td><td style="text-align:right" class="amount plus">${eur(gesamt)}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
@@ -2482,44 +2505,54 @@ async function delEssenRestaurant(id){
   await loadAll(); renderEssenRestaurantsModal();
 }
 
-/* ---- Sonstiges: Ständchen (Checkliste, wem eins gebracht werden soll) ---- */
+/* ---- Ständchen: Adresslisten / Routenplanung / Spendendosen ---- */
+function setStaendchenBereich(v){
+  staendchenBereich=v;
+  document.getElementById('stBereichListe').style.display=v==='liste'?'block':'none';
+  document.getElementById('stBereichRoute').style.display=v==='route'?'block':'none';
+  document.getElementById('stBereichSpenden').style.display=v==='spenden'?'block':'none';
+  document.getElementById('stTabListe').classList.toggle('active',v==='liste');
+  document.getElementById('stTabRoute').classList.toggle('active',v==='route');
+  document.getElementById('stTabSpenden').classList.toggle('active',v==='spenden');
+}
 function renderStaendchen(){
-  const body=document.getElementById('staendchenBody'); if(!body) return;
-  const offen=staendchen.filter(x=>!x.erledigt);
-  const erledigt=staendchen.filter(x=>x.erledigt);
-  function row(x){
-    return `<tr${x.erledigt?' style="opacity:.55"':''}>
-      <td>${x.erledigt?'<s>'+esc(x.name)+'</s>':'<b>'+esc(x.name)+'</b>'}</td>
-      <td>${esc(x.adresse||'–')}</td>
-      <td class="submuted">${esc(x.notiz||'')}</td>
-      <td><div class="row-actions">
-        <button class="btn ghost sm" onclick="toggleStaendchenErledigt('${x.id}')">${x.erledigt?'↩ offen':'✓ erledigt'}</button>
-        <button class="icon-btn" onclick="openStaendchen('${x.id}')">✏️</button>
-        <button class="icon-btn" onclick="delStaendchen('${x.id}')">🗑️</button>
-      </div></td></tr>`;
-  }
+  if(!document.getElementById('stBereichListe')) return;
+  renderStaendchenListe();
+  renderStaendchenRoute();
+  renderStaendchenSpenden();
+}
+
+/* -- Adresslisten -- */
+function renderStaendchenListe(){
+  const body=document.getElementById('stBereichListe');
   body.innerHTML=`
-    <div class="note">Wem noch ein Ständchen gebracht werden soll – abhaken, sobald erledigt.</div>
-    <div class="cards">
-      <div class="card"><div class="label">Offen</div><div class="value">${offen.length}</div></div>
-      <div class="card"><div class="label">Erledigt</div><div class="value green">${erledigt.length}</div></div>
-    </div>
     <div class="panel">
-      <h3>🎶 Ständchen
+      <h3>📋 Adressliste
         <span class="grow"><button class="btn sm" onclick="openStaendchen()">＋ Neuer Eintrag</button></span>
       </h3>
       ${staendchen.length?`<table>
-        <thead><tr><th>Name</th><th>Adresse</th><th>Notiz</th><th></th></tr></thead>
-        <tbody>${offen.map(row).join('')}${erledigt.map(row).join('')}</tbody>
+        <thead><tr><th>Name</th><th>Straße</th><th>Hausnr.</th><th>Notiz</th><th></th></tr></thead>
+        <tbody>${staendchen.map(x=>`<tr>
+          <td><b>${esc(x.name)}</b></td>
+          <td>${esc(x.strasse||'–')}</td>
+          <td>${esc(x.hausnummer||'–')}</td>
+          <td class="submuted">${esc(x.notiz||'')}</td>
+          <td><div class="row-actions">
+            <button class="icon-btn" onclick="openStaendchen('${x.id}')">✏️</button>
+            <button class="icon-btn" onclick="delStaendchen('${x.id}')">🗑️</button>
+          </div></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Einträge. Oben hinzufügen.</div>'}
     </div>`;
 }
 function staendchenById(id){ return staendchen.find(x=>x.id===id); }
 function openStaendchen(id){
-  const x=id?staendchenById(id):{name:'',adresse:'',notiz:''};
+  const x=id?staendchenById(id):{name:'',strasse:'',hausnummer:'',notiz:''};
   openModal(`<h3>${id?'Eintrag bearbeiten':'Neuer Ständchen-Eintrag'}</h3>
     <label class="field"><span>Name *</span><input id="st_name" value="${esc(x.name)}" placeholder="z. B. Familie Müller"></label>
-    <label class="field"><span>Adresse</span><input id="st_adresse" value="${esc(x.adresse||'')}" placeholder="optional"></label>
+    <div class="grid2">
+      <label class="field"><span>Straße</span><input id="st_strasse" value="${esc(x.strasse||'')}" placeholder="optional"></label>
+      <label class="field"><span>Hausnummer</span><input id="st_hausnummer" value="${esc(x.hausnummer||'')}" placeholder="optional"></label>
+    </div>
     <label class="field"><span>Notiz</span><textarea id="st_notiz" rows="2" placeholder="z. B. Anlass">${esc(x.notiz||'')}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveStaendchen('${id||''}',this)">Speichern</button></div>`);
@@ -2527,22 +2560,114 @@ function openStaendchen(id){
 function saveStaendchen(id,btn){
   const name=val('st_name');
   if(!name){ alert('Bitte einen Namen eingeben.'); return; }
-  const row={name, adresse:val('st_adresse')||null, notiz:val('st_notiz')||null};
+  const row={name, strasse:val('st_strasse')||null, hausnummer:val('st_hausnummer')||null, notiz:val('st_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('staendchen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('staendchen').insert(row); if(error) throw error; }
     closeModal(); await loadAll();
   });
 }
-async function toggleStaendchenErledigt(id){
-  const x=staendchenById(id); if(!x) return;
-  const erledigt=!x.erledigt;
-  const {error}=await sb.from('staendchen').update({erledigt, erledigt_at: erledigt?new Date().toISOString():null}).eq('id',id);
-  if(error){ alert('Fehler: '+error.message); return; }
-  await loadAll();
-}
 function delStaendchen(id){ if(!confirm('Eintrag wirklich entfernen?'))return;
   sb.from('staendchen').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+/* -- Routenplanung: dieselben Adressen, sortiert nach Straße + Hausnummer -- */
+function staendchenHausnrSort(a,b){
+  const pa=parseInt(a,10), pb=parseInt(b,10);
+  const na=isNaN(pa), nb=isNaN(pb);
+  if(na && nb) return String(a||'').localeCompare(String(b||''),'de');
+  if(na) return 1;
+  if(nb) return -1;
+  if(pa!==pb) return pa-pb;
+  return String(a||'').localeCompare(String(b||''),'de');
+}
+function renderStaendchenRoute(){
+  const body=document.getElementById('stBereichRoute'); if(!body) return;
+  const sorted=[...staendchen].sort((a,b)=>{
+    const sc=(a.strasse||'').localeCompare(b.strasse||'','de');
+    return sc!==0 ? sc : staendchenHausnrSort(a.hausnummer,b.hausnummer);
+  });
+  body.innerHTML=`
+    <div class="note">Route sortiert nach Straße und Hausnummer – so lässt sich effizient von Haus zu Haus abklappern.</div>
+    <div class="panel">
+      ${sorted.length?`<table>
+        <thead><tr><th>#</th><th>Straße</th><th>Hausnr.</th><th>Name</th><th>Notiz</th></tr></thead>
+        <tbody>${sorted.map((x,i)=>`<tr><td class="submuted">${i+1}</td><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td></tr>`).join('')}</tbody>
+      </table>`:'<div class="empty">Noch keine Adressen erfasst – unter „Adresslisten" hinzufügen.</div>'}
+    </div>`;
+}
+
+/* -- Spendendosen -- */
+function renderStaendchenSpenden(){
+  const body=document.getElementById('stBereichSpenden'); if(!body) return;
+  const offen=staendchenSpendendosen.filter(d=>d.betrag==null);
+  const eingesammelt=staendchenSpendendosen.filter(d=>d.betrag!=null);
+  body.innerHTML=`
+    <div class="cards">
+      <div class="card"><div class="label">Noch nicht eingesammelt</div><div class="value">${offen.length}</div></div>
+      <div class="card"><div class="label">Eingesammelt</div><div class="value green">${eur(spendendosenIncomeTotal())}</div></div>
+    </div>
+    <div class="panel">
+      <h3>🏺 Spendendosen
+        <span class="grow"><button class="btn sm" onclick="openStaendchenDose()">＋ Neue Dose</button></span>
+      </h3>
+      ${staendchenSpendendosen.length?`<table>
+        <thead><tr><th>Standort</th><th>Foto</th><th style="text-align:right">Betrag</th><th>Notiz</th><th></th></tr></thead>
+        <tbody>${staendchenSpendendosen.map(d=>`<tr>
+          <td><b>${esc(d.name)}</b></td>
+          <td>${d.foto_pfad?`<button class="btn ghost sm" onclick="viewStaendchenFoto('${d.foto_pfad}')">📷 ansehen</button>`:'<span class="submuted">–</span>'}</td>
+          <td style="text-align:right">${d.betrag!=null?eur(d.betrag):'<span class="pill warn">offen</span>'}</td>
+          <td class="submuted">${esc(d.notiz||'')}</td>
+          <td><div class="row-actions">
+            <button class="icon-btn" onclick="openStaendchenDose('${d.id}')">✏️</button>
+            <button class="icon-btn" onclick="delStaendchenDose('${d.id}')">🗑️</button>
+          </div></td></tr>`).join('')}</tbody>
+      </table>`:'<div class="empty">Noch keine Spendendosen erfasst. Oben hinzufügen.</div>'}
+    </div>`;
+}
+function staendchenDoseById(id){ return staendchenSpendendosen.find(x=>x.id===id); }
+function openStaendchenDose(id){
+  const d=id?staendchenDoseById(id):{name:'',betrag:'',notiz:''};
+  openModal(`<h3>${id?'Spendendose bearbeiten':'Neue Spendendose'}</h3>
+    <label class="field"><span>Standort *</span><input id="sd_name" value="${esc(d.name)}" placeholder="z. B. Bäckerei Müller"></label>
+    <label class="field"><span>Foto der Dose ${id&&d.foto_pfad?'(neues Foto ersetzt das vorhandene)':'*'}</span>
+      <input type="file" id="sd_foto" accept="image/*" capture="environment"></label>
+    <label class="field"><span>Gesammelter Betrag (€) – leer lassen, solange noch nicht eingesammelt</span>
+      <input type="number" step="0.01" min="0" id="sd_betrag" value="${d.betrag!=null?d.betrag:''}"></label>
+    <label class="field"><span>Notiz</span><textarea id="sd_notiz" rows="2">${esc(d.notiz||'')}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveStaendchenDose('${id||''}',this)">Speichern</button></div>`);
+}
+async function uploadStaendchenFoto(file){
+  if(!file) return null;
+  const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+  const path=`${me.id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.${ext}`;
+  const {error}=await sb.storage.from('staendchen').upload(path,file,{upsert:false});
+  if(error) throw error;
+  return path;
+}
+async function viewStaendchenFoto(path){
+  const {data,error}=await sb.storage.from('staendchen').createSignedUrl(path,120);
+  if(error){ alert('Foto konnte nicht geladen werden: '+error.message); return; }
+  window.open(data.signedUrl,'_blank');
+}
+function saveStaendchenDose(id,btn){
+  const name=val('sd_name');
+  const existing=id?staendchenDoseById(id):null;
+  const fotoFile=document.getElementById('sd_foto').files[0];
+  if(!name){ alert('Bitte einen Standort eingeben.'); return; }
+  if(!fotoFile && !(existing&&existing.foto_pfad)){ alert('Bitte ein Foto der Dose hochladen.'); return; }
+  const betragStr=val('sd_betrag');
+  const betrag=betragStr?parseFloat(betragStr.replace(',','.')):null;
+  withBtn(btn,async()=>{
+    const row={ name, notiz: val('sd_notiz')||null, betrag, betrag_am: betrag!=null?new Date().toISOString():null };
+    if(fotoFile) row.foto_pfad=await uploadStaendchenFoto(fotoFile);
+    if(id){ const {error}=await sb.from('staendchen_spendendosen').update(row).eq('id',id); if(error) throw error; }
+    else { row.created_by=me.id; const {error}=await sb.from('staendchen_spendendosen').insert(row); if(error) throw error; }
+    closeModal(); await loadAll();
+  });
+}
+function delStaendchenDose(id){ if(!confirm('Spendendose wirklich entfernen?'))return;
+  sb.from('staendchen_spendendosen').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 const __origTitle=document.title;
 function printDoc(title){ if(title) document.title=title; window.print(); }
@@ -2630,6 +2755,7 @@ function catSums(art,jahr){
     kvvPaidRows().filter(t=>{ if(jahr==='all') return true; const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===jahr; })
       .forEach(t=>{map['Kartenvorverkauf']=(map['Kartenvorverkauf']||0)+kvvBetrag(t);});
     fundsachenIncomeRows().filter(f=>jahr==='all'||yearOf(f.verkauft_am||f.created_at)===jahr).forEach(f=>{map['Fundsachen-Auktion']=(map['Fundsachen-Auktion']||0)+Number(f.erloes);});
+    spendendosenIncomeRows().filter(d=>jahr==='all'||yearOf(d.betrag_am||d.created_at)===jahr).forEach(d=>{map['Spendendosen']=(map['Spendendosen']||0)+Number(d.betrag);});
   }
   return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
