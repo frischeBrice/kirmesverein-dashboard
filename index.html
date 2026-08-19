@@ -566,6 +566,7 @@
       <div class="view-head"><h2>Sonstiges</h2>
         <span class="grow" style="margin-left:auto"><select id="sonstBereichSel" onchange="setSonstBereich(this.value)" style="width:auto;min-width:180px">
           <option value="kartenvorverkauf">🎟 Kartenvorverkauf</option>
+          <option value="essen">🍔 Essen bestellen</option>
         </select></span>
       </div>
       <div id="sonstBody"></div>
@@ -616,9 +617,11 @@ let sponsoren = [];
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
+let essenRunden = [], essenMenu = [], essenBestellungen = [], essenSel = null, essenDraft = null;
 let sonstBereich = 'kartenvorverkauf';
 const SONST_ITEMS = [
   {key:'kartenvorverkauf', label:'🎟 Kartenvorverkauf'},
+  {key:'essen', label:'🍔 Essen bestellen'},
   // weitere „Sonstiges"-Unterseiten hier ergänzen
 ];
 let flyoutHideTimer = null;
@@ -745,7 +748,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -762,6 +765,9 @@ async function loadAll(){
     sb.from('fundsachen_votes').select('*'),
     sb.from('dokumente').select('*').order('titel'),
     sb.from('kirmeshelfer').select('*').order('name'),
+    sb.from('essen_runden').select('*').order('created_at',{ascending:false}),
+    sb.from('essen_menu').select('*'),
+    sb.from('essen_bestellungen').select('*'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -779,6 +785,10 @@ async function loadAll(){
   if(hf&&hf.error) console.warn('kirmeshelfer:',hf.error.message);
   sponsoren = (sp&&sp.data)||[];
   kartenvorverkauf = (kv&&kv.data)||[]; kvTeilnehmer = (kvt&&kvt.data)||[];
+  essenRunden = (er&&er.data)||[]; essenMenu = (em&&em.data)||[]; essenBestellungen = (eb&&eb.data)||[];
+  if(er&&er.error) console.warn('essen_runden:',er.error.message);
+  if(em&&em.error) console.warn('essen_menu:',em.error.message);
+  if(eb&&eb.error) console.warn('essen_bestellungen:',eb.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1921,6 +1931,7 @@ function renderSonstiges(){
   const sel=document.getElementById('sonstBereichSel');
   if(sel){ sel.innerHTML=SONST_ITEMS.map(it=>`<option value="${it.key}" ${it.key===sonstBereich?'selected':''}>${it.label}</option>`).join(''); }
   if(sonstBereich==='kartenvorverkauf') renderKartenvorverkauf();
+  if(sonstBereich==='essen') renderEssen();
 }
 /* ---- Sonstiges: Hover-Flyout in der Navigation ---- */
 function showSonstFlyout(btn){
@@ -2089,6 +2100,207 @@ function printKvvAktion(aktionId){
   document.getElementById('kvvPrintArea').classList.add('show');
   printDoc('Kartenvorverkauf – '+aktion.titel);
 }
+
+/* ---- Sonstiges: Essen bestellen (dieselben Tabellen wie in der App – live gekoppelt) ---- */
+function essenRundeById(id){ return essenRunden.find(r=>r.id===id); }
+function essenMenuOfRunde(id){ return essenMenu.filter(x=>x.runde_id===id).sort((a,b)=>(a.reihenfolge||0)-(b.reihenfolge||0)); }
+function essenBestellungenOfRunde(id){ return essenBestellungen.filter(x=>x.runde_id===id); }
+function essenByMember(rundeId){
+  const map={};
+  essenBestellungenOfRunde(rundeId).forEach(b=>{
+    const item=essenMenu.find(m=>m.id===b.menu_id); if(!item) return;
+    if(!map[b.mitglied_id]) map[b.mitglied_id]={items:[],total:0};
+    map[b.mitglied_id].items.push({name:item.name, anzahl:b.anzahl, preis:item.preis});
+    map[b.mitglied_id].total += b.anzahl*item.preis;
+  });
+  return map;
+}
+function essenGrandTotal(rundeId){
+  return essenBestellungenOfRunde(rundeId).reduce((s,b)=>{ const item=essenMenu.find(m=>m.id===b.menu_id); return s+(item?b.anzahl*item.preis:0); },0);
+}
+const ESSEN_ZAHLART_LABEL={selbst:'Jeder zahlt selbst',ausgelegt:'Ausgelegt',kasse:'Kirmeskasse'};
+const ESSEN_ZAHLART_PILL={selbst:'gray',ausgelegt:'warn',kasse:'ok'};
+
+function setEssenSel(id){ essenSel=id; renderEssen(); }
+function ensureEssenSel(){ if(!essenSel || !essenRunden.find(r=>r.id===essenSel)) essenSel = essenRunden[0]?essenRunden[0].id:null; }
+
+function renderEssen(){
+  ensureEssenSel();
+  const body=document.getElementById('sonstBody');
+  if(!essenRunden.length){
+    body.innerHTML=`<div class="note">Bestellrunden werden hier UND in der App verwaltet – beide greifen auf dieselben Daten zu (live gekoppelt über Supabase).</div>
+      <div class="panel"><button class="btn" onclick="openEssenRunde()">＋ Neue Bestellrunde</button></div>`;
+    return;
+  }
+  const runde=essenRundeById(essenSel);
+  const menu=essenMenuOfRunde(essenSel);
+  const bestellungen=essenBestellungenOfRunde(essenSel);
+  const byMember=essenByMember(essenSel);
+  const total=essenGrandTotal(essenSel);
+
+  body.innerHTML=`
+    <div class="panel">
+      <h3>🍔 Bestellrunde
+        <span class="grow">
+          <select id="essenRundeSel" onchange="setEssenSel(this.value)" style="width:auto;min-width:220px">
+            ${essenRunden.map(r=>`<option value="${r.id}" ${r.id===essenSel?'selected':''}>${esc(r.titel)}${r.status==='geschlossen'?' (geschlossen)':''} · ${fmtDate(r.created_at)}</option>`).join('')}
+          </select>
+          <button class="btn ghost sm" onclick="openEssenRunde()">＋ Neue Runde</button>
+        </span>
+      </h3>
+      ${runde?`<div class="submuted">
+        <span class="pill ${ESSEN_ZAHLART_PILL[runde.zahlart]}">${ESSEN_ZAHLART_LABEL[runde.zahlart]}${runde.zahlart==='ausgelegt'&&runde.ausgelegt_von?' ('+esc(runde.ausgelegt_von)+')':''}</span>
+        ${runde.ort?' · 📍 '+esc(runde.ort):''}
+        ${runde.status==='geschlossen'?' · <span class="pill gray">geschlossen</span>':' · <span class="pill ok">offen</span>'}
+      </div>` : ''}
+      ${runde && runde.status==='offen' ? `<div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn ghost sm" onclick="closeEssenRunde('${runde.id}')">✓ Schließen</button>
+        <button class="btn ghost sm" onclick="discardEssenRunde('${runde.id}')">🗑 Verwerfen</button>
+      </div>` : ''}
+    </div>
+    ${runde?`
+    <div class="cards">
+      <div class="card"><div class="label">Bestellungen</div><div class="value">${bestellungen.length}</div></div>
+      <div class="card"><div class="label">Gesamtsumme</div><div class="value">${eur(total)}</div></div>
+    </div>
+    <div class="panel">
+      <h3>Menü
+        ${runde.status==='offen'?`<span class="grow">
+          <input id="es_new_item_name" placeholder="Gericht" style="width:auto;min-width:140px">
+          <input id="es_new_item_preis" type="number" step="0.01" min="0" placeholder="Preis €" style="width:auto;min-width:90px">
+          <button class="btn sm" onclick="addEssenMenuItem('${runde.id}')">＋</button>
+        </span>`:''}
+      </h3>
+      ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th>${runde.status==='offen'?'<th></th>':''}</tr></thead>
+      <tbody>${menu.map(item=>{const anz=bestellungen.filter(b=>b.menu_id===item.id).reduce((s,b)=>s+b.anzahl,0);
+        return `<tr><td>${esc(item.name)}</td><td style="text-align:right">${eur(item.preis)}</td><td style="text-align:right">${anz}</td>${runde.status==='offen'?`<td><button class="icon-btn" onclick="delEssenMenuItem('${item.id}')">🗑️</button></td>`:''}</tr>`;}).join('')}</tbody></table>`
+      :'<div class="empty">Noch kein Menü angelegt.</div>'}
+    </div>
+    <div class="panel">
+      <h3>📋 Bestellungen nach Mitglied</h3>
+      ${Object.keys(byMember).length?`<table><thead><tr><th>Mitglied</th><th>Bestellt</th><th style="text-align:right">Betrag</th></tr></thead>
+      <tbody>${Object.entries(byMember).map(([mid,entry])=>{const m=members.find(x=>x.id===mid);
+        return `<tr><td>${m?nameWithAvatar(m):'—'}</td><td class="submuted">${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}`).join(', ')}</td><td style="text-align:right">${eur(entry.total)}</td></tr>`;}).join('')}</tbody>
+      <tfoot><tr><td colspan="2">Summe</td><td style="text-align:right">${eur(total)}</td></tr></tfoot></table>`
+      :'<div class="empty">Noch keine Bestellungen – Mitglieder bestellen über die App.</div>'}
+    </div>`:''}
+  `;
+}
+
+function openEssenRunde(){
+  essenDraft = {titel:'', ort:'', zahlart:'selbst', ausgelegtVon:'', rows:[{name:'',preis:''}]};
+  renderEssenModal();
+}
+function essenSyncDraft(){
+  if(!essenDraft) return;
+  essenDraft.titel = val('es_titel');
+  essenDraft.ort = val('es_ort');
+  essenDraft.zahlart = val('es_zahlart') || essenDraft.zahlart;
+  essenDraft.ausgelegtVon = val('es_ausgelegt');
+  essenDraft.rows.forEach((r,i)=>{ r.name = val('es_row_name_'+i); r.preis = val('es_row_preis_'+i); });
+}
+function essenAddRow(){ essenSyncDraft(); essenDraft.rows.push({name:'',preis:''}); renderEssenModal(); }
+function essenRemoveRow(i){ essenSyncDraft(); if(essenDraft.rows.length>1) essenDraft.rows.splice(i,1); renderEssenModal(); }
+function essenZahlartChange(){ essenSyncDraft(); renderEssenModal(); }
+function renderEssenModal(){
+  const d=essenDraft;
+  openModal(`<h3>Neue Bestellrunde</h3>
+    <label class="field"><span>Titel *</span><input id="es_titel" value="${esc(d.titel)}" placeholder="z. B. Pizza-Bestellung Freitag"></label>
+    <label class="field"><span>Wo bestellen?</span><input id="es_ort" value="${esc(d.ort)}" placeholder="Restaurant / Lieferdienst"></label>
+    <label class="field"><span>Zahlart</span>
+      <select id="es_zahlart" onchange="essenZahlartChange()">
+        <option value="selbst" ${d.zahlart==='selbst'?'selected':''}>Jeder zahlt selbst</option>
+        <option value="ausgelegt" ${d.zahlart==='ausgelegt'?'selected':''}>Ausgelegt</option>
+        <option value="kasse" ${d.zahlart==='kasse'?'selected':''}>Kirmeskasse</option>
+      </select>
+    </label>
+    ${d.zahlart==='ausgelegt'?`<label class="field"><span>Wer legt das Geld aus?</span><input id="es_ausgelegt" value="${esc(d.ausgelegtVon)}" placeholder="Name"></label>`:''}
+    <div class="field"><span>Menü</span>
+      ${d.rows.map((r,i)=>`<div class="grid2" style="align-items:end;margin-bottom:6px">
+        <input id="es_row_name_${i}" value="${esc(r.name)}" placeholder="Gericht">
+        <div style="display:flex;gap:6px">
+          <input id="es_row_preis_${i}" type="number" step="0.01" min="0" value="${esc(r.preis)}" placeholder="Preis €">
+          <button class="icon-btn" onclick="essenRemoveRow(${i})">✕</button>
+        </div>
+      </div>`).join('')}
+      <button class="btn ghost sm" onclick="essenAddRow()">＋ Position</button>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveEssenRunde(this)">Runde starten</button></div>`);
+}
+async function saveEssenRunde(btn){
+  essenSyncDraft();
+  const d=essenDraft;
+  if(!d.titel.trim()){ alert('Bitte einen Titel eingeben.'); return; }
+  const validRows=d.rows.filter(r=>r.name.trim() && r.preis!=='' && !isNaN(parseFloat(String(r.preis).replace(',','.'))));
+  if(!validRows.length){ alert('Bitte mindestens einen Menüpunkt mit Preis eingeben.'); return; }
+  if(d.zahlart==='ausgelegt' && !d.ausgelegtVon.trim()){ alert('Bitte angeben, wer das Geld auslegt.'); return; }
+  withBtn(btn, async()=>{
+    const {data:runde,error}=await sb.from('essen_runden').insert({
+      titel:d.titel.trim(), ort:d.ort.trim()||null, zahlart:d.zahlart,
+      ausgelegt_von: d.zahlart==='ausgelegt' ? d.ausgelegtVon.trim() : null,
+      status:'offen', created_by: me.id,
+    }).select().single();
+    if(error) throw error;
+    const menuRows=validRows.map((r,i)=>({runde_id:runde.id, name:r.name.trim(), preis:parseFloat(String(r.preis).replace(',','.'))||0, reihenfolge:i}));
+    const {error:menuErr}=await sb.from('essen_menu').insert(menuRows);
+    if(menuErr) throw menuErr;
+    essenSel=runde.id;
+    closeModal(); await loadAll();
+  });
+}
+async function addEssenMenuItem(rundeId){
+  const name=val('es_new_item_name'); const preis=num('es_new_item_preis');
+  if(!name||preis<=0){ alert('Bitte Gericht und Preis eingeben.'); return; }
+  const reihenfolge=essenMenuOfRunde(rundeId).length;
+  const {error}=await sb.from('essen_menu').insert({runde_id:rundeId, name, preis, reihenfolge});
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+function delEssenMenuItem(id){ if(!confirm('Menüpunkt wirklich entfernen?'))return;
+  sb.from('essen_menu').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+
+function closeEssenRunde(rundeId){
+  const runde=essenRundeById(rundeId); if(!runde) return;
+  const total=essenGrandTotal(rundeId);
+  const doBooking=(runde.zahlart==='kasse'||runde.zahlart==='ausgelegt') && total>0;
+  if(!doBooking){
+    if(!confirm(`Bestellrunde „${runde.titel}" schließen?`)) return;
+    finalizeEssenRunde(rundeId,false);
+    return;
+  }
+  openModal(`<h3>Bestellrunde schließen?</h3>
+    <div class="submuted">Gesamtsumme: ${eur(total)}</div>
+    <div class="note">Soll der Betrag auch im Finanz-Dashboard verbucht werden${runde.zahlart==='ausgelegt' ? ' (als Auslage von '+esc(runde.ausgelegt_von||'')+')' : ' (aus der Kirmeskasse)'}?</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal();finalizeEssenRunde('${rundeId}',false)">Nur schließen</button>
+      <button class="btn" onclick="closeModal();finalizeEssenRunde('${rundeId}',true)">${runde.zahlart==='kasse'?'Aus Kirmeskasse buchen':'Als Auslage buchen'}</button>
+    </div>`);
+}
+async function finalizeEssenRunde(rundeId, withBooking){
+  const runde=essenRundeById(rundeId); if(!runde) return;
+  const {error}=await sb.from('essen_runden').update({status:'geschlossen'}).eq('id',rundeId);
+  if(error){ alert('Fehler: '+error.message); return; }
+  if(withBooking){
+    const total=essenGrandTotal(rundeId);
+    if(total>0){
+      const {error:bErr}=await sb.from('finanzbuchungen').insert({
+        typ:'extern', art:'out',
+        beschreibung:`Essen bestellen: ${runde.titel}${runde.ort?' ('+runde.ort+')':''}`,
+        kategorie:'Essen bestellen', betrag: total, datum: todayISO(),
+        ausgelegt: runde.zahlart==='ausgelegt', ausgelegt_von: runde.zahlart==='ausgelegt' ? runde.ausgelegt_von : null,
+        erstattet:false, bezahlt:true, created_by: me.id,
+      });
+      if(bErr){ alert('Fehler bei Buchung: '+bErr.message); }
+    }
+  }
+  await loadAll();
+}
+function discardEssenRunde(rundeId){
+  if(!confirm('Die gesamte Bestellrunde inkl. aller Bestellungen wird gelöscht (keine Buchung). Fortfahren?')) return;
+  sb.from('essen_runden').delete().eq('id',rundeId).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { essenSel=null; loadAll(); } });
+}
+
 const __origTitle=document.title;
 function printDoc(title){ if(title) document.title=title; window.print(); }
 window.addEventListener('afterprint',()=>{ document.title=__origTitle;
