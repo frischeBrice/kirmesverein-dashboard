@@ -2550,17 +2550,17 @@ function openStaendchen(id){
   openModal(`<h3>${id?'Eintrag bearbeiten':'Neuer Ständchen-Eintrag'}</h3>
     <label class="field"><span>Name *</span><input id="st_name" value="${esc(x.name)}" placeholder="z. B. Familie Müller"></label>
     <div class="grid2">
-      <label class="field"><span>Straße</span><input id="st_strasse" value="${esc(x.strasse||'')}" placeholder="optional"></label>
-      <label class="field"><span>Hausnummer</span><input id="st_hausnummer" value="${esc(x.hausnummer||'')}" placeholder="optional"></label>
+      <label class="field"><span>Straße *</span><input id="st_strasse" value="${esc(x.strasse||'')}"></label>
+      <label class="field"><span>Hausnummer *</span><input id="st_hausnummer" value="${esc(x.hausnummer||'')}"></label>
     </div>
     <label class="field"><span>Notiz</span><textarea id="st_notiz" rows="2" placeholder="z. B. Anlass">${esc(x.notiz||'')}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveStaendchen('${id||''}',this)">Speichern</button></div>`);
 }
 function saveStaendchen(id,btn){
-  const name=val('st_name');
-  if(!name){ alert('Bitte einen Namen eingeben.'); return; }
-  const row={name, strasse:val('st_strasse')||null, hausnummer:val('st_hausnummer')||null, notiz:val('st_notiz')||null};
+  const name=val('st_name'), strasse=val('st_strasse'), hausnummer=val('st_hausnummer');
+  if(!name||!strasse||!hausnummer){ alert('Bitte Name, Straße und Hausnummer eingeben.'); return; }
+  const row={name, strasse, hausnummer, notiz:val('st_notiz')||null};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('staendchen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('staendchen').insert(row); if(error) throw error; }
@@ -2611,10 +2611,10 @@ function renderStaendchenSpenden(){
         <span class="grow"><button class="btn sm" onclick="openStaendchenDose()">＋ Neue Dose</button></span>
       </h3>
       ${staendchenSpendendosen.length?`<table>
-        <thead><tr><th>Standort</th><th>Foto</th><th style="text-align:right">Betrag</th><th>Notiz</th><th></th></tr></thead>
+        <thead><tr><th>Foto</th><th>Erfasst am</th><th style="text-align:right">Betrag</th><th>Notiz</th><th></th></tr></thead>
         <tbody>${staendchenSpendendosen.map(d=>`<tr>
-          <td><b>${esc(d.name)}</b></td>
           <td>${d.foto_pfad?`<button class="btn ghost sm" onclick="viewStaendchenFoto('${d.foto_pfad}')">📷 ansehen</button>`:'<span class="submuted">–</span>'}</td>
+          <td>${fmtDate(d.created_at)}</td>
           <td style="text-align:right">${d.betrag!=null?eur(d.betrag):'<span class="pill warn">offen</span>'}</td>
           <td class="submuted">${esc(d.notiz||'')}</td>
           <td><div class="row-actions">
@@ -2626,9 +2626,8 @@ function renderStaendchenSpenden(){
 }
 function staendchenDoseById(id){ return staendchenSpendendosen.find(x=>x.id===id); }
 function openStaendchenDose(id){
-  const d=id?staendchenDoseById(id):{name:'',betrag:'',notiz:''};
+  const d=id?staendchenDoseById(id):{betrag:'',notiz:''};
   openModal(`<h3>${id?'Spendendose bearbeiten':'Neue Spendendose'}</h3>
-    <label class="field"><span>Standort (optional)</span><input id="sd_name" value="${esc(d.name)}" placeholder="z. B. Bäckerei Müller"></label>
     <label class="field"><span>Foto der Dose ${id&&d.foto_pfad?'(neues Foto ersetzt das vorhandene)':'*'}</span>
       <input type="file" id="sd_foto" accept="image/*" capture="environment"></label>
     <label class="field"><span>Gesammelter Betrag (€) – leer lassen, solange noch nicht eingesammelt</span>
@@ -2651,14 +2650,13 @@ async function viewStaendchenFoto(path){
   window.open(data.signedUrl,'_blank');
 }
 function saveStaendchenDose(id,btn){
-  const name=val('sd_name')||'Spendendose';
   const existing=id?staendchenDoseById(id):null;
   const fotoFile=document.getElementById('sd_foto').files[0];
   if(!fotoFile && !(existing&&existing.foto_pfad)){ alert('Bitte ein Foto der Dose hochladen.'); return; }
   const betragStr=val('sd_betrag');
   const betrag=betragStr?parseFloat(betragStr.replace(',','.')):null;
   withBtn(btn,async()=>{
-    const row={ name, notiz: val('sd_notiz')||null, betrag, betrag_am: betrag!=null?new Date().toISOString():null };
+    const row={ name:'Spendendose', notiz: val('sd_notiz')||null, betrag, betrag_am: betrag!=null?new Date().toISOString():null };
     if(fotoFile) row.foto_pfad=await uploadStaendchenFoto(fotoFile);
     if(id){ const {error}=await sb.from('staendchen_spendendosen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('staendchen_spendendosen').insert(row); if(error) throw error; }
