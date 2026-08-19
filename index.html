@@ -2628,7 +2628,7 @@ function staendchenDoseById(id){ return staendchenSpendendosen.find(x=>x.id===id
 function openStaendchenDose(id){
   const d=id?staendchenDoseById(id):{name:'',betrag:'',notiz:''};
   openModal(`<h3>${id?'Spendendose bearbeiten':'Neue Spendendose'}</h3>
-    <label class="field"><span>Standort *</span><input id="sd_name" value="${esc(d.name)}" placeholder="z. B. Bäckerei Müller"></label>
+    <label class="field"><span>Standort (optional)</span><input id="sd_name" value="${esc(d.name)}" placeholder="z. B. Bäckerei Müller"></label>
     <label class="field"><span>Foto der Dose ${id&&d.foto_pfad?'(neues Foto ersetzt das vorhandene)':'*'}</span>
       <input type="file" id="sd_foto" accept="image/*" capture="environment"></label>
     <label class="field"><span>Gesammelter Betrag (€) – leer lassen, solange noch nicht eingesammelt</span>
@@ -2651,10 +2651,9 @@ async function viewStaendchenFoto(path){
   window.open(data.signedUrl,'_blank');
 }
 function saveStaendchenDose(id,btn){
-  const name=val('sd_name');
+  const name=val('sd_name')||'Spendendose';
   const existing=id?staendchenDoseById(id):null;
   const fotoFile=document.getElementById('sd_foto').files[0];
-  if(!name){ alert('Bitte einen Standort eingeben.'); return; }
   if(!fotoFile && !(existing&&existing.foto_pfad)){ alert('Bitte ein Foto der Dose hochladen.'); return; }
   const betragStr=val('sd_betrag');
   const betrag=betragStr?parseFloat(betragStr.replace(',','.')):null;
