@@ -1056,7 +1056,7 @@ function renderFinance(){
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
       <td style="text-align:right">${amount(t)}</td>
-      <td><div class="row-actions">${bearbeiterChip(t)}<button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('');
+      <td><div class="row-actions"><button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`).join('');
   const postenRows=postenAgg.map(([titel,v])=>`<tr>
       <td>–</td><td>${esc(titel)}</td>
       <td><b>${esc(titel)}</b> <span class="pill blue mini">App-Posten</span><div class="submuted">${v.count}× bezahlt · Verwaltung im Tab „Beiträge"</div></td>
@@ -1127,7 +1127,7 @@ function renderFinance(){
       <td><div class="row-actions">
         ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
         ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
-        ${bearbeiterChip(t)}<button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
+        <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
 
