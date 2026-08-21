@@ -2116,7 +2116,7 @@ function openKvvAktion(id){
       </select>
     </label>
     <div id="kvvZahlartAuslageBox" style="display:${a.zahlart==='ausgelegt'?'block':'none'}">
-      <label class="field"><span>Wer legt das Geld aus?</span><input id="kvv_ausgelegt_von" value="${esc(a.ausgelegt_von)}" placeholder="Name"></label>
+      <label class="field"><span>Wer legt das Geld aus?</span><input id="kvv_ausgelegt_von" list="memberNames" value="${esc(a.ausgelegt_von)}" placeholder="Name"></label>
     </div>
     <label class="field"><span>Notiz</span><textarea id="kvv_notiz" rows="2">${esc(a.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
