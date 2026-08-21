@@ -1074,10 +1074,12 @@ function renderFinance(){
       <td></td></tr>`:'';
   const kvvDetailRows=(kvvInc.length&&kvvInkomeExpanded)?kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
     const zahlart=a?(a.zahlart||'kasse'):'kasse';
-    const nichtKasse=zahlart!=='kasse';
+    // Hinweis zur Zahlart steht beim Aktion-Titel (nicht beim Teilnehmer selbst) – "Ausgelegt
+    // von X" statt der generischen "nicht im Kassenstand"-Pille direkt am Teilnehmer-Namen.
+    const zahlartHinweis = zahlart==='ausgelegt' ? ` · Ausgelegt von ${esc(a.ausgelegt_von||'—')}` : (zahlart==='selbst' ? ' · Jeder zahlt selbst' : '');
     return `<tr>
       <td>–</td><td class="submuted">↳</td>
-      <td style="padding-left:24px"><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span>${nichtKasse?` <span class="pill gray mini" title="Zahlart der Aktion: ${esc(ESSEN_ZAHLART_LABEL[zahlart])} – zählt nicht zum Kassenstand">nicht im Kassenstand</span>`:''}<div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''}</div></td>
+      <td style="padding-left:24px"><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span><div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''}${zahlartHinweis}</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(kvvBetrag(t))}</span></td>
       <td><div class="row-actions">${a?`<button class="icon-btn" title="Aktion öffnen" onclick="event.stopPropagation();openKvvFromFinance('${a.id}')">✏️</button>`:''}</div></td></tr>`;}).join(''):'';
   const kvvRows=kvvSummaryRow+kvvDetailRows;
