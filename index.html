@@ -1031,7 +1031,7 @@ function renderFinance(){
       <td>${fmtDate(t.datum)}</td><td>${esc(t.kategorie)||'–'}</td>
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
       <td style="text-align:right">${amount(t)}</td>
-      <td><div class="row-actions"><button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('');
+      <td><div class="row-actions">${bearbeiterChip(t)}<button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('');
   const postenRows=postenAgg.map(([titel,v])=>`<tr>
       <td>–</td><td>${esc(titel)}</td>
       <td><b>${esc(titel)}</b> <span class="pill blue mini">App-Posten</span><div class="submuted">${v.count}× bezahlt · Verwaltung im Tab „Beiträge"</div></td>
@@ -1077,7 +1077,7 @@ function renderFinance(){
       <td><div class="row-actions">
         ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
         ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
-        <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
+        ${bearbeiterChip(t)}<button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
 
@@ -1088,7 +1088,7 @@ function renderFinance(){
     <tbody>${adj.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td><b>${esc(t.beschreibung)}</b></td>
       <td style="text-align:right">${amount(t)}</td>
-      <td><div class="row-actions"><button class="icon-btn" onclick="openAdjust('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
+      <td><div class="row-actions">${bearbeiterChip(t)}<button class="icon-btn" onclick="openAdjust('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td>Summe Anpassungen</td><td colspan="1"></td><td style="text-align:right" class="amount ${adjustTotal()>=0?'plus':'minus'}">${adjustTotal()>=0?'+':''}${eur(adjustTotal())}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Anpassungen. Lege oben eine an (z. B. Anfangsbestand aus dem Vorjahr).</div>';
 }
@@ -1157,7 +1157,7 @@ function renderEvents(){
       <td>${artPill(e.art)}</td><td>${sichtPill(e.sichtbarkeit)}</td>
       <td>${zielgruppenPills(e)||'<span class="submuted">–</span>'}</td>
       <td style="color:var(--muted);max-width:220px">${esc(e.notiz)||''}</td>
-      <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`;
+      <td><div class="row-actions">${bearbeiterChip(e)}<button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`;
 }
 
 /* ---- Kalender ---- */
@@ -1197,8 +1197,9 @@ function renderKalender(){
   document.getElementById('calGrid').innerHTML=wd+grid;
 }
 
-/* ---- Sponsoren ---- */
-// Wer hat diesen Sponsor zuletzt angelegt/bearbeitet – kleiner Kürzel-Chip ganz rechts in der Zeile.
+/* ---- Bearbeiter-Kürzel-Chip: wer hat diese Zeile zuletzt angelegt/bearbeitet ----
+   Generisch für jede Tabelle mit bearbeitet_von/bearbeitet_at (Fallback created_by) –
+   genutzt bei Sponsoren, Finanzen, Veranstaltungen, Kartenvorverkauf, Inventur, Ständchen. */
 function initialsFromName(name){
   const parts=(name||'').trim().split(/\s+/).filter(Boolean);
   if(!parts.length) return '?';
@@ -1212,8 +1213,10 @@ function bearbeiterChip(s){
   const zeit=s.bearbeitet_at?new Date(s.bearbeitet_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
   return `<span class="editor-chip" style="background:${m.avatar_color||'#6366f1'}" title="Zuletzt bearbeitet von ${esc(name)}${zeit?' · '+zeit:''}">${esc(initialsFromName(name))}</span>`;
 }
-// Patch-Zusatz für jede Sponsoren-Schreiboperation – wer/wann zuletzt bearbeitet hat.
+// Patch-Zusatz für jede Schreiboperation – wer/wann zuletzt bearbeitet hat.
 function bearbeiterPatch(){ return {bearbeitet_von:me.id, bearbeitet_at:new Date().toISOString()}; }
+
+/* ---- Sponsoren ---- */
 
 function sponsorStatusPill(s){const c={'offen':'gray','angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'gray';return `<span class="pill ${c}">${esc(s||'offen')}</span>`;}
 const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
@@ -1563,20 +1566,20 @@ function renderInventur(){
           <button class="icon-btn" title="+1" onclick="invAdjust('${i.id}',1)">➕</button>
           ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}${isGetraenk(i.kategorie)?`<div style="margin-top:6px"><button class="btn ghost sm" onclick="invAngebrochen('${i.id}',1)">🍺 Angebrochen</button>${Number(i.angebrochen||0)>0?` <span class="pill warn mini">${(+i.angebrochen).toLocaleString('de-DE')} angebrochen</span> <button class="icon-btn" title="Angebrochen −1" onclick="invAngebrochen('${i.id}',-1)">↩️</button>`:''}</div>`:''}</td>
         <td>${esc(i.ort)||'–'}</td>
-        <td><div class="row-actions"><button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
+        <td><div class="row-actions">${bearbeiterChip(i)}<button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
     }).join('')}</tbody></table>`
     :'<div class="empty">Noch keine Artikel. Lege oben einen an.</div>';
 }
 async function invAdjust(id,delta){
   const i=inventar.find(x=>x.id===id); if(!i) return;
   const menge=Math.max(0, Number(i.menge)+delta);
-  const {error}=await sb.from('inventar').update({menge}).eq('id',id);
+  const {error}=await sb.from('inventar').update({menge,...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 async function invAngebrochen(id,delta){
   const i=inventar.find(x=>x.id===id); if(!i) return;
   const angebrochen=Math.max(0, Number(i.angebrochen||0)+delta);
-  const {error}=await sb.from('inventar').update({angebrochen}).eq('id',id);
+  const {error}=await sb.from('inventar').update({angebrochen,...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 function openInv(id){
@@ -1604,7 +1607,7 @@ function openInv(id){
 function saveInv(id,btn){
   const name=val('inv_name'); if(!name){ alert('Bitte eine Bezeichnung eingeben.'); return; }
   const minv=val('inv_min');
-  const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),angebrochen:num('inv_ang'),notiz:val('inv_notiz')||null};
+  const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),angebrochen:num('inv_ang'),notiz:val('inv_notiz')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('inventar').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('inventar').insert(row); if(error) throw error; }
@@ -1636,7 +1639,7 @@ function renderKleiderverleih(){
         <td style="text-align:right">${Number(k.anzahl_gesamt||0)}</td>
         <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
         <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
-        <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button></div></td></tr>`;
+        <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}${bearbeiterChip(k)}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button></div></td></tr>`;
     }).join('')}</tbody></table>` : '<div class="empty">Noch keine Kleidungsstücke. Lege oben eines an.</div>';
   const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben);
   document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
@@ -1669,7 +1672,7 @@ function openKleidung(id){
 }
 function saveKleidung(id,btn){
   const typ=val('kl_typ'); if(!typ){ alert('Bitte einen Typ eingeben (z. B. Shirt oder Jacke).'); return; }
-  const row={typ,geschlecht:val('kl_geschlecht')||null,groesse:val('kl_groesse')||null,anzahl_gesamt:num('kl_anzahl'),notiz:val('kl_notiz')||null};
+  const row={typ,geschlecht:val('kl_geschlecht')||null,groesse:val('kl_groesse')||null,anzahl_gesamt:num('kl_anzahl'),notiz:val('kl_notiz')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('kleidung').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('kleidung').insert(row); if(error) throw error; }
@@ -2040,7 +2043,7 @@ function renderKartenvorverkauf(){
             ${kartenvorverkauf.map(a=>`<option value="${a.id}" ${a.id===kvvSel?'selected':''}>${esc(a.titel)}${a.datum?' ('+fmtDate(a.datum)+')':''}</option>`).join('')}
           </select>
           <button class="btn ghost sm" onclick="openKvvAktion()">＋ Neue Aktion</button>
-          ${aktion?`<button class="btn ghost sm" onclick="openKvvAktion('${aktion.id}')">✏️</button><button class="btn ghost sm" onclick="delKvvAktion('${aktion.id}')">🗑️</button><button class="btn sm" onclick="printKvvAktion()">🖨 Drucken / PDF</button>`:''}
+          ${aktion?`<button class="btn ghost sm" onclick="openKvvAktion('${aktion.id}')">✏️</button><button class="btn ghost sm" onclick="delKvvAktion('${aktion.id}')">🗑️</button><button class="btn sm" onclick="printKvvAktion()">🖨 Drucken / PDF</button> ${bearbeiterChip(aktion)}`:''}
         </span>
       </h3>
       ${aktion?`<div class="submuted">${fmtDate(aktion.datum)} · Preis pro Karte ${eur(aktion.preis)}${aktion.notiz?' · '+esc(aktion.notiz):''}</div>`:''}
@@ -2074,6 +2077,7 @@ function renderKartenvorverkauf(){
             <td style="text-align:right">${eur(kvvBetrag(t))}</td>
             <td>${t.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
             <td><div class="row-actions">
+              ${bearbeiterChip(t)}
               <button class="btn ghost sm" onclick="toggleKvvBezahlt('${t.id}')">${t.bezahlt?'auf offen':'bezahlt ✓'}</button>
               <button class="icon-btn" onclick="delKvvTeilnehmer('${t.id}')">🗑️</button>
             </div></td></tr>`;}).join('')}</tbody>
@@ -2098,7 +2102,7 @@ function openKvvAktion(id){
 function saveKvvAktion(id,btn){
   const titel=val('kvv_titel'); const preis=num('kvv_preis');
   if(!titel||preis<=0){ alert('Bitte Veranstaltung/Anlass und Preis pro Karte eingeben.'); return; }
-  const row={titel,datum:val('kvv_datum')||todayISO(),preis,notiz:val('kvv_notiz')||null};
+  const row={titel,datum:val('kvv_datum')||todayISO(),preis,notiz:val('kvv_notiz')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('kartenvorverkauf').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {data,error}=await sb.from('kartenvorverkauf').insert(row).select().single(); if(error) throw error; kvvSel=data.id; }
@@ -2109,20 +2113,20 @@ function delKvvAktion(id){ if(!confirm('Diese Aktion inkl. aller Teilnehmer wirk
   sb.from('kartenvorverkauf').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { kvvSel=null; loadAll(); } }); }
 async function addKvvTeilnehmer(){
   const sel=document.getElementById('kvvNewMember'); if(!sel||!sel.value||!kvvSel) return;
-  const {error}=await sb.from('kartenvorverkauf_teilnehmer').insert({aktion_id:kvvSel, mitglied_id:sel.value, externe_anzahl:0, bezahlt:false});
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').insert({aktion_id:kvvSel, mitglied_id:sel.value, externe_anzahl:0, bezahlt:false,...bearbeiterPatch()});
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
 async function setKvvExterne(id,v){
   const n=Math.max(0, parseInt(v)||0);
-  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({externe_anzahl:n}).eq('id',id);
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({externe_anzahl:n,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
 async function toggleKvvBezahlt(id){
   const t=kvTeilnehmer.find(x=>x.id===id); if(!t) return;
   const bezahlt=!t.bezahlt;
-  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({bezahlt, bezahlt_at: bezahlt?new Date().toISOString():null}).eq('id',id);
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({bezahlt, bezahlt_at: bezahlt?new Date().toISOString():null,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
@@ -2190,7 +2194,7 @@ async function doKvvTausch(teilnehmerId){
     const neu=val('kvv_tausch_neu'); if(!neu) return;
     patch={ mitglied_id:neu, externer_name:null, vorheriger_mitglied_id:vorherigerMitgliedId, vorheriger_externer_name:vorherigerExternerName };
   }
-  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update(patch).eq('id',teilnehmerId);
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({...patch,...bearbeiterPatch()}).eq('id',teilnehmerId);
   if(error){ alert('Fehler: '+error.message); return; }
   closeModal(); await loadAll();
 }
@@ -2462,7 +2466,7 @@ async function finalizeEssenRunde(rundeId, withBooking){
         beschreibung:`Essen bestellen: ${runde.titel}${runde.ort?' ('+runde.ort+')':''}`,
         kategorie:'Essen bestellen', betrag: total, datum: todayISO(),
         ausgelegt: runde.zahlart==='ausgelegt', ausgelegt_von: runde.zahlart==='ausgelegt' ? runde.ausgelegt_von : null,
-        erstattet:false, bezahlt:true, created_by: me.id,
+        erstattet:false, bezahlt:true, created_by: me.id, ...bearbeiterPatch(),
       });
       if(bErr){ alert('Fehler bei Buchung: '+bErr.message); }
     }
@@ -2629,6 +2633,7 @@ function renderStaendchenListe(){
           <td>${esc(x.hausnummer||'–')}</td>
           <td class="submuted">${esc(x.notiz||'')}</td>
           <td><div class="row-actions">
+            ${bearbeiterChip(x)}
             <button class="icon-btn" onclick="openStaendchen('${x.id}')">✏️</button>
             <button class="icon-btn" onclick="delStaendchen('${x.id}')">🗑️</button>
           </div></td></tr>`).join('')}</tbody>
@@ -2651,7 +2656,7 @@ function openStaendchen(id){
 function saveStaendchen(id,btn){
   const name=val('st_name'), strasse=val('st_strasse'), hausnummer=val('st_hausnummer');
   if(!name||!strasse||!hausnummer){ alert('Bitte Name, Straße und Hausnummer eingeben.'); return; }
-  const row={name, strasse, hausnummer, notiz:val('st_notiz')||null};
+  const row={name, strasse, hausnummer, notiz:val('st_notiz')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('staendchen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('staendchen').insert(row); if(error) throw error; }
@@ -2692,7 +2697,7 @@ function renderStaendchenRoute(){
     <div class="panel">
       ${sorted.length?`<table>
         <thead><tr><th>Straße</th><th>Hausnr.</th><th>Name</th><th>Notiz</th><th></th></tr></thead>
-        <tbody>${sorted.map(x=>`<tr><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺</a></td></tr>`).join('')}</tbody>
+        <tbody>${sorted.map(x=>`<tr><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><div class="row-actions">${bearbeiterChip(x)}<a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺</a></div></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Adressen erfasst – unter „Adresslisten" hinzufügen.</div>'}
     </div>`;
 }
@@ -2719,6 +2724,7 @@ function renderStaendchenSpenden(){
           <td style="text-align:right">${d.betrag!=null?eur(d.betrag):'<span class="pill warn">offen</span>'}</td>
           <td class="submuted">${esc(d.notiz||'')}</td>
           <td><div class="row-actions">
+            ${bearbeiterChip(d)}
             <button class="icon-btn" onclick="openStaendchenDose('${d.id}')">✏️</button>
             <button class="icon-btn" onclick="delStaendchenDose('${d.id}')">🗑️</button>
           </div></td></tr>`).join('')}</tbody>
@@ -2757,7 +2763,7 @@ function saveStaendchenDose(id,btn){
   const betragStr=val('sd_betrag');
   const betrag=betragStr?parseFloat(betragStr.replace(',','.')):null;
   withBtn(btn,async()=>{
-    const row={ name:'Spendendose', notiz: val('sd_notiz')||null, betrag, betrag_am: betrag!=null?new Date().toISOString():null };
+    const row={ name:'Spendendose', notiz: val('sd_notiz')||null, betrag, betrag_am: betrag!=null?new Date().toISOString():null,...bearbeiterPatch() };
     if(fotoFile) row.foto_pfad=await uploadStaendchenFoto(fotoFile);
     if(id){ const {error}=await sb.from('staendchen_spendendosen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('staendchen_spendendosen').insert(row); if(error) throw error; }
@@ -3132,6 +3138,7 @@ function saveAdjust(id,btn){
 
 /* ---- gemeinsame Tx-Logik ---- */
 async function upsertTx(id,row){
+  Object.assign(row,bearbeiterPatch());
   if(id){ const {error}=await sb.from('finanzbuchungen').update(row).eq('id',id); if(error) throw error; }
   else { row.created_by=me.id; const {error}=await sb.from('finanzbuchungen').insert(row); if(error) throw error; }
 }
@@ -3143,7 +3150,7 @@ function editTx(id){
 async function markErstattet(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
   if(!confirm(`Auslage von ${t.ausgelegt_von||'—'} (${eur(t.betrag)}) komplett als erstattet markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
-  const {error}=await sb.from('finanzbuchungen').update({erstattet:true, erstattet_betrag:Number(t.betrag)}).eq('id',id);
+  const {error}=await sb.from('finanzbuchungen').update({erstattet:true, erstattet_betrag:Number(t.betrag),...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 /* ---- Teil-Rückerstattung pro Person (FIFO: älteste Auslage zuerst) ---- */
@@ -3180,7 +3187,7 @@ function doReimburse(btn){
       const apply=Math.min(left, open);
       const newErst=erstattetBetrag(t)+apply;
       const full=newErst>=(Number(t.betrag)||0)-0.005;
-      const {error}=await sb.from('finanzbuchungen').update({erstattet_betrag:newErst, erstattet:full}).eq('id',t.id);
+      const {error}=await sb.from('finanzbuchungen').update({erstattet_betrag:newErst, erstattet:full,...bearbeiterPatch()}).eq('id',t.id);
       if(error) throw error;
       left-=apply;
     }
@@ -3190,7 +3197,7 @@ function doReimburse(btn){
 async function markBezahlt(id){
   const t=transactions.find(x=>x.id===id); if(!t) return;
   if(!confirm(`„${t.beschreibung}" (${eur(t.betrag)}) als bezahlt markieren?\nDer Betrag wird dann vom Kassenstand abgezogen.`)) return;
-  const {error}=await sb.from('finanzbuchungen').update({bezahlt:true}).eq('id',id);
+  const {error}=await sb.from('finanzbuchungen').update({bezahlt:true,...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 async function delTx(id){
@@ -3236,7 +3243,7 @@ function openEvent(id,dateStr){
 function saveEvent(id,btn){
   const titel=val('e_titel'); if(!titel){ alert('Bitte einen Titel eingeben.'); return; }
   const zg=[...document.querySelectorAll('.e_zg:checked')].map(el=>el.value);
-  const row={titel,datum:val('e_datum')||null,ort:val('e_ort')||null,status:val('e_status'),notiz:val('e_notiz')||null,art:val('e_art'),sichtbarkeit:val('e_sicht'),zielgruppen:zg.join(', ')||null};
+  const row={titel,datum:val('e_datum')||null,ort:val('e_ort')||null,status:val('e_status'),notiz:val('e_notiz')||null,art:val('e_art'),sichtbarkeit:val('e_sicht'),zielgruppen:zg.join(', ')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('veranstaltungen').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('veranstaltungen').insert(row); if(error) throw error; }
