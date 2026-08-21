@@ -2205,11 +2205,14 @@ async function syncKvvAuslage(aktionId){
     }
     return;
   }
+  // In den Ausgaben (finanzbuchungen) bewusst MIT "Kartenvorverkauf: "-Präfix – anders als die
+  // Einnahmen-Sammelzeile steht diese Buchung z.B. bei "Offene Auslagen pro Person" auch OHNE
+  // eigene Kategorie-Spalte, da braucht's den Kontext direkt im Namen.
   if(aktion.finanzbuchung_id){
-    await sb.from('finanzbuchungen').update({betrag:totalBetrag, beschreibung:aktion.titel, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
+    await sb.from('finanzbuchungen').update({betrag:totalBetrag, beschreibung:`Kartenvorverkauf: ${aktion.titel}`, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
   } else {
     const {data,error}=await sb.from('finanzbuchungen').insert({
-      typ:'extern', art:'out', beschreibung:aktion.titel, kategorie:'Kartenvorverkauf',
+      typ:'extern', art:'out', beschreibung:`Kartenvorverkauf: ${aktion.titel}`, kategorie:'Kartenvorverkauf',
       betrag:totalBetrag, datum:aktion.datum||todayISO(),
       ausgelegt:true, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:0, erstattet:false, bezahlt:true,
       created_by:me.id,...bearbeiterPatch(),
