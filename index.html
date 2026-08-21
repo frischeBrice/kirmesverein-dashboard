@@ -1634,7 +1634,7 @@ function renderInventur(){
     <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Ort</th><th></th></tr></thead>
     <tbody>${list.map(i=>{ const lowB=i.min_menge!=null && Number(i.menge)<=Number(i.min_menge);
       return `<tr>
-        <td><b>${esc(i.name)}</b>${i.notiz?`<div class="submuted">${esc(i.notiz)}</div>`:''}</td>
+        <td><div style="display:flex;align-items:center;gap:8px">${i.bild_url?`<a href="${esc(i.bild_url)}" target="_blank" rel="noopener"><img src="${esc(i.bild_url)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex:none"></a>`:''}<div><b>${esc(i.name)}</b>${i.notiz?`<div class="submuted">${esc(i.notiz)}</div>`:''}</div></div></td>
         <td>${esc(i.kategorie)||'–'}</td>
         <td><span style="display:inline-flex;align-items:center;gap:6px">
           <button class="icon-btn" title="−1" onclick="invAdjust('${i.id}',-1)">➖</button>
@@ -1659,9 +1659,13 @@ async function invAngebrochen(id,delta){
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
 function openInv(id){
-  const i=id?inventar.find(x=>x.id===id):{name:'',kategorie:'',menge:0,einheit:'Stück',ort:'',min_menge:'',angebrochen:0,notiz:''};
+  const i=id?inventar.find(x=>x.id===id):{name:'',kategorie:'',menge:0,einheit:'Stück',ort:'',min_menge:'',angebrochen:0,notiz:'',bild_url:null};
   openModal(`<h3>${id?'Artikel bearbeiten':'Neuer Artikel'}</h3>
     <label class="field"><span>Bezeichnung *</span><input id="inv_name" value="${esc(i.name)}"></label>
+    <label class="field"><span>Bild ${i.bild_url?'(neues Foto ersetzt das vorhandene)':''}</span>
+      <input type="file" id="inv_bild" accept="image/*">
+      ${i.bild_url?`<div style="margin-top:6px"><img src="${esc(i.bild_url)}" style="width:70px;height:70px;object-fit:cover;border-radius:8px"></div>`:''}
+    </label>
     <div class="grid2">
       <label class="field"><span>Kategorie</span><input id="inv_kat" list="invcats" value="${esc(i.kategorie)}">
         <datalist id="invcats"><option>Getränke</option><option>Deko</option><option>Technik</option><option>Geschirr</option><option>Werkzeug</option><option>Verbrauchsmaterial</option><option>Sonstiges</option></datalist></label>
@@ -1680,11 +1684,21 @@ function openInv(id){
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveInv('${id||''}',this)">Speichern</button></div>`);
 }
+async function uploadInvBild(file){
+  const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+  const path=`${me.id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.${ext}`;
+  const {error}=await sb.storage.from('inventar').upload(path,file,{upsert:false});
+  if(error) throw error;
+  const {data}=sb.storage.from('inventar').getPublicUrl(path);
+  return data.publicUrl;
+}
 function saveInv(id,btn){
   const name=val('inv_name'); if(!name){ alert('Bitte eine Bezeichnung eingeben.'); return; }
   const minv=val('inv_min');
   const row={name,kategorie:val('inv_kat')||null,menge:num('inv_menge'),einheit:val('inv_einheit')||null,ort:val('inv_ort')||null,min_menge:minv===''?null:parseFloat(minv),angebrochen:num('inv_ang'),notiz:val('inv_notiz')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
+    const f=document.getElementById('inv_bild').files[0];
+    if(f) row.bild_url=await uploadInvBild(f);
     if(id){ const {error}=await sb.from('inventar').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('inventar').insert(row); if(error) throw error; }
     closeModal(); await loadAll();
