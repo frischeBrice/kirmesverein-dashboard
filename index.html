@@ -1210,8 +1210,13 @@ function bearbeiterChip(s){
   const id=s.bearbeitet_von||s.created_by; if(!id) return '';
   const m=members.find(x=>x.id===id); if(!m) return '';
   const name=m.display_name||m.username;
-  const zeit=s.bearbeitet_at?new Date(s.bearbeitet_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-  return `<span class="editor-chip" style="background:${m.avatar_color||'#6366f1'}" title="Zuletzt bearbeitet von ${esc(name)}${zeit?' · '+zeit:''}">${esc(initialsFromName(name))}</span>`;
+  // Wurde die Zeile schon mal bearbeitet -> bearbeitet_at/-_von, sonst Fallback auf
+  // created_at/created_by (reines Anlegen zählt als "gestartet", nicht "bearbeitet").
+  const bearbeitet=!!s.bearbeitet_von;
+  const zeitRaw=bearbeitet?s.bearbeitet_at:s.created_at;
+  const zeit=zeitRaw?new Date(zeitRaw).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const label=bearbeitet?'Zuletzt bearbeitet von':'Angelegt von';
+  return `<span class="editor-chip" style="background:${m.avatar_color||'#6366f1'}" title="${label} ${esc(name)}${zeit?' · '+zeit:''}">${esc(initialsFromName(name))}</span>`;
 }
 // Patch-Zusatz für jede Schreiboperation – wer/wann zuletzt bearbeitet hat.
 function bearbeiterPatch(){ return {bearbeitet_von:me.id, bearbeitet_at:new Date().toISOString()}; }
