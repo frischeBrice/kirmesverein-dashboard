@@ -2836,24 +2836,25 @@ function printFreikartenChecklist(){
   if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
   const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
   document.getElementById('fkPrintArea').innerHTML=`
-    <div class="panel">
-      <h3>Apfelstädter Jugendkirmesgesellschaft e.V. – Freikarten-Checkliste</h3>
-      <div class="submuted">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
-      <div class="cards" style="margin-top:14px">
-        <div class="card"><div class="label">Sponsoren mit Freikarten</div><div class="value">${list.length}</div></div>
-        <div class="card"><div class="label">Karten gesamt</div><div class="value">${totalKarten}</div></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:8px">
+      <div>
+        <h3 style="margin:0;font-size:16px">Apfelstädter Jugendkirmesgesellschaft e.V. – Freikarten-Checkliste</h3>
+        <div class="submuted" style="font-size:11.5px">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} von ${esc(me?me.display_name||me.username:'')}</div>
+      </div>
+      <div style="text-align:right;font-size:12.5px;white-space:nowrap">
+        <div>Sponsoren mit Freikarten: <b>${list.length}</b></div>
+        <div>Karten gesamt: <b>${totalKarten}</b></div>
       </div>
     </div>
-    <div class="panel">
-      <table><thead><tr><th>Sponsor</th><th>Nummern</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
-        <tbody>${list.map(s=>{
-          const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
-          return `<tr><td>${esc(s.name)}</td><td>${nums.length?'#'+nums.join(', #'):'–'}</td>
-            <td>${'<span class="chk-box"></span>'.repeat(anz)}</td></tr>`;
-        }).join('')}</tbody>
-        <tfoot><tr><td>Summe</td><td></td><td>${totalKarten} Karten</td></tr></tfoot>
-      </table>
-    </div>`;
+    <table class="compact-table">
+      <thead><tr><th>Sponsor</th><th>Nummern</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+      <tbody>${list.map(s=>{
+        const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
+        return `<tr><td>${esc(s.name)}</td><td>${nums.length?'#'+nums.join(', #'):'–'}</td>
+          <td>${'<span class="chk-box"></span>'.repeat(anz)}</td></tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr><td>Summe</td><td></td><td>${totalKarten} Karten</td></tr></tfoot>
+    </table>`;
   document.getElementById('fkPrintArea').classList.add('show');
   printDoc('Freikarten-Checkliste');
 }
