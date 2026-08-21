@@ -1046,6 +1046,10 @@ function renderFinance(){
   // in der Kategorie-Spalte) – bei mehreren gemischten Aktionen bleibt's generisch.
   const kvvAktionTitel=[...new Set(kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); return a?a.titel:null;}).filter(Boolean))];
   const kvvTitelLabel=kvvAktionTitel.length===1?kvvAktionTitel[0]:'Kartenvorverkauf';
+  // Wer ausgelegt hat, soll schon in der zugeklappten Sammelzeile sichtbar sein (nicht erst nach
+  // dem Aufklappen) – bei genau einer auslegenden Person deren Namen zeigen, sonst generisch.
+  const kvvAusgelegtVon=[...new Set(kvvInc.filter(t=>{const a=kvvAktion(t.aktion_id); return a&&a.zahlart==='ausgelegt';}).map(t=>kvvAktion(t.aktion_id).ausgelegt_von).filter(Boolean))];
+  const kvvAusgelegtPill=kvvHatAusgelegt?` <span class="pill mini" style="background:rgba(232,161,58,.15);color:var(--accent)">Ausgelegt von ${esc(kvvAusgelegtVon.length===1?kvvAusgelegtVon[0]:'mehreren')}</span>`:'';
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
   const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
@@ -1078,7 +1082,7 @@ function renderFinance(){
   // Wie bei Sponsoring: statt einer Zeile pro Teilnahme eine auf-/zuklappbare Sammelzeile.
   const kvvSummaryRow=kvvInc.length?`<tr style="cursor:pointer" onclick="toggleKvvInkome()">
       <td>–</td><td>Kartenvorverkauf</td>
-      <td><b>${kvvInkomeExpanded?'▾':'▸'} ${esc(kvvTitelLabel)}</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>
+      <td><b>${kvvInkomeExpanded?'▾':'▸'} ${esc(kvvTitelLabel)}</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>${kvvAusgelegtPill}
         <div class="submuted">bezahlte Karten · zum Auf-/Zuklappen anklicken</div></td>
       <td style="text-align:right"><span class="amount plus" style="${kvvHatAusgelegt?'color:var(--accent)':''}">+${eur(kvvAlleSum)}</span></td>
       <td></td></tr>`:'';
