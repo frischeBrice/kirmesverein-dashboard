@@ -1631,8 +1631,9 @@ function renderInventur(){
   document.getElementById('invLow').textContent=low;
   const list=inventar.filter(i=>((i.name||'').toLowerCase().includes(q)||(i.kategorie||'').toLowerCase().includes(q)) && (!f||i.kategorie===f));
   document.getElementById('inventurTable').innerHTML=list.length?`<table>
-    <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Ort</th><th></th></tr></thead>
+    <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Angebrochen</th><th>Ort</th><th></th></tr></thead>
     <tbody>${list.map(i=>{ const lowB=i.min_menge!=null && Number(i.menge)<=Number(i.min_menge);
+      const proz=Number(i.angebrochen||0);
       return `<tr>
         <td><div style="display:flex;align-items:center;gap:8px">${i.bild_url?`<a href="${esc(i.bild_url)}" target="_blank" rel="noopener"><img src="${esc(i.bild_url)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex:none"></a>`:''}<div><b>${esc(i.name)}</b>${i.notiz?`<div class="submuted">${esc(i.notiz)}</div>`:''}</div></div></td>
         <td>${esc(i.kategorie)||'–'}</td>
@@ -1640,7 +1641,12 @@ function renderInventur(){
           <button class="icon-btn" title="−1" onclick="invAdjust('${i.id}',-1)">➖</button>
           <b${lowB?' style="color:var(--accent)"':''}>${(+i.menge).toLocaleString('de-DE')}${i.einheit?' '+esc(i.einheit):''}</b>
           <button class="icon-btn" title="+1" onclick="invAdjust('${i.id}',1)">➕</button>
-          ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}${isGetraenk(i.kategorie)?`<div style="margin-top:6px"><button class="btn ghost sm" onclick="invAngebrochen('${i.id}',1)">🍺 Angebrochen</button>${Number(i.angebrochen||0)>0?` <span class="pill warn mini">${(+i.angebrochen).toLocaleString('de-DE')} angebrochen</span> <button class="icon-btn" title="Angebrochen −1" onclick="invAngebrochen('${i.id}',-1)">↩️</button>`:''}</div>`:''}</td>
+          ${lowB?'<span class="pill no mini">niedrig</span>':''}</span>${i.min_menge!=null?`<div class="submuted">min. ${(+i.min_menge).toLocaleString('de-DE')}</div>`:''}</td>
+        <td>${isGetraenk(i.kategorie)?`<span style="display:inline-flex;align-items:center;gap:6px">
+          ${proz>0?`<button class="icon-btn" title="−10%" onclick="invAngebrochen('${i.id}',-1)">➖</button>`:''}
+          ${proz>0?`<span class="pill warn mini">🍺 ${proz}%</span>`:'<span class="submuted">nicht angebrochen</span>'}
+          <button class="icon-btn" title="${proz>0?'+10%':'Anbrechen'}" onclick="invAngebrochen('${i.id}',1)">➕</button>
+        </span>`:'<span class="submuted">–</span>'}</td>
         <td>${esc(i.ort)||'–'}</td>
         <td><div class="row-actions">${bearbeiterChip(i)}<button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
     }).join('')}</tbody></table>`
@@ -1652,9 +1658,12 @@ async function invAdjust(id,delta){
   const {error}=await sb.from('inventar').update({menge,...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
+// "angebrochen" ist eine Restmenge in % (0–100, 10er-Schritte, wie in der App) – erstes Antippen
+// einer noch verschlossenen Einheit springt direkt auf 100% (frisch angebrochen = randvoll).
 async function invAngebrochen(id,delta){
   const i=inventar.find(x=>x.id===id); if(!i) return;
-  const angebrochen=Math.max(0, Number(i.angebrochen||0)+delta);
+  const cur=Number(i.angebrochen||0);
+  const angebrochen = delta>0 ? (cur===0?100:Math.min(100,cur+10)) : Math.max(0,cur-10);
   const {error}=await sb.from('inventar').update({angebrochen,...bearbeiterPatch()}).eq('id',id);
   if(error) alert('Fehler: '+error.message); else loadAll();
 }
@@ -1678,7 +1687,7 @@ function openInv(id){
     </div>
     <div class="grid2">
       <label class="field"><span>Mindestbestand (optional)</span><input type="number" step="0.01" id="inv_min" value="${i.min_menge??''}"></label>
-      <label class="field"><span>Angebrochen (Getränke)</span><input type="number" step="0.01" min="0" id="inv_ang" value="${i.angebrochen??0}"></label>
+      <label class="field"><span>Angebrochen (% Restmenge, Getränke)</span><input type="number" step="10" min="0" max="100" id="inv_ang" value="${i.angebrochen??0}"></label>
     </div>
     <label class="field"><span>Notiz</span><textarea id="inv_notiz" rows="2">${esc(i.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
