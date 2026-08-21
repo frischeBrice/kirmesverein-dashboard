@@ -2040,6 +2040,8 @@ function renderKartenvorverkauf(){
   const offenBetrag=totalBetrag-bezahltBetrag;
   const usedIds=new Set(rows.map(t=>t.mitglied_id));
   const available=members.filter(m=>!usedIds.has(m.id));
+  const kvvTx=aktion?kvvBuchungTx(aktion):null;
+  const kvvTxStatus=kvvTx?(kvvTx.ausgelegt?`<span class="pill warn mini">Ausgelegt${kvvTx.ausgelegt_von?' · '+esc(kvvTx.ausgelegt_von):''}</span>`:(kvvTx.bezahlt===false?'<span class="pill no mini">offen</span>':'<span class="pill ok mini">aus Kasse</span>')):'';
 
   body.innerHTML=`
     <div class="panel">
@@ -2060,6 +2062,11 @@ function renderKartenvorverkauf(){
       <div class="card"><div class="label">Erlös gesamt</div><div class="value">${eur(totalBetrag)}</div></div>
       <div class="card"><div class="label">Bezahlt</div><div class="value green">${eur(bezahltBetrag)}</div></div>
       <div class="card"><div class="label">Offen</div><div class="value red">${eur(offenBetrag)}</div></div>
+      <div class="card">
+        <div class="label">An Veranstalter gezahlt</div>
+        <div class="value">${kvvTx?eur(kvvTx.betrag):'–'}</div>
+        <div style="margin-top:6px">${kvvTxStatus} <button class="btn ghost sm" style="margin-top:4px" onclick="openKvvBuchen('${aktion.id}')">${kvvTx?'✏️ Bearbeiten':'💸 Buchen'}</button></div>
+      </div>
     </div>
     <div class="panel">
       <h3>Teilnehmer
@@ -2117,6 +2124,55 @@ function saveKvvAktion(id,btn){
 }
 function delKvvAktion(id){ if(!confirm('Diese Aktion inkl. aller Teilnehmer wirklich löschen?'))return;
   sb.from('kartenvorverkauf').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { kvvSel=null; loadAll(); } }); }
+
+/* ---- Kartenvorverkauf: Zahlung an den Veranstalter (ausgelegt/aus Kasse) ---- */
+// Die verlinkte Ausgabe in finanzbuchungen, falls schon gebucht (nutzt dieselben
+// Auslage-Felder/Helfer wie normale Ausgaben – fieldAuslage/readAuslage/toggleAuslage).
+function kvvBuchungTx(aktion){ return aktion.finanzbuchung_id ? transactions.find(t=>t.id===aktion.finanzbuchung_id) : null; }
+function openKvvBuchen(aktionId){
+  const aktion=kvvAktion(aktionId); if(!aktion) return;
+  const tx=kvvBuchungTx(aktion);
+  const t=tx||{betrag:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,bezahlt:true};
+  openModal(`<h3>💸 Zahlung an den Veranstalter</h3>
+    <div class="submuted" style="margin-bottom:10px">Betrag, den der Verein für „${esc(aktion.titel)}" an den Veranstalter gezahlt hat.</div>
+    <label class="field"><span>Betrag (€) *</span><input type="number" step="0.01" min="0" id="kvvb_betrag" value="${t.betrag}"></label>
+    ${fieldAuslage(t)}
+    <div class="modal-actions">
+      ${tx?`<button class="btn ghost" style="margin-right:auto" onclick="delKvvBuchung('${aktionId}')">🗑️ Buchung entfernen</button>`:''}
+      <button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveKvvBuchen('${aktionId}',this)">Speichern</button>
+    </div>`);
+}
+function saveKvvBuchen(aktionId,btn){
+  const aktion=kvvAktion(aktionId); if(!aktion) return;
+  const betrag=num('kvvb_betrag');
+  if(betrag<=0){ alert('Bitte einen Betrag eingeben.'); return; }
+  const row={typ:'extern',art:'out',beschreibung:`Kartenvorverkauf: ${aktion.titel}`,kategorie:'Kartenvorverkauf',betrag,datum:todayISO(),...readAuslage()};
+  withBtn(btn,async()=>{
+    if(aktion.finanzbuchung_id){
+      const {error}=await sb.from('finanzbuchungen').update({...row,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
+      if(error) throw error;
+    } else {
+      row.created_by=me.id;
+      const {data,error}=await sb.from('finanzbuchungen').insert({...row,...bearbeiterPatch()}).select().single();
+      if(error) throw error;
+      const {error:linkErr}=await sb.from('kartenvorverkauf').update({finanzbuchung_id:data.id,...bearbeiterPatch()}).eq('id',aktionId);
+      if(linkErr) throw linkErr;
+    }
+    closeModal(); await loadAll();
+  });
+}
+function delKvvBuchung(aktionId){
+  const aktion=kvvAktion(aktionId); if(!aktion||!aktion.finanzbuchung_id) return;
+  if(!confirm('Buchung wirklich entfernen? Der Betrag verschwindet dann wieder aus der Kasse/den Auslagen.')) return;
+  (async()=>{
+    const {error:delErr}=await sb.from('finanzbuchungen').delete().eq('id',aktion.finanzbuchung_id);
+    if(delErr){ alert('Fehler: '+delErr.message); return; }
+    const {error}=await sb.from('kartenvorverkauf').update({finanzbuchung_id:null}).eq('id',aktionId);
+    if(error){ alert('Fehler: '+error.message); return; }
+    closeModal(); await loadAll();
+  })();
+}
 async function addKvvTeilnehmer(){
   const sel=document.getElementById('kvvNewMember'); if(!sel||!sel.value||!kvvSel) return;
   const {error}=await sb.from('kartenvorverkauf_teilnehmer').insert({aktion_id:kvvSel, mitglied_id:sel.value, externe_anzahl:0, bezahlt:false,...bearbeiterPatch()});
