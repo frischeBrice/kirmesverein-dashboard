@@ -2040,11 +2040,13 @@ function renderKartenvorverkauf(){
         </span>
       </h3>
       ${rows.length?`<table>
-        <thead><tr><th>Mitglied</th><th>Externe Personen</th><th>Karten</th><th style="text-align:right">Betrag</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Teilnehmer</th><th>Externe Personen</th><th>Karten</th><th style="text-align:right">Betrag</th><th>Status</th><th></th></tr></thead>
         <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id);
-          const mitgliedCell = t.vorheriger_mitglied_id
-            ? `<div style="text-decoration:line-through;color:var(--muted);font-size:12px">${esc(memberName(t.vorheriger_mitglied_id))} <button class="icon-btn" style="padding:0 3px;font-size:10px" title="Hinweis ausblenden" onclick="clearKvvTauschHinweis('${t.id}')">✕</button></div><div>→ ${m?nameWithAvatar(m):'—'}</div>`
-            : (m?nameWithAvatar(m):'—');
+          const vorherName=kvvVorherigerName(t);
+          const aktuellCell = m?nameWithAvatar(m):(t.externer_name?`🌐 ${esc(t.externer_name)}`:'—');
+          const mitgliedCell = vorherName
+            ? `<div style="text-decoration:line-through;color:var(--muted);font-size:12px">${esc(vorherName)} <button class="icon-btn" style="padding:0 3px;font-size:10px" title="Hinweis ausblenden" onclick="clearKvvTauschHinweis('${t.id}')">✕</button></div><div>→ ${aktuellCell}</div>`
+            : aktuellCell;
           return `<tr>
             <td><div style="display:flex;align-items:center;gap:6px">${mitgliedCell}<button class="icon-btn" title="Teilnehmer ersetzen" onclick="openKvvTausch('${t.id}')">🔄</button></div></td>
             <td><input type="number" min="0" step="1" value="${t.externe_anzahl}" class="beitrag-inp" onchange="setKvvExterne('${t.id}',this.value)"></td>
@@ -2108,28 +2110,72 @@ function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))ret
   sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
 /* ---- Kartenvorverkauf: Teilnehmer ersetzen (falls jemand abspringt) ---- */
+// Aktueller Platz-Inhaber: entweder ein Mitglied (mitglied_id) oder eine externe
+// Person (externer_name, freier Text) – genau eins von beiden ist gesetzt (DB-Constraint).
+function kvvTeilnehmerName(t){
+  if(t.externer_name) return t.externer_name;
+  return memberName(t.mitglied_id);
+}
+// Wer VORHER auf diesem Platz war (für den durchgestrichenen Tausch-Hinweis) – ebenfalls
+// entweder Mitglied oder extern, oder null wenn nie getauscht wurde.
+function kvvVorherigerName(t){
+  if(t.vorheriger_externer_name) return t.vorheriger_externer_name;
+  if(t.vorheriger_mitglied_id) return memberName(t.vorheriger_mitglied_id);
+  return null;
+}
 function openKvvTausch(teilnehmerId){
   const t=kvTeilnehmer.find(x=>x.id===teilnehmerId); if(!t) return;
   const usedIds=new Set(kvTeilnehmer.filter(x=>x.aktion_id===t.aktion_id).map(x=>x.mitglied_id));
   const avail=members.filter(m=>!usedIds.has(m.id));
-  if(!avail.length){ alert('Alle Mitglieder sind bereits in dieser Aktion erfasst.'); return; }
   openModal(`<h3>🔄 Teilnehmer ersetzen</h3>
-    <div class="submuted" style="margin-bottom:10px"><b>${esc(memberName(t.mitglied_id))}</b> springt ab – wer rückt nach? Externe Personen/Bezahlstatus übernimmt der Platz unverändert.</div>
-    <label class="field"><span>Neues Mitglied</span>
-      <select id="kvv_tausch_neu">${avail.map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}</select>
+    <div class="submuted" style="margin-bottom:10px"><b>${esc(kvvTeilnehmerName(t))}</b> springt ab – wer rückt nach? Externe Personen/Bezahlstatus übernimmt der Platz unverändert.</div>
+    <label class="field"><span>Wer rückt nach?</span>
+      <select id="kvv_tausch_typ" onchange="toggleKvvTauschTyp()">
+        <option value="mitglied">Bestehendes Mitglied</option>
+        <option value="extern">Externe Person (Name eingeben)</option>
+      </select>
     </label>
+    <div id="kvvTauschMitgliedBox">
+      <label class="field"><span>Neues Mitglied</span>
+        ${avail.length?`<select id="kvv_tausch_neu">${avail.map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}</select>`
+          :`<div class="submuted">Alle Mitglieder sind bereits in dieser Aktion erfasst – nur noch als externe Person möglich.</div>`}
+      </label>
+    </div>
+    <div id="kvvTauschExternBox" style="display:none">
+      <label class="field"><span>Name der externen Person</span>
+        <input id="kvv_tausch_extern_name" placeholder="z. B. Max Mustermann">
+      </label>
+    </div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="doKvvTausch('${teilnehmerId}')">Ersetzen</button></div>`);
+  if(!avail.length){ document.getElementById('kvv_tausch_typ').value='extern'; toggleKvvTauschTyp(); }
+}
+function toggleKvvTauschTyp(){
+  const typ=val('kvv_tausch_typ');
+  document.getElementById('kvvTauschMitgliedBox').style.display = typ==='extern'?'none':'block';
+  document.getElementById('kvvTauschExternBox').style.display = typ==='extern'?'block':'none';
 }
 async function doKvvTausch(teilnehmerId){
-  const neu=val('kvv_tausch_neu'); if(!neu) return;
   const t=kvTeilnehmer.find(x=>x.id===teilnehmerId); if(!t) return;
-  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({mitglied_id:neu, vorheriger_mitglied_id:t.mitglied_id}).eq('id',teilnehmerId);
+  const typ=val('kvv_tausch_typ');
+  // Vorherigen Platz-Inhaber (Mitglied oder extern) für den Tausch-Hinweis sichern.
+  const vorherigerMitgliedId=t.mitglied_id||null;
+  const vorherigerExternerName=t.mitglied_id?null:(t.externer_name||null);
+  let patch;
+  if(typ==='extern'){
+    const name=(val('kvv_tausch_extern_name')||'').trim();
+    if(!name){ alert('Bitte einen Namen eingeben.'); return; }
+    patch={ mitglied_id:null, externer_name:name, vorheriger_mitglied_id:vorherigerMitgliedId, vorheriger_externer_name:vorherigerExternerName };
+  } else {
+    const neu=val('kvv_tausch_neu'); if(!neu) return;
+    patch={ mitglied_id:neu, externer_name:null, vorheriger_mitglied_id:vorherigerMitgliedId, vorheriger_externer_name:vorherigerExternerName };
+  }
+  const {error}=await sb.from('kartenvorverkauf_teilnehmer').update(patch).eq('id',teilnehmerId);
   if(error){ alert('Fehler: '+error.message); return; }
   closeModal(); await loadAll();
 }
 function clearKvvTauschHinweis(teilnehmerId){
-  sb.from('kartenvorverkauf_teilnehmer').update({vorheriger_mitglied_id:null}).eq('id',teilnehmerId)
+  sb.from('kartenvorverkauf_teilnehmer').update({vorheriger_mitglied_id:null, vorheriger_externer_name:null}).eq('id',teilnehmerId)
     .then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); });
 }
 
@@ -2155,9 +2201,9 @@ function printKvvAktion(aktionId){
       </div>
     </div>
     ${rows.length?`<table class="compact-table">
-      <thead><tr><th>Mitglied</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
-      <tbody>${rows.map(t=>{const m=members.find(x=>x.id===t.mitglied_id); const karten=kvvKarten(t);
-        return `<tr><td>${esc(m?(m.display_name||m.username):'—')}</td>
+      <thead><tr><th>Teilnehmer</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+      <tbody>${rows.map(t=>{const karten=kvvKarten(t);
+        return `<tr><td>${esc(kvvTeilnehmerName(t))}</td>
           <td style="text-align:right">${t.externe_anzahl}</td>
           <td style="text-align:right">${karten}</td>
           <td style="text-align:right">${eur(kvvBetrag(t))}</td>
