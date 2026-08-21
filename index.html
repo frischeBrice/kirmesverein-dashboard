@@ -2817,7 +2817,10 @@ function printFreikartenChecklist(){
   // Sicherheitsnetz gegen verwaiste Werte, falls ein Sponsor mal ohne Aufräumen unter 50 €/Status
   // gerutscht ist (z.B. Altdaten von vor diesem Fix).
   const eligible=s=>Number(s.betrag||0)>=50 && ['zugesagt','erhalten'].includes(s.status);
-  const list=sponsoren.filter(s=>eligible(s) && (Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length));
+  // Sortiert nach der kleinsten vergebenen Kartennummer (numerisch) – wer noch keine Nummer hat, landet ans Ende.
+  const minNr=s=>{ const nums=parseFreikarten(s.freikarten_nummern).map(n=>parseInt(n,10)).filter(n=>!isNaN(n)); return nums.length?Math.min(...nums):Infinity; };
+  const list=sponsoren.filter(s=>eligible(s) && (Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length))
+    .sort((a,b)=>minNr(a)-minNr(b) || a.name.localeCompare(b.name,'de'));
   if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
   const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
   document.getElementById('fkPrintArea').innerHTML=`
@@ -2830,13 +2833,13 @@ function printFreikartenChecklist(){
       </div>
     </div>
     <div class="panel">
-      <table><thead><tr><th>Sponsor</th><th>Nummern</th><th style="text-align:right">Anzahl</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
+      <table><thead><tr><th>Sponsor</th><th>Nummern</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
         <tbody>${list.map(s=>{
           const nums=parseFreikarten(s.freikarten_nummern); const anz=Number(s.freikarten_anzahl)||nums.length;
           return `<tr><td>${esc(s.name)}</td><td>${nums.length?'#'+nums.join(', #'):'–'}</td>
-            <td style="text-align:right">${anz}</td><td>${'<span class="chk-box"></span>'.repeat(anz)}</td></tr>`;
+            <td>${'<span class="chk-box"></span>'.repeat(anz)}</td></tr>`;
         }).join('')}</tbody>
-        <tfoot><tr><td colspan="2">Summe</td><td style="text-align:right">${totalKarten}</td><td></td></tr></tfoot>
+        <tfoot><tr><td>Summe</td><td></td><td>${totalKarten} Karten</td></tr></tfoot>
       </table>
     </div>`;
   document.getElementById('fkPrintArea').classList.add('show');
