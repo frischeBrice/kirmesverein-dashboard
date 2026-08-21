@@ -1033,9 +1033,14 @@ function renderFinance(){
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
   const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
-  // Nur "Kirmeskasse"-finanzierte Kartenvorverkauf-Aktionen zählen zur Summe (siehe kvvKasseRows) –
-  // "Ausgelegt"/"Jeder zahlt selbst" bleiben als Zeilen sichtbar, tragen aber nichts zur Summe bei.
+  // Nur "Kirmeskasse"-finanzierte Kartenvorverkauf-Aktionen zählen zur Gesamt-Einnahmen-Summe
+  // unten (siehe kvvKasseRows) – "Ausgelegt"/"Jeder zahlt selbst" tragen dort nichts bei.
   const kvvSum=kvvInc.filter(t=>{const a=kvvAktion(t.aktion_id); return (a&&(a.zahlart||'kasse'))==='kasse';}).reduce((s,t)=>s+kvvBetrag(t),0);
+  // Für die Sammelzeile selbst zeigen wir aber die ECHTE Gesamtsumme aller Teilnahmen (auch
+  // ausgelegte) – sonst würde die Zeilensumme nicht zu den darunter aufgeklappten Beträgen
+  // passen. Enthält sie ausgelegte Anteile, wird sie orange statt grün eingefärbt.
+  const kvvAlleSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
+  const kvvHatAusgelegt=kvvInc.some(t=>{const a=kvvAktion(t.aktion_id); return a&&a.zahlart==='ausgelegt';});
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
   const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
@@ -1070,7 +1075,7 @@ function renderFinance(){
       <td>–</td><td>Kartenvorverkauf</td>
       <td><b>${kvvInkomeExpanded?'▾':'▸'} Kartenvorverkauf</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>
         <div class="submuted">bezahlte Karten · zum Auf-/Zuklappen anklicken</div></td>
-      <td style="text-align:right"><span class="amount plus">+${eur(kvvSum)}</span></td>
+      <td style="text-align:right"><span class="amount plus" style="${kvvHatAusgelegt?'color:var(--accent)':''}">+${eur(kvvAlleSum)}</span></td>
       <td></td></tr>`:'';
   const kvvDetailRows=(kvvInc.length&&kvvInkomeExpanded)?kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
     const zahlart=a?(a.zahlart||'kasse'):'kasse';
@@ -2196,10 +2201,10 @@ async function syncKvvAuslage(aktionId){
     return;
   }
   if(aktion.finanzbuchung_id){
-    await sb.from('finanzbuchungen').update({betrag:totalBetrag, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
+    await sb.from('finanzbuchungen').update({betrag:totalBetrag, beschreibung:aktion.titel, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
   } else {
     const {data,error}=await sb.from('finanzbuchungen').insert({
-      typ:'extern', art:'out', beschreibung:`Kartenvorverkauf: ${aktion.titel}`, kategorie:'Kartenvorverkauf',
+      typ:'extern', art:'out', beschreibung:aktion.titel, kategorie:'Kartenvorverkauf',
       betrag:totalBetrag, datum:aktion.datum||todayISO(),
       ausgelegt:true, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:0, erstattet:false, bezahlt:true,
       created_by:me.id,...bearbeiterPatch(),
