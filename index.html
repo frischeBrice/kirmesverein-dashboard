@@ -628,6 +628,7 @@ let fundsachen = [], fundsachenVotes = [];
 let dokumente = [];
 let kirmeshelfer = [];
 let sponsoren = [];
+let spInkomeExpanded = false; // Finanzen → Einnahmen: Sponsoring-Sammelzeile auf-/zugeklappt
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
@@ -997,6 +998,7 @@ function subLine(t){
   if(t.veranstaltung_id && eventName(t.veranstaltung_id)) parts.push(`🎪 ${esc(eventName(t.veranstaltung_id))}`);
   return parts.length?`<div class="submuted">${parts.join(' · ')}</div>`:'';
 }
+function toggleSpInkome(){ spInkomeExpanded=!spInkomeExpanded; renderFinance(); }
 function renderFinance(){
   document.getElementById('finBalance').textContent=eur(balance());
   document.getElementById('finIncome').textContent=eur(incomeYear());
@@ -1037,22 +1039,22 @@ function renderFinance(){
       <td style="text-align:right"><span class="amount plus">+${eur(v.sum)}</span></td>
       <td></td></tr>`).join('');
   // Statt einer Zeile pro Sponsor (bläht die Liste bei vielen Sponsoren stark auf): eine
-  // Sammel-Zeile mit Dropdown zur Auswahl/Öffnen eines einzelnen Sponsors. Datum-Spalte zeigt
-  // das jüngste "abgeschlossen_am" (erhalten + Quittung ausgestellt) unter den erhaltenen Sponsoren.
+  // Sammel-Zeile mit Gesamtsumme, per Klick auf-/zuklappbar (spInkomeExpanded) zeigt darunter
+  // jeden Sponsor einzeln. Datum-Spalte der Sammelzeile zeigt das jüngste "abgeschlossen_am"
+  // (erhalten + Quittung ausgestellt) unter den erhaltenen Sponsoren.
   const spDatum=spInc.reduce((max,s)=>s.abgeschlossen_am&&(!max||s.abgeschlossen_am>max)?s.abgeschlossen_am:max,null);
-  const spRows=spInc.length?`<tr>
+  const spSummaryRow=spInc.length?`<tr style="cursor:pointer" onclick="toggleSpInkome()">
       <td>${spDatum?fmtDate(spDatum):'–'}</td><td>Sponsoring</td>
-      <td><b>Sponsoring</b> <span class="pill blue mini">${spInc.length} Sponsor${spInc.length!==1?'en':''}</span>
-        <div class="submuted">erhalten · Verwaltung im Tab „Sponsoren"</div>
-        <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <select id="finSponsorSel" style="width:auto;min-width:200px">
-            ${spInc.map(s=>`<option value="${s.id}">${esc(s.name)}${s.betreuer?' · '+esc(s.betreuer):''} — ${eur(s.betrag)}${s.abgeschlossen_am?' · '+fmtDate(s.abgeschlossen_am):''}</option>`).join('')}
-          </select>
-          <button class="btn ghost sm" onclick="openSponsor(val('finSponsorSel'))" title="Sponsor öffnen">✏️ Öffnen</button>
-        </div>
-      </td>
+      <td><b>${spInkomeExpanded?'▾':'▸'} Sponsoring</b> <span class="pill blue mini">${spInc.length} Sponsor${spInc.length!==1?'en':''}</span>
+        <div class="submuted">erhalten · zum Auf-/Zuklappen anklicken</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(spSum)}</span></td>
       <td></td></tr>`:'';
+  const spDetailRows=(spInc.length&&spInkomeExpanded)?spInc.map(s=>`<tr>
+      <td>${s.abgeschlossen_am?fmtDate(s.abgeschlossen_am):'–'}</td><td class="submuted">↳</td>
+      <td style="padding-left:24px"><b>${esc(s.name)}</b> <span class="pill blue mini">Sponsor</span>${s.betreuer?`<div class="submuted">über ${esc(s.betreuer)}</div>`:''}</td>
+      <td style="text-align:right"><span class="amount plus">+${eur(s.betrag)}</span></td>
+      <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="event.stopPropagation();openSponsor('${s.id}')">✏️</button></div></td></tr>`).join(''):'';
+  const spRows=spSummaryRow+spDetailRows;
   const kvvRows=kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
     return `<tr>
       <td>–</td><td>Kartenvorverkauf</td>
