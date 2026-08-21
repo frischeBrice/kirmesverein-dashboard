@@ -705,9 +705,14 @@ function kvvAktion(id){ return kartenvorverkauf.find(a=>a.id===id); }
 function kvvKarten(t){ return 1+Number(t.externe_anzahl||0); }               // Mitglied selbst + Externe
 function kvvBetrag(t){ const a=kvvAktion(t.aktion_id); return a ? kvvKarten(t)*Number(a.preis||0) : 0; }
 function kvvPaidRows(){ return kvTeilnehmer.filter(t=>t.bezahlt && kvvAktion(t.aktion_id)); }
-function kvvIncomeTotal(){ return kvvPaidRows().reduce((s,t)=>s+kvvBetrag(t),0); }
+// Nur Zahlungen aus Aktionen mit Zahlart "Kirmeskasse" zählen tatsächlich zum Kassenstand –
+// bei "Ausgelegt"/"Jeder zahlt selbst" ist die Zahlung eine Rückzahlung an eine Person bzw.
+// betrifft die Kasse gar nicht, bleibt aber (informativ, ohne Summenbeitrag) in der Liste sichtbar.
+// Fehlende Zahlart (Alt-Aktionen von vor diesem Feature) zählt weiterhin als Kasse.
+function kvvKasseRows(){ return kvvPaidRows().filter(t=>{ const a=kvvAktion(t.aktion_id); return (a&&(a.zahlart||'kasse'))==='kasse'; }); }
+function kvvIncomeTotal(){ return kvvKasseRows().reduce((s,t)=>s+kvvBetrag(t),0); }
 function kvvIncomeYear(jahr){ const y=jahr||new Date().getFullYear();
-  return kvvPaidRows().filter(t=>{ const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===y; }).reduce((s,t)=>s+kvvBetrag(t),0); }
+  return kvvKasseRows().filter(t=>{ const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===y; }).reduce((s,t)=>s+kvvBetrag(t),0); }
 /* Auktionierte Fundsachen als Einnahmequelle */
 function fundsachenIncomeRows(){ return fundsachen.filter(f=>f.verkauft && Number(f.erloes)>0); }
 function fundsachenIncomeTotal(){ return fundsachenIncomeRows().reduce((a,f)=>a+Number(f.erloes),0); }
@@ -1025,7 +1030,9 @@ function renderFinance(){
   const realSum=inc.reduce((s,t)=>s+Number(t.betrag),0);
   const postenSum=postenAgg.reduce((s,[,v])=>s+v.sum,0);
   const spSum=spInc.reduce((s,x)=>s+Number(x.betrag),0);
-  const kvvSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
+  // Nur "Kirmeskasse"-finanzierte Kartenvorverkauf-Aktionen zählen zur Summe (siehe kvvKasseRows) –
+  // "Ausgelegt"/"Jeder zahlt selbst" bleiben als Zeilen sichtbar, tragen aber nichts zur Summe bei.
+  const kvvSum=kvvInc.filter(t=>{const a=kvvAktion(t.aktion_id); return (a&&(a.zahlart||'kasse'))==='kasse';}).reduce((s,t)=>s+kvvBetrag(t),0);
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
   const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
@@ -1056,9 +1063,11 @@ function renderFinance(){
       <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="event.stopPropagation();openSponsor('${s.id}')">✏️</button></div></td></tr>`).join(''):'';
   const spRows=spSummaryRow+spDetailRows;
   const kvvRows=kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
+    const zahlart=a?(a.zahlart||'kasse'):'kasse';
+    const nichtKasse=zahlart!=='kasse';
     return `<tr>
       <td>–</td><td>Kartenvorverkauf</td>
-      <td><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span><div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''} · Verwaltung im Tab „Sonstiges"</div></td>
+      <td><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span>${nichtKasse?` <span class="pill gray mini" title="Zahlart der Aktion: ${esc(ESSEN_ZAHLART_LABEL[zahlart])} – zählt nicht zum Kassenstand">nicht im Kassenstand</span>`:''}<div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''} · Verwaltung im Tab „Sonstiges"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(kvvBetrag(t))}</span></td>
       <td></td></tr>`;}).join('');
   const fsRows=fsInc.map(f=>`<tr>
@@ -2919,7 +2928,7 @@ function catSums(art,jahr){
   if(art==='in'){ // bezahlte App-Posten + erhaltene Sponsoren als Einnahme-Kategorien ergänzen
     paidPosten().filter(b=>jahr==='all'||yearOf(b.bezahlt_at)===jahr).forEach(b=>{const k=(b.titel||postenTitel(b.posten_id))+' (Posten)';map[k]=(map[k]||0)+Number(b.betrag);});
     sponsorIncomeRows().filter(s=>jahr==='all'||(s.jahr||new Date().getFullYear())===jahr).forEach(s=>{map['Sponsoring']=(map['Sponsoring']||0)+Number(s.betrag);});
-    kvvPaidRows().filter(t=>{ if(jahr==='all') return true; const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===jahr; })
+    kvvKasseRows().filter(t=>{ if(jahr==='all') return true; const a=kvvAktion(t.aktion_id); const d=t.bezahlt_at||(a&&a.datum); return d && yearOf(d)===jahr; })
       .forEach(t=>{map['Kartenvorverkauf']=(map['Kartenvorverkauf']||0)+kvvBetrag(t);});
     fundsachenIncomeRows().filter(f=>jahr==='all'||yearOf(f.verkauft_am||f.created_at)===jahr).forEach(f=>{map['Fundsachen-Auktion']=(map['Fundsachen-Auktion']||0)+Number(f.erloes);});
     spendendosenIncomeRows().filter(d=>jahr==='all'||yearOf(d.betrag_am||d.created_at)===jahr).forEach(d=>{map['Spendendosen']=(map['Spendendosen']||0)+Number(d.betrag);});
