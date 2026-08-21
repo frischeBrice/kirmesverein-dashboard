@@ -369,7 +369,7 @@
       <div class="view-head"><h2>Sponsoren</h2>
         <div class="actions"><button class="btn ghost" onclick="printFreikartenChecklist()">🎫 Freikarten-Checkliste</button><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
       <div class="cards">
-        <div class="card"><div class="label">Sponsoren</div><div class="value" id="spCount">–</div></div>
+        <div class="card"><div class="label">Sponsoren</div><div class="value" id="spCount">–</div><div id="spStatusBreakdown" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div></div>
         <div class="card"><div class="label">Zugesagt</div><div class="value" id="spZugesagt">–</div></div>
         <div class="card"><div class="label">Erhalten</div><div class="value green" id="spErhalten">–</div></div>
       </div>
@@ -1427,6 +1427,12 @@ function renderSponsoren(){
   const zugesagt=sponsoren.filter(s=>['zugesagt','erhalten'].includes(s.status)).reduce((a,s)=>a+Number(s.betrag||0),0);
   const erhalten=sponsoren.filter(s=>s.status==='erhalten').reduce((a,s)=>a+Number(s.betrag||0),0);
   document.getElementById('spCount').textContent=sponsoren.length;
+  const stCounts={offen:0,angefragt:0,zugesagt:0,erhalten:0,abgelehnt:0};
+  sponsoren.forEach(s=>{ const st=s.status||'offen'; if(stCounts[st]!=null) stCounts[st]++; });
+  const stLabel={offen:'Offen',angefragt:'Angefragt',zugesagt:'Zugesagt',erhalten:'Erhalten',abgelehnt:'Abgelehnt'};
+  const stClass={offen:'gray',angefragt:'warn',zugesagt:'blue',erhalten:'ok',abgelehnt:'no'};
+  document.getElementById('spStatusBreakdown').innerHTML=Object.entries(stCounts)
+    .filter(([,n])=>n>0).map(([k,n])=>`<span class="pill ${stClass[k]} mini">${n} ${stLabel[k]}</span>`).join('');
   document.getElementById('spZugesagt').textContent=eur(zugesagt);
   document.getElementById('spErhalten').textContent=eur(erhalten);
   const list=sponsoren.filter(s=>((s.name||'').toLowerCase().includes(q)||(s.ansprechpartner||'').toLowerCase().includes(q)||(s.art||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q))
