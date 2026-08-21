@@ -629,6 +629,7 @@ let dokumente = [];
 let kirmeshelfer = [];
 let sponsoren = [];
 let spInkomeExpanded = false; // Finanzen → Einnahmen: Sponsoring-Sammelzeile auf-/zugeklappt
+let kvvInkomeExpanded = false; // Finanzen → Einnahmen: Kartenvorverkauf-Sammelzeile auf-/zugeklappt
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
@@ -1004,6 +1005,8 @@ function subLine(t){
   return parts.length?`<div class="submuted">${parts.join(' · ')}</div>`:'';
 }
 function toggleSpInkome(){ spInkomeExpanded=!spInkomeExpanded; renderFinance(); }
+function toggleKvvInkome(){ kvvInkomeExpanded=!kvvInkomeExpanded; renderFinance(); }
+function openKvvFromFinance(aktionId){ selectSonstFlyout('kartenvorverkauf'); setKvvSel(aktionId); }
 function renderFinance(){
   document.getElementById('finBalance').textContent=eur(balance());
   document.getElementById('finIncome').textContent=eur(incomeYear());
@@ -1062,14 +1065,22 @@ function renderFinance(){
       <td style="text-align:right"><span class="amount plus">+${eur(s.betrag)}</span></td>
       <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="event.stopPropagation();openSponsor('${s.id}')">✏️</button></div></td></tr>`).join(''):'';
   const spRows=spSummaryRow+spDetailRows;
-  const kvvRows=kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
+  // Wie bei Sponsoring: statt einer Zeile pro Teilnahme eine auf-/zuklappbare Sammelzeile.
+  const kvvSummaryRow=kvvInc.length?`<tr style="cursor:pointer" onclick="toggleKvvInkome()">
+      <td>–</td><td>Kartenvorverkauf</td>
+      <td><b>${kvvInkomeExpanded?'▾':'▸'} Kartenvorverkauf</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>
+        <div class="submuted">bezahlte Karten · zum Auf-/Zuklappen anklicken</div></td>
+      <td style="text-align:right"><span class="amount plus">+${eur(kvvSum)}</span></td>
+      <td></td></tr>`:'';
+  const kvvDetailRows=(kvvInc.length&&kvvInkomeExpanded)?kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
     const zahlart=a?(a.zahlart||'kasse'):'kasse';
     const nichtKasse=zahlart!=='kasse';
     return `<tr>
-      <td>–</td><td>Kartenvorverkauf</td>
-      <td><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span>${nichtKasse?` <span class="pill gray mini" title="Zahlart der Aktion: ${esc(ESSEN_ZAHLART_LABEL[zahlart])} – zählt nicht zum Kassenstand">nicht im Kassenstand</span>`:''}<div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''} · Verwaltung im Tab „Sonstiges"</div></td>
+      <td>–</td><td class="submuted">↳</td>
+      <td style="padding-left:24px"><b>${esc(m?(m.display_name||m.username):'—')}</b> <span class="pill blue mini">Vorverkauf</span>${nichtKasse?` <span class="pill gray mini" title="Zahlart der Aktion: ${esc(ESSEN_ZAHLART_LABEL[zahlart])} – zählt nicht zum Kassenstand">nicht im Kassenstand</span>`:''}<div class="submuted">${esc(a?a.titel:'')} · ${kvvKarten(t)} Karte${kvvKarten(t)!==1?'n':''}</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(kvvBetrag(t))}</span></td>
-      <td></td></tr>`;}).join('');
+      <td><div class="row-actions">${a?`<button class="icon-btn" title="Aktion öffnen" onclick="event.stopPropagation();openKvvFromFinance('${a.id}')">✏️</button>`:''}</div></td></tr>`;}).join(''):'';
+  const kvvRows=kvvSummaryRow+kvvDetailRows;
   const fsRows=fsInc.map(f=>`<tr>
       <td>${fmtDate(f.verkauft_am||f.created_at)}</td><td>Fundsachen-Auktion</td>
       <td><b>${esc(f.beschreibung)}</b> <span class="pill blue mini">Auktion</span><div class="submuted">${f.kaeufer?'an '+esc(f.kaeufer)+' · ':''}Verwaltung im Tab „Fundsachen"</div></td>
@@ -2162,6 +2173,38 @@ function openKvvAktion(id){
 function toggleKvvZahlart(){
   document.getElementById('kvvZahlartAuslageBox').style.display = val('kvv_zahlart')==='ausgelegt'?'block':'none';
 }
+// Aktion mit Zahlart "Ausgelegt": automatisch eine verlinkte Auslage in finanzbuchungen
+// pflegen (Betrag = Preis × aktuelle Kartenzahl über alle Teilnehmer), damit sie bei "Offene
+// Auslagen pro Person" auftaucht und über die normale 💶-Erstatten-Funktion abgerechnet werden
+// kann. WICHTIG: erstattet_betrag wird hier NICHT automatisch aus bezahlten Teilnehmern befüllt –
+// das würde die bewusste Trennung verwischen, dass "Teilnehmer hat bezahlt" (an die auslegende
+// Person, nicht an die Kasse) etwas anderes ist als "Kasse hat die Person zurückgezahlt" (echte
+// Erstattung, weiterhin nur manuell über 💶 Erstatten). Nur der offene Gesamtbetrag wird nachgezogen.
+async function syncKvvAuslage(aktionId){
+  const aktion=kvvAktion(aktionId); if(!aktion) return;
+  const rows=kvTeilnehmer.filter(t=>t.aktion_id===aktionId);
+  const totalBetrag=rows.reduce((s,t)=>s+kvvBetrag(t),0);
+  const sollAuslage = aktion.zahlart==='ausgelegt' && !!aktion.ausgelegt_von && totalBetrag>0;
+
+  if(!sollAuslage){
+    if(aktion.finanzbuchung_id){
+      await sb.from('finanzbuchungen').delete().eq('id',aktion.finanzbuchung_id);
+      await sb.from('kartenvorverkauf').update({finanzbuchung_id:null}).eq('id',aktionId);
+    }
+    return;
+  }
+  if(aktion.finanzbuchung_id){
+    await sb.from('finanzbuchungen').update({betrag:totalBetrag, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
+  } else {
+    const {data,error}=await sb.from('finanzbuchungen').insert({
+      typ:'extern', art:'out', beschreibung:`Kartenvorverkauf: ${aktion.titel}`, kategorie:'Kartenvorverkauf',
+      betrag:totalBetrag, datum:aktion.datum||todayISO(),
+      ausgelegt:true, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:0, erstattet:false, bezahlt:true,
+      created_by:me.id,...bearbeiterPatch(),
+    }).select().single();
+    if(!error && data){ await sb.from('kartenvorverkauf').update({finanzbuchung_id:data.id}).eq('id',aktionId); }
+  }
+}
 function saveKvvAktion(id,btn){
   const titel=val('kvv_titel'); const preis=num('kvv_preis');
   if(!titel||preis<=0){ alert('Bitte Veranstaltung/Anlass und Preis pro Karte eingeben.'); return; }
@@ -2171,24 +2214,39 @@ function saveKvvAktion(id,btn){
     zahlart, ausgelegt_von: zahlart==='ausgelegt' ? val('kvv_ausgelegt_von').trim() : null,
     ...bearbeiterPatch()};
   withBtn(btn,async()=>{
+    let aktionId=id;
     if(id){ const {error}=await sb.from('kartenvorverkauf').update(row).eq('id',id); if(error) throw error; }
-    else { row.created_by=me.id; const {data,error}=await sb.from('kartenvorverkauf').insert(row).select().single(); if(error) throw error; kvvSel=data.id; }
+    else { row.created_by=me.id; const {data,error}=await sb.from('kartenvorverkauf').insert(row).select().single(); if(error) throw error; kvvSel=data.id; aktionId=data.id; }
+    await loadAll();
+    await syncKvvAuslage(aktionId);
     closeModal(); await loadAll();
   });
 }
 function delKvvAktion(id){ if(!confirm('Diese Aktion inkl. aller Teilnehmer wirklich löschen?'))return;
-  sb.from('kartenvorverkauf').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { kvvSel=null; loadAll(); } }); }
+  (async()=>{
+    const aktion=kvvAktion(id);
+    if(aktion?.finanzbuchung_id){ await sb.from('finanzbuchungen').delete().eq('id',aktion.finanzbuchung_id); }
+    const {error}=await sb.from('kartenvorverkauf').delete().eq('id',id);
+    if(error){ alert('Fehler: '+error.message); return; }
+    kvvSel=null; await loadAll();
+  })();
+}
 
 async function addKvvTeilnehmer(){
   const sel=document.getElementById('kvvNewMember'); if(!sel||!sel.value||!kvvSel) return;
   const {error}=await sb.from('kartenvorverkauf_teilnehmer').insert({aktion_id:kvvSel, mitglied_id:sel.value, externe_anzahl:0, bezahlt:false,...bearbeiterPatch()});
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
+  await syncKvvAuslage(kvvSel);
+  await loadAll();
 }
 async function setKvvExterne(id,v){
   const n=Math.max(0, parseInt(v)||0);
+  const t0=kvTeilnehmer.find(x=>x.id===id);
   const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({externe_anzahl:n,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+  if(t0) await syncKvvAuslage(t0.aktion_id);
   await loadAll();
 }
 async function toggleKvvBezahlt(id){
@@ -2199,7 +2257,14 @@ async function toggleKvvBezahlt(id){
   await loadAll();
 }
 function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
-  sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
+  const t0=kvTeilnehmer.find(x=>x.id===id); const aktionId=t0?.aktion_id;
+  sb.from('kartenvorverkauf_teilnehmer').delete().eq('id',id).then(async({error})=>{
+    if(error){ alert('Fehler: '+error.message); return; }
+    await loadAll();
+    if(aktionId) await syncKvvAuslage(aktionId);
+    await loadAll();
+  });
+}
 
 /* ---- Kartenvorverkauf: Teilnehmer ersetzen (falls jemand abspringt) ---- */
 // Aktueller Platz-Inhaber: entweder ein Mitglied (mitglied_id) oder eine externe
