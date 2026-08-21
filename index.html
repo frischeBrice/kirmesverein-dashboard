@@ -1041,6 +1041,11 @@ function renderFinance(){
   // passen. Enthält sie ausgelegte Anteile, wird sie orange statt grün eingefärbt.
   const kvvAlleSum=kvvInc.reduce((s,t)=>s+kvvBetrag(t),0);
   const kvvHatAusgelegt=kvvInc.some(t=>{const a=kvvAktion(t.aktion_id); return a&&a.zahlart==='ausgelegt';});
+  // Beschreibung der Sammelzeile: bei genau einer beteiligten Aktion deren echten Namen zeigen
+  // (z.B. "Kirmesdisco Ingersleben") statt generisch "Kartenvorverkauf" (das steht ja schon links
+  // in der Kategorie-Spalte) – bei mehreren gemischten Aktionen bleibt's generisch.
+  const kvvAktionTitel=[...new Set(kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); return a?a.titel:null;}).filter(Boolean))];
+  const kvvTitelLabel=kvvAktionTitel.length===1?kvvAktionTitel[0]:'Kartenvorverkauf';
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
   const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
@@ -1073,7 +1078,7 @@ function renderFinance(){
   // Wie bei Sponsoring: statt einer Zeile pro Teilnahme eine auf-/zuklappbare Sammelzeile.
   const kvvSummaryRow=kvvInc.length?`<tr style="cursor:pointer" onclick="toggleKvvInkome()">
       <td>–</td><td>Kartenvorverkauf</td>
-      <td><b>${kvvInkomeExpanded?'▾':'▸'} Kartenvorverkauf</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>
+      <td><b>${kvvInkomeExpanded?'▾':'▸'} ${esc(kvvTitelLabel)}</b> <span class="pill blue mini">${kvvInc.length} Teilnahme${kvvInc.length!==1?'n':''}</span>
         <div class="submuted">bezahlte Karten · zum Auf-/Zuklappen anklicken</div></td>
       <td style="text-align:right"><span class="amount plus" style="${kvvHatAusgelegt?'color:var(--accent)':''}">+${eur(kvvAlleSum)}</span></td>
       <td></td></tr>`:'';
