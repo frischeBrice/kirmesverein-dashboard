@@ -93,6 +93,7 @@
   .row-actions{display:flex;gap:6px;justify-content:flex-end}
   .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:4px 6px;border-radius:7px}
   .icon-btn:hover{background:#232b34;color:var(--text)}
+  .editor-chip{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:800;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.35);letter-spacing:.3px}
   .empty{text-align:center;color:var(--muted);padding:34px 20px;font-size:14px}
   .note{background:rgba(58,134,232,.08);border:1px solid rgba(58,134,232,.25);color:#b9d0f2;padding:10px 13px;border-radius:10px;font-size:12.5px;margin-bottom:16px}
   /* Mitglieder-Kacheln (wie in der App) */
@@ -1197,6 +1198,23 @@ function renderKalender(){
 }
 
 /* ---- Sponsoren ---- */
+// Wer hat diesen Sponsor zuletzt angelegt/bearbeitet – kleiner Kürzel-Chip ganz rechts in der Zeile.
+function initialsFromName(name){
+  const parts=(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+function bearbeiterChip(s){
+  const id=s.bearbeitet_von||s.created_by; if(!id) return '';
+  const m=members.find(x=>x.id===id); if(!m) return '';
+  const name=m.display_name||m.username;
+  const zeit=s.bearbeitet_at?new Date(s.bearbeitet_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  return `<span class="editor-chip" style="background:${m.avatar_color||'#6366f1'}" title="Zuletzt bearbeitet von ${esc(name)}${zeit?' · '+zeit:''}">${esc(initialsFromName(name))}</span>`;
+}
+// Patch-Zusatz für jede Sponsoren-Schreiboperation – wer/wann zuletzt bearbeitet hat.
+function bearbeiterPatch(){ return {bearbeitet_von:me.id, bearbeitet_at:new Date().toISOString()}; }
+
 function sponsorStatusPill(s){const c={'offen':'gray','angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'gray';return `<span class="pill ${c}">${esc(s||'offen')}</span>`;}
 const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
 function sponsorStatusSelect(s){
@@ -1206,7 +1224,7 @@ function sponsorStatusSelect(s){
     ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
 async function setSponsorStatus(id,status,selectEl){
-  const patch={status};
+  const patch={status,...bearbeiterPatch()};
   const sp=sponsoren.find(x=>x.id===id);
   // ab 50 € + Status "zugesagt" oder "erhalten" bekommt der Sponsor automatisch 2 Freikarten vorgeschlagen
   // (nur wenn noch keine Anzahl eingetragen ist – bestehende Werte werden nie überschrieben)
@@ -1228,7 +1246,7 @@ async function setSponsorStatus(id,status,selectEl){
   await loadAll();
 }
 async function setSponsorField(id,field,value){
-  const {error}=await sb.from('sponsoren').update({[field]:value||null}).eq('id',id);
+  const {error}=await sb.from('sponsoren').update({[field]:value||null,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
@@ -1278,7 +1296,7 @@ async function setSponsorBetrag(id,value,inputEl){
     const ok=confirm(`Bereits eingetragener Betrag ist gesperrt.\n\nWirklich von ${eur(oldVal)} auf ${newVal!=null?eur(newVal):'– (leer)'} ändern?`);
     if(!ok){ if(inputEl) inputEl.value=oldVal; return; }
   }
-  const patch={betrag:newVal};
+  const patch={betrag:newVal,...bearbeiterPatch()};
   // Unter 50 € verliert der Sponsor die Freikarten-Berechtigung (siehe freikartenCell/eligible) – die
   // Spalte zeigt dann nur noch "–". Ohne aktives Aufräumen bleiben Anzahl/Nummern aber in der DB stehen
   // und tauchen z.B. in der Freikarten-Checkliste weiter auf, obwohl in der Tabelle nichts mehr davon
@@ -1326,7 +1344,7 @@ function freikartenCell(s){
 }
 async function setSponsorFkJaNein(id,value){
   // Ja = feste Anzahl 2 (Standardfall); Nein = zurückgesetzt (auch Nummern, falls vorher Ja war)
-  const patch = value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null};
+  const patch = {...(value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null}), ...bearbeiterPatch()};
   const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
@@ -1348,7 +1366,7 @@ async function setSponsorFkNummern(id,value,inputEl){
       if(inputEl) inputEl.value=oldVal; return;
     }
   }
-  const {error}=await sb.from('sponsoren').update({freikarten_nummern:newVal}).eq('id',id);
+  const {error}=await sb.from('sponsoren').update({freikarten_nummern:newVal,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); if(inputEl) inputEl.value=oldVal; return; }
   await loadAll();
 }
@@ -1384,10 +1402,11 @@ function sponsorRow(s,showBetreuer){
     <td style="text-align:center">${quittungCell(s)}</td>
     <td><textarea rows="2" class="sachspende-area" placeholder="Bemerkung…" onchange="setSponsorField('${s.id}','bemerkung',this.value)">${esc(s.bemerkung)}</textarea></td>
     <td>${freikartenCell(s)}</td>
-    <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td></tr>`;
+    <td><div class="row-actions"><button class="icon-btn" onclick="openSponsor('${s.id}')">✏️</button><button class="icon-btn" onclick="delSponsor('${s.id}')">🗑️</button></div></td>
+    <td style="text-align:center">${bearbeiterChip(s)}</td></tr>`;
 }
 function sponsorTable(arr,showBetreuer){
-  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th style="text-align:right">Betrag/Wert</th><th>Status</th><th style="text-align:center">Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th></tr></thead>
+  return `<table><thead><tr><th>Sponsor</th>${showBetreuer?'<th>Zuständig</th>':''}<th style="text-align:right">Betrag/Wert</th><th>Status</th><th style="text-align:center">Quittung</th><th>Bemerkung</th><th>Freikarten</th><th></th><th></th></tr></thead>
     <tbody>${arr.map(s=>sponsorRow(s,showBetreuer)).join('')}</tbody></table>`;
 }
 function resetSponsorFilters(){
@@ -1442,9 +1461,11 @@ function openSponsor(id){
     <label class="field"><span>Zuständige Person (Mitglied)</span><input id="sp_betreuer" list="memberNames" value="${esc(s.betreuer)}" placeholder="Wer arbeitet diesen Sponsor ab?"></label>
     <div class="grid2">
       <label class="field"><span>Ansprechpartner</span><input id="sp_ap" value="${esc(s.ansprechpartner)}"></label>
-      <label class="field"><span>Art</span><input id="sp_art" list="spArten" value="${esc(s.art)}" oninput="toggleSponsorArtFields()">
-        <datalist id="spArten"><option>Geldspende</option><option>Sachspende</option><option>Bandenwerbung</option><option>Gutschein</option><option>Sonstiges</option></datalist></label>
+      <label class="field"><span>Art</span><select id="sp_art" onchange="toggleSponsorArtFields()">
+        ${(['Geldspende','Sachspende'].includes(s.art)?['Geldspende','Sachspende']:['Geldspende','Sachspende',...(s.art?[s.art]:[])]).map(a=>`<option value="${esc(a)}" ${s.art===a?'selected':''}>${esc(a)}</option>`).join('')}
+      </select></label>
     </div>
+    <label class="field"><span>Anschrift</span><textarea id="sp_notiz" rows="2" placeholder="z. B. Musterstr. 1, 12345 Musterstadt">${esc(s.notiz)}</textarea></label>
     <div class="grid2">
       <label class="field"><span>E-Mail</span><input id="sp_email" value="${esc(s.email)}"></label>
       <label class="field"><span>Telefon</span><input id="sp_tel" value="${esc(s.telefon)}"></label>
@@ -1474,7 +1495,6 @@ function openSponsor(id){
         ${QUITTUNG_OPTS.map(([v,l])=>`<option value="${v}" ${s.quittung===v?'selected':''}>${l}</option>`).join('')}</select></label>
       <label class="field"><span>Bemerkung</span><textarea id="sp_bemerkung" rows="2">${esc(s.bemerkung)}</textarea></label>
     </div>
-    <label class="field"><span>Anschrift</span><textarea id="sp_notiz" rows="2" placeholder="z. B. Musterstr. 1, 12345 Musterstadt">${esc(s.notiz)}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveSponsor('${id||''}',this)">Speichern</button></div>`);
 }
@@ -1496,7 +1516,7 @@ function saveSponsor(id,btn){
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
     status:val('sp_status'),quittung:val('sp_quittung')||null,bemerkung:val('sp_bemerkung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
-    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null};
+    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
