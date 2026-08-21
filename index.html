@@ -2202,8 +2202,11 @@ function printKvvAktion(aktionId){
     </div>
     ${rows.length?`<table class="compact-table">
       <thead><tr><th>Teilnehmer</th><th style="text-align:right">Externe Personen</th><th style="text-align:right">Karten</th><th style="text-align:right">Betrag</th><th>Bezahlt</th><th>Eingelassen (je Karte abhaken)</th></tr></thead>
-      <tbody>${rows.map(t=>{const karten=kvvKarten(t);
-        return `<tr><td>${esc(kvvTeilnehmerName(t))}</td>
+      <tbody>${rows.map(t=>{const karten=kvvKarten(t); const vorherName=kvvVorherigerName(t);
+        const teilnehmerCell = vorherName
+          ? `<span style="text-decoration:line-through;color:#888">${esc(vorherName)}</span> → ${esc(kvvTeilnehmerName(t))}`
+          : esc(kvvTeilnehmerName(t));
+        return `<tr><td>${teilnehmerCell}</td>
           <td style="text-align:right">${t.externe_anzahl}</td>
           <td style="text-align:right">${karten}</td>
           <td style="text-align:right">${eur(kvvBetrag(t))}</td>
