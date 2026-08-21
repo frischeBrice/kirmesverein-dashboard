@@ -384,7 +384,6 @@
           <option value="">Alle Quittungen</option>
           <option value="__keine__">– keine Auswahl –</option>
           <option value="Quittung offen">Offen</option>
-          <option value="im Austausch gegen Quittung">Im Austausch</option>
           <option value="Quittung ausgestellt">Ausgestellt</option>
         </select>
         <select id="spFreikartenFilter" onchange="renderSponsoren()" style="flex:none;min-width:158px">
@@ -1037,11 +1036,23 @@ function renderFinance(){
       <td><b>${esc(titel)}</b> <span class="pill blue mini">App-Posten</span><div class="submuted">${v.count}× bezahlt · Verwaltung im Tab „Beiträge"</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(v.sum)}</span></td>
       <td></td></tr>`).join('');
-  const spRows=spInc.map(s=>`<tr>
-      <td>–</td><td>Sponsoring</td>
-      <td><b>${esc(s.name)}</b> <span class="pill blue mini">Sponsor</span><div class="submuted">erhalten${s.betreuer?' · über '+esc(s.betreuer):''} · Verwaltung im Tab „Sponsoren"</div></td>
-      <td style="text-align:right"><span class="amount plus">+${eur(s.betrag)}</span></td>
-      <td><div class="row-actions"><button class="icon-btn" title="Sponsor öffnen" onclick="openSponsor('${s.id}')">✏️</button></div></td></tr>`).join('');
+  // Statt einer Zeile pro Sponsor (bläht die Liste bei vielen Sponsoren stark auf): eine
+  // Sammel-Zeile mit Dropdown zur Auswahl/Öffnen eines einzelnen Sponsors. Datum-Spalte zeigt
+  // das jüngste "abgeschlossen_am" (erhalten + Quittung ausgestellt) unter den erhaltenen Sponsoren.
+  const spDatum=spInc.reduce((max,s)=>s.abgeschlossen_am&&(!max||s.abgeschlossen_am>max)?s.abgeschlossen_am:max,null);
+  const spRows=spInc.length?`<tr>
+      <td>${spDatum?fmtDate(spDatum):'–'}</td><td>Sponsoring</td>
+      <td><b>Sponsoring</b> <span class="pill blue mini">${spInc.length} Sponsor${spInc.length!==1?'en':''}</span>
+        <div class="submuted">erhalten · Verwaltung im Tab „Sponsoren"</div>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <select id="finSponsorSel" style="width:auto;min-width:200px">
+            ${spInc.map(s=>`<option value="${s.id}">${esc(s.name)}${s.betreuer?' · '+esc(s.betreuer):''} — ${eur(s.betrag)}${s.abgeschlossen_am?' · '+fmtDate(s.abgeschlossen_am):''}</option>`).join('')}
+          </select>
+          <button class="btn ghost sm" onclick="openSponsor(val('finSponsorSel'))" title="Sponsor öffnen">✏️ Öffnen</button>
+        </div>
+      </td>
+      <td style="text-align:right"><span class="amount plus">+${eur(spSum)}</span></td>
+      <td></td></tr>`:'';
   const kvvRows=kvvInc.map(t=>{const a=kvvAktion(t.aktion_id); const m=members.find(x=>x.id===t.mitglied_id);
     return `<tr>
       <td>–</td><td>Kartenvorverkauf</td>
@@ -1231,9 +1242,16 @@ function sponsorStatusSelect(s){
   return `<select class="status-select" style="border-color:${col};color:${col}" onchange="setSponsorStatus('${s.id}',this.value,this)">
     ${opts.map(([v,l])=>`<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join('')}</select>`;
 }
+// Datum, seit wann ein Sponsor "fertig" ist (erhalten + Quittung ausgestellt) – wird beim
+// erstmaligen Erreichen gesetzt, bleibt danach stabil, und wird zurückgesetzt, sobald eine
+// der beiden Bedingungen wieder wegfällt. prevAbgeschlossenAm = bisheriger Wert aus der DB.
+function sponsorAbgeschlossenAm(prevAbgeschlossenAm,status,quittung){
+  const komplett = status==='erhalten' && quittung==='Quittung ausgestellt';
+  return komplett ? (prevAbgeschlossenAm||new Date().toISOString()) : null;
+}
 async function setSponsorStatus(id,status,selectEl){
-  const patch={status,...bearbeiterPatch()};
   const sp=sponsoren.find(x=>x.id===id);
+  const patch={status,abgeschlossen_am:sponsorAbgeschlossenAm(sp?.abgeschlossen_am,status,sp?.quittung),...bearbeiterPatch()};
   // ab 50 € + Status "zugesagt" oder "erhalten" bekommt der Sponsor automatisch 2 Freikarten vorgeschlagen
   // (nur wenn noch keine Anzahl eingetragen ist – bestehende Werte werden nie überschrieben)
   if(sp && ['zugesagt','erhalten'].includes(status) && (sp.freikarten_anzahl==null||sp.freikarten_anzahl==='') && suggestedFreikarten(sp.betrag)>0){
@@ -1254,12 +1272,17 @@ async function setSponsorStatus(id,status,selectEl){
   await loadAll();
 }
 async function setSponsorField(id,field,value){
-  const {error}=await sb.from('sponsoren').update({[field]:value||null,...bearbeiterPatch()}).eq('id',id);
+  const patch={[field]:value||null,...bearbeiterPatch()};
+  if(field==='quittung'){
+    const sp=sponsoren.find(x=>x.id===id);
+    patch.abgeschlossen_am=sponsorAbgeschlossenAm(sp?.abgeschlossen_am,sp?.status,value||null);
+  }
+  const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
 function isSachspende(art){ return /sachspende/i.test(art||''); }
-const QUITTUNG_OPTS=[['Quittung offen','Offen','#e05c5c'],['im Austausch gegen Quittung','Im Austausch','#3a86e8'],['Quittung ausgestellt','Ausgestellt','#3fb27f']];
+const QUITTUNG_OPTS=[['Quittung offen','Offen','#e05c5c'],['Quittung ausgestellt','Ausgestellt','#3fb27f']];
 function quittungCell(s){
   const cur=s.quittung||'';
   const match=QUITTUNG_OPTS.find(([v])=>v===cur);
@@ -1527,10 +1550,13 @@ function saveSponsor(id,btn){
     const liste=konflikte.map(k=>`#${k.nr} → bereits bei „${k.name}"`).join('\n');
     if(!confirm(`Diese Kartennummer(n) sind schon einem anderen Sponsor zugeordnet:\n\n${liste}\n\nTrotzdem speichern?`)) return;
   }
+  const neuerStatus=val('sp_status'); const neueQuittung=val('sp_quittung')||null;
+  const existing=id?sponsoren.find(x=>x.id===id):null;
   const row={name,betreuer:val('sp_betreuer')||null,ansprechpartner:val('sp_ap')||null,email:val('sp_email')||null,telefon:val('sp_tel')||null,
     art:val('sp_art')||null,betrag:bet===''?null:parseFloat(bet),betrag_vorjahr:vor===''?null:parseFloat(vor),jahr:jahr===''?null:parseInt(jahr),
-    status:val('sp_status'),quittung:val('sp_quittung')||null,bemerkung:val('sp_bemerkung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
-    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,...bearbeiterPatch()};
+    status:neuerStatus,quittung:neueQuittung,bemerkung:val('sp_bemerkung')||null,sachspende_text:val('sp_sachspende')||null,notiz:val('sp_notiz')||null,
+    freikarten_anzahl:fkAnz===''?null:parseFloat(fkAnz),freikarten_nummern:fkNummern.join(', ')||null,
+    abgeschlossen_am:sponsorAbgeschlossenAm(existing?.abgeschlossen_am,neuerStatus,neueQuittung),...bearbeiterPatch()};
   withBtn(btn,async()=>{
     if(id){ const {error}=await sb.from('sponsoren').update(row).eq('id',id); if(error) throw error; }
     else { row.created_by=me.id; const {error}=await sb.from('sponsoren').insert(row); if(error) throw error; }
