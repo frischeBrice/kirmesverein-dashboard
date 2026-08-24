@@ -127,6 +127,13 @@
   .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
   .grid-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:760px){.grid-charts{grid-template-columns:1fr}}
+  /* Übersicht: Widgets als 2-spaltiges Grid, Breite per data-size steuerbar (siehe openDashWidgetSettings) */
+  #dashboard{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #dashboard>.view-head{grid-column:1/-1}
+  .dash-widget{grid-column:span 2}
+  .dash-widget.size-small{grid-column:span 1}
+  .dash-widget .panel,.dash-widget .cards{margin-bottom:0}
+  @media(max-width:760px){#dashboard{grid-template-columns:1fr}.dash-widget,.dash-widget.size-small{grid-column:1/-1}}
   /* Modal */
   /* Kalender */
   .cal-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
@@ -907,31 +914,34 @@ function chartCats(){
 }
 /* ---- Übersicht: Widgets frei anordnen/ausblenden (nur lokal im Browser gespeichert) ---- */
 const DASH_WIDGETS_DEFAULT=[
-  {id:'stats',label:'📊 Kennzahlen'},
-  {id:'chart1',label:'📈 Diagramm: Einnahmen & Ausgaben'},
-  {id:'chart2',label:'🧩 Diagramm: Ausgaben nach Kategorie'},
-  {id:'events',label:'🎪 Nächste Veranstaltungen'},
-  {id:'finance',label:'💶 Letzte Buchungen'},
+  {id:'stats',label:'📊 Kennzahlen',size:'large'},
+  {id:'chart1',label:'📈 Diagramm: Einnahmen & Ausgaben',size:'small'},
+  {id:'chart2',label:'🧩 Diagramm: Ausgaben nach Kategorie',size:'small'},
+  {id:'events',label:'🎪 Nächste Veranstaltungen',size:'large'},
+  {id:'finance',label:'💶 Letzte Buchungen',size:'large'},
 ];
 function dashWidgetStorageKey(){ return 'kv_dashWidgets_'+(me&&me.id?me.id:'anon'); }
 function getDashWidgetConfig(){
   let cfg=null;
   try{ cfg=JSON.parse(localStorage.getItem(dashWidgetStorageKey())||'null'); }catch(e){ cfg=null; }
-  if(!Array.isArray(cfg)) return DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false}));
+  if(!Array.isArray(cfg)) return DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false,size:w.size}));
   // Unbekannte IDs (alter Stand) rauswerfen, neu dazugekommene Widgets ans Ende anhängen
   cfg=cfg.filter(w=>DASH_WIDGETS_DEFAULT.some(d=>d.id===w.id));
   const known=new Set(cfg.map(w=>w.id));
-  DASH_WIDGETS_DEFAULT.forEach(d=>{ if(!known.has(d.id)) cfg.push({id:d.id,hidden:false}); });
+  DASH_WIDGETS_DEFAULT.forEach(d=>{ if(!known.has(d.id)) cfg.push({id:d.id,hidden:false,size:d.size}); });
+  // Alte gespeicherte Konfigs (vor der Größen-Funktion) hatten noch kein size-Feld -> Default nachziehen
+  cfg.forEach(w=>{ if(w.size!=='small'&&w.size!=='large'){ const d=DASH_WIDGETS_DEFAULT.find(x=>x.id===w.id); w.size=d?d.size:'large'; } });
   return cfg;
 }
 function saveDashWidgetConfig(cfg){
-  try{ localStorage.setItem(dashWidgetStorageKey(), JSON.stringify(cfg.map(w=>({id:w.id,hidden:!!w.hidden})))); }catch(e){}
+  try{ localStorage.setItem(dashWidgetStorageKey(), JSON.stringify(cfg.map(w=>({id:w.id,hidden:!!w.hidden,size:w.size==='small'?'small':'large'})))); }catch(e){}
 }
 function applyDashWidgetOrder(){
   const container=document.getElementById('dashboard'); if(!container) return;
   getDashWidgetConfig().forEach(w=>{
     const el=document.getElementById('widget-'+w.id); if(!el) return;
     el.style.display = w.hidden ? 'none' : '';
+    el.classList.toggle('size-small', w.size==='small');
     container.appendChild(el);
   });
 }
@@ -942,6 +952,7 @@ function dashWidgetRow(w,i,total){
       <input type="checkbox" style="width:auto" ${w.hidden?'':'checked'} onchange="toggleDashWidget('${w.id}',!this.checked)">
       <span>${esc(dashWidgetLabel(w.id))}</span>
     </label>
+    <button class="btn ghost sm" style="padding:5px 9px;font-size:12px;white-space:nowrap" title="Breite umschalten" onclick="toggleDashWidgetSize('${w.id}')">${w.size==='small'?'◧ Klein':'⬛ Groß'}</button>
     <button class="icon-btn" title="Nach oben" ${i===0?'disabled':''} onclick="moveDashWidget('${w.id}',-1)">⬆️</button>
     <button class="icon-btn" title="Nach unten" ${i===total-1?'disabled':''} onclick="moveDashWidget('${w.id}',1)">⬇️</button>
   </div>`;
@@ -949,7 +960,7 @@ function dashWidgetRow(w,i,total){
 function openDashWidgetSettings(){
   const cfg=getDashWidgetConfig();
   openModal(`<h3>🔧 Übersicht anpassen</h3>
-    <div class="note" style="margin-bottom:12px">Reihenfolge per ⬆️/⬇️ ändern, Häkchen aus = Kachel ausgeblendet. Wird nur in diesem Browser gespeichert.</div>
+    <div class="note" style="margin-bottom:12px">Reihenfolge per ⬆️/⬇️, Breite per ⬛/◧ (Groß = volle Breite, Klein = halbe Breite, zwei "Klein"-Kacheln stehen nebeneinander). Häkchen aus = Kachel ausgeblendet. Wird nur in diesem Browser gespeichert.</div>
     <div style="display:flex;flex-direction:column;gap:7px">${cfg.map((w,i)=>dashWidgetRow(w,i,cfg.length)).join('')}</div>
     <div class="modal-actions"><button class="btn ghost" onclick="resetDashWidgets()">Zurücksetzen</button><button class="btn" onclick="closeModal()">Fertig</button></div>`);
 }
@@ -965,8 +976,14 @@ function toggleDashWidget(id,hidden){
   const w=cfg.find(x=>x.id===id); if(w) w.hidden=hidden;
   saveDashWidgetConfig(cfg); applyDashWidgetOrder(); openDashWidgetSettings();
 }
+function toggleDashWidgetSize(id){
+  const cfg=getDashWidgetConfig();
+  const w=cfg.find(x=>x.id===id); if(!w) return;
+  w.size = w.size==='small' ? 'large' : 'small';
+  saveDashWidgetConfig(cfg); applyDashWidgetOrder(); openDashWidgetSettings();
+}
 function resetDashWidgets(){
-  saveDashWidgetConfig(DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false})));
+  saveDashWidgetConfig(DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false,size:w.size})));
   applyDashWidgetOrder(); openDashWidgetSettings();
 }
 function renderDashboard(){
