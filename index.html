@@ -93,6 +93,8 @@
   .row-actions{display:flex;gap:6px;justify-content:flex-end}
   .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:4px 6px;border-radius:7px}
   .icon-btn:hover{background:#232b34;color:var(--text)}
+  .icon-btn:disabled{opacity:.3;cursor:default}
+  .icon-btn:disabled:hover{background:none;color:var(--muted)}
   .editor-chip{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:800;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.35);letter-spacing:.3px}
   .empty{text-align:center;color:var(--muted);padding:34px 20px;font-size:14px}
   .note{background:rgba(58,134,232,.08);border:1px solid rgba(58,134,232,.25);color:#b9d0f2;padding:10px 13px;border-radius:10px;font-size:12.5px;margin-bottom:16px}
@@ -255,20 +257,29 @@
   <main>
     <!-- DASHBOARD -->
     <section class="view active" id="dashboard">
-      <div class="view-head"><h2>Übersicht</h2><p id="todayLabel"></p></div>
-      <div class="cards">
-        <div class="card"><div class="label">Mitglieder</div><div class="value" id="statMembers">–</div></div>
-        <div class="card"><div class="label">Kassenstand</div><div class="value" id="statBalance">–</div></div>
-        <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="statIncome">–</div></div>
-        <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="statExpense">–</div></div>
-        <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="statAuslagen">–</div></div>
+      <div class="view-head"><h2>Übersicht</h2><p id="todayLabel"></p>
+        <div class="actions"><button class="btn ghost sm" onclick="openDashWidgetSettings()">🔧 Anpassen</button></div></div>
+      <div class="dash-widget" id="widget-stats">
+        <div class="cards">
+          <div class="card"><div class="label">Mitglieder</div><div class="value" id="statMembers">–</div></div>
+          <div class="card"><div class="label">Kassenstand</div><div class="value" id="statBalance">–</div></div>
+          <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="statIncome">–</div></div>
+          <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="statExpense">–</div></div>
+          <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="statAuslagen">–</div></div>
+        </div>
       </div>
-      <div class="grid-charts">
+      <div class="dash-widget" id="widget-chart1">
         <div class="panel"><h3>📈 Einnahmen & Ausgaben <span class="submuted" id="chartYear"></span></h3><div id="chartMonthly"></div></div>
+      </div>
+      <div class="dash-widget" id="widget-chart2">
         <div class="panel"><h3>🧩 Ausgaben nach Kategorie</h3><div id="chartCats"></div></div>
       </div>
-      <div class="panel"><h3>🎪 Nächste Veranstaltungen</h3><div id="dashEvents"></div></div>
-      <div class="panel"><h3>💶 Letzte Buchungen</h3><div id="dashFinance"></div></div>
+      <div class="dash-widget" id="widget-events">
+        <div class="panel"><h3>🎪 Nächste Veranstaltungen</h3><div id="dashEvents"></div></div>
+      </div>
+      <div class="dash-widget" id="widget-finance">
+        <div class="panel"><h3>💶 Letzte Buchungen</h3><div id="dashFinance"></div></div>
+      </div>
     </section>
 
     <!-- MEMBERS -->
@@ -891,7 +902,72 @@ function chartCats(){
     <div class="catbar-track"><div class="catbar-fill" style="width:${(v/max*100).toFixed(1)}%"></div></div>
     <div class="catbar-val">${eur(v)}</div></div>`).join('');
 }
+/* ---- Übersicht: Widgets frei anordnen/ausblenden (nur lokal im Browser gespeichert) ---- */
+const DASH_WIDGETS_DEFAULT=[
+  {id:'stats',label:'📊 Kennzahlen'},
+  {id:'chart1',label:'📈 Diagramm: Einnahmen & Ausgaben'},
+  {id:'chart2',label:'🧩 Diagramm: Ausgaben nach Kategorie'},
+  {id:'events',label:'🎪 Nächste Veranstaltungen'},
+  {id:'finance',label:'💶 Letzte Buchungen'},
+];
+function dashWidgetStorageKey(){ return 'kv_dashWidgets_'+(me&&me.id?me.id:'anon'); }
+function getDashWidgetConfig(){
+  let cfg=null;
+  try{ cfg=JSON.parse(localStorage.getItem(dashWidgetStorageKey())||'null'); }catch(e){ cfg=null; }
+  if(!Array.isArray(cfg)) return DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false}));
+  // Unbekannte IDs (alter Stand) rauswerfen, neu dazugekommene Widgets ans Ende anhängen
+  cfg=cfg.filter(w=>DASH_WIDGETS_DEFAULT.some(d=>d.id===w.id));
+  const known=new Set(cfg.map(w=>w.id));
+  DASH_WIDGETS_DEFAULT.forEach(d=>{ if(!known.has(d.id)) cfg.push({id:d.id,hidden:false}); });
+  return cfg;
+}
+function saveDashWidgetConfig(cfg){
+  try{ localStorage.setItem(dashWidgetStorageKey(), JSON.stringify(cfg.map(w=>({id:w.id,hidden:!!w.hidden})))); }catch(e){}
+}
+function applyDashWidgetOrder(){
+  const container=document.getElementById('dashboard'); if(!container) return;
+  getDashWidgetConfig().forEach(w=>{
+    const el=document.getElementById('widget-'+w.id); if(!el) return;
+    el.style.display = w.hidden ? 'none' : '';
+    container.appendChild(el);
+  });
+}
+function dashWidgetLabel(id){ return (DASH_WIDGETS_DEFAULT.find(d=>d.id===id)||{}).label||id; }
+function dashWidgetRow(w,i,total){
+  return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;${w.hidden?'opacity:.5':''}">
+    <label style="display:flex;align-items:center;gap:9px;flex:1;cursor:pointer;margin:0">
+      <input type="checkbox" style="width:auto" ${w.hidden?'':'checked'} onchange="toggleDashWidget('${w.id}',!this.checked)">
+      <span>${esc(dashWidgetLabel(w.id))}</span>
+    </label>
+    <button class="icon-btn" title="Nach oben" ${i===0?'disabled':''} onclick="moveDashWidget('${w.id}',-1)">⬆️</button>
+    <button class="icon-btn" title="Nach unten" ${i===total-1?'disabled':''} onclick="moveDashWidget('${w.id}',1)">⬇️</button>
+  </div>`;
+}
+function openDashWidgetSettings(){
+  const cfg=getDashWidgetConfig();
+  openModal(`<h3>🔧 Übersicht anpassen</h3>
+    <div class="note" style="margin-bottom:12px">Reihenfolge per ⬆️/⬇️ ändern, Häkchen aus = Kachel ausgeblendet. Wird nur in diesem Browser gespeichert.</div>
+    <div style="display:flex;flex-direction:column;gap:7px">${cfg.map((w,i)=>dashWidgetRow(w,i,cfg.length)).join('')}</div>
+    <div class="modal-actions"><button class="btn ghost" onclick="resetDashWidgets()">Zurücksetzen</button><button class="btn" onclick="closeModal()">Fertig</button></div>`);
+}
+function moveDashWidget(id,dir){
+  const cfg=getDashWidgetConfig();
+  const idx=cfg.findIndex(w=>w.id===id); if(idx<0) return;
+  const swap=idx+dir; if(swap<0||swap>=cfg.length) return;
+  [cfg[idx],cfg[swap]]=[cfg[swap],cfg[idx]];
+  saveDashWidgetConfig(cfg); applyDashWidgetOrder(); openDashWidgetSettings();
+}
+function toggleDashWidget(id,hidden){
+  const cfg=getDashWidgetConfig();
+  const w=cfg.find(x=>x.id===id); if(w) w.hidden=hidden;
+  saveDashWidgetConfig(cfg); applyDashWidgetOrder(); openDashWidgetSettings();
+}
+function resetDashWidgets(){
+  saveDashWidgetConfig(DASH_WIDGETS_DEFAULT.map(w=>({id:w.id,hidden:false})));
+  applyDashWidgetOrder(); openDashWidgetSettings();
+}
 function renderDashboard(){
+  applyDashWidgetOrder();
   document.getElementById('todayLabel').textContent='Stand: '+new Date().toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('statMembers').textContent=members.length;
   document.getElementById('statBalance').textContent=eur(balance());
