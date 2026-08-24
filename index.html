@@ -1170,7 +1170,10 @@ function renderBeitraege(){
   sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)} (${eur(p.betrag)})</option>`).join('');
   const byMember={}; postenBuchungen.filter(b=>b.posten_id===postenSel).forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
   let soll=0,bez=0;
-  const rows=members.map(m=>{
+  // Mitglieder mit zugewiesenem Posten zuerst, nicht zugewiesene ans Ende
+  // (Reihenfolge innerhalb der Gruppen bleibt erhalten, stabiler Sort).
+  const sortedMembers=[...members].sort((a,b)=>(byMember[a.id]?0:1)-(byMember[b.id]?0:1));
+  const rows=sortedMembers.map(m=>{
     const bs=byMember[m.id]||[];
     if(!bs.length) return `<tr style="opacity:.55"><td>${nameWithAvatar(m)}</td><td colspan="2" style="color:var(--muted)">nicht zugewiesen <span class="submuted">(in der App zuweisen)</span></td><td></td></tr>`;
     const total=bs.reduce((s,b)=>s+Number(b.betrag),0); const allPaid=bs.every(b=>b.bezahlt);
