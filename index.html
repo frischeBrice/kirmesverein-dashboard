@@ -472,6 +472,7 @@
         <button class="btn ghost sm" id="fsTabAuktion" onclick="setFsBereich('auktion')">🔨 Auktion</button>
         <button class="btn ghost sm" id="fsTabWillWieder" onclick="setFsBereich('willwieder')">🙋 Will ich wieder</button>
         <button class="btn ghost sm" id="fsTabUebergeben" onclick="setFsBereich('uebergeben')">🤝 Übergeben</button>
+        <button class="btn ghost sm" id="fsTabInventur" onclick="setFsBereich('inventur')">📦 In Inventur</button>
         <button class="btn ghost sm" id="fsTabEntsorgt" onclick="setFsBereich('entsorgt')">🗑 Entsorgt</button>
       </div>
       <div id="fsBereichFund">
@@ -512,6 +513,16 @@
           <input id="fsUebergebenSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="uebergebenTable"></div></div>
+      </div>
+      <div id="fsBereichInventur" style="display:none">
+        <div class="note">Fundsachen, die niemand mehr will – statt sie zu entsorgen, wurden sie als Artikel in die Inventur übernommen.</div>
+        <div class="cards">
+          <div class="card"><div class="label">In Inventur übernommen</div><div class="value blue" id="fsInventurCount">–</div></div>
+        </div>
+        <div class="filterbar">
+          <input id="fsInventurSearch" placeholder="🔍 Suche nach Beschreibung, Finder…" oninput="renderFundsachen()" style="flex:3;min-width:220px">
+        </div>
+        <div class="panel"><div id="fsInventurTable"></div></div>
       </div>
       <div id="fsBereichEntsorgt" style="display:none">
         <div class="cards">
@@ -1681,7 +1692,7 @@ function openInv(id){
     </label>
     <div class="grid2">
       <label class="field"><span>Kategorie</span><input id="inv_kat" list="invcats" value="${esc(i.kategorie)}">
-        <datalist id="invcats"><option>Getränke</option><option>Deko</option><option>Technik</option><option>Geschirr</option><option>Werkzeug</option><option>Verbrauchsmaterial</option><option>Sonstiges</option></datalist></label>
+        <datalist id="invcats"><option>Getränke</option><option>Deko</option><option>Technik</option><option>Geschirr</option><option>Werkzeug</option><option>Verbrauchsmaterial</option><option>Fundsachen</option><option>Sonstiges</option></datalist></label>
       <label class="field"><span>Lagerort</span><input id="inv_ort" value="${esc(i.ort)}"></label>
     </div>
     <div class="grid2">
@@ -1836,6 +1847,7 @@ function fsFristDatum(x){
   return fmtDate(new Date(x.created_at).getTime() + tage*24*60*60*1000);
 }
 function fsStatusOf(x){
+  if(x.in_inventur) return 'inventur';
   if(x.entsorgt) return 'entsorgt';
   if(x.verkauft) return 'verkauft';
   if(x.uebergeben) return 'uebergeben';
@@ -1844,8 +1856,8 @@ function fsStatusOf(x){
 }
 function fsStatusPill(x){
   const st=fsStatusOf(x);
-  const c={offen:'gray',auktion:'warn',verkauft:'blue',uebergeben:'ok',entsorgt:'no'}[st];
-  const l={offen:'Offen',auktion:'Zur Auktion',verkauft:'Verkauft',uebergeben:'Übergeben',entsorgt:'Entsorgt'}[st];
+  const c={offen:'gray',auktion:'warn',verkauft:'blue',uebergeben:'ok',entsorgt:'no',inventur:'blue'}[st];
+  const l={offen:'Offen',auktion:'Zur Auktion',verkauft:'Verkauft',uebergeben:'Übergeben',entsorgt:'Entsorgt',inventur:'In Inventur'}[st];
   return `<span class="pill ${c}">${esc(l)}</span>`;
 }
 let fsBereich='fund';
@@ -1855,11 +1867,13 @@ function setFsBereich(v){
   document.getElementById('fsBereichAuktion').style.display=v==='auktion'?'block':'none';
   document.getElementById('fsBereichUebergeben').style.display=v==='uebergeben'?'block':'none';
   document.getElementById('fsBereichWillWieder').style.display=v==='willwieder'?'block':'none';
+  document.getElementById('fsBereichInventur').style.display=v==='inventur'?'block':'none';
   document.getElementById('fsBereichEntsorgt').style.display=v==='entsorgt'?'block':'none';
   document.getElementById('fsTabFund').classList.toggle('active',v==='fund');
   document.getElementById('fsTabAuktion').classList.toggle('active',v==='auktion');
   document.getElementById('fsTabUebergeben').classList.toggle('active',v==='uebergeben');
   document.getElementById('fsTabWillWieder').classList.toggle('active',v==='willwieder');
+  document.getElementById('fsTabInventur').classList.toggle('active',v==='inventur');
   document.getElementById('fsTabEntsorgt').classList.toggle('active',v==='entsorgt');
 }
 async function fsCheckZurueck(id,checked,cbEl){
@@ -1889,10 +1903,11 @@ function fsRow(x,showVotes){
     }).filter(Boolean).join(' ');
   }
   let actions='';
-  if(st==='offen') actions+=`<button class="icon-btn" title="Übergeben" onclick="fsSetFlag('${x.id}','uebergeben')">🤝</button><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button>`;
+  if(st==='offen') actions+=`<button class="icon-btn" title="Übergeben" onclick="fsSetFlag('${x.id}','uebergeben')">🤝</button><button class="icon-btn" title="Zur Auktion" onclick="fsSetFlag('${x.id}','auktion')">🔨</button><button class="icon-btn" title="In Inventur übernehmen" onclick="fsToInventur('${x.id}')">📦</button><button class="icon-btn" title="Entsorgt" onclick="fsSetFlag('${x.id}','entsorgt')">🗑</button>`;
   else if(st==='auktion') actions+=`<button class="btn sm" onclick="openFundsacheVerkauf('${x.id}')">💰 Verkauf erfassen</button>`;
   else if(st==='verkauft') actions+=`<button class="icon-btn" title="Verkauf bearbeiten" onclick="openFundsacheVerkauf('${x.id}')">✏️</button>`;
   else if(st==='uebergeben') actions+=`<button class="icon-btn" title="Rückgängig (wieder offen)" onclick="fsSetFlag('${x.id}','uebergeben',false)">↩️</button>`;
+  else if(st==='inventur') actions+=`<button class="icon-btn" title="Rückgängig (wieder offen, Inventur-Artikel bleibt bestehen)" onclick="fsUndoInventur('${x.id}')">↩️</button>`;
   else if(st==='entsorgt') actions+=`<button class="icon-btn" title="Rückgängig (wieder offen)" onclick="fsSetFlag('${x.id}','entsorgt',false)">↩️</button>`;
   actions+=`<button class="icon-btn" title="Löschen" onclick="delFundsache('${x.id}')">🗑️</button>`;
   return `<tr>
@@ -1937,7 +1952,7 @@ function renderFundsachen(){
   const q=(val('fsSearch')).toLowerCase();
   // Sachen mit "will ich wieder"-Stimme wandern in den eigenen Tab, entsorgte in ihren eigenen,
   // statt hier zusätzlich/dauerhaft aufzutauchen
-  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben && !x.entsorgt
+  const fundList=fundsachen.filter(x=>!x.auktion && !x.uebergeben && !x.entsorgt && !x.in_inventur
     && !fundsachenVotes.some(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder')
     && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(q));
   document.getElementById('fsCount').textContent=fundList.filter(x=>fsStatusOf(x)==='offen').length;
@@ -1956,13 +1971,18 @@ function renderFundsachen(){
   document.getElementById('uebergebenTable').innerHTML = fsTable(uebergebenList,false) || '<div class="empty">Noch nichts übergeben.</div>';
 
   const qw=(val('fsWillWiederSearch')).toLowerCase();
-  const willList=fundsachen.filter(x=>!x.uebergeben && !x.auktion && !x.entsorgt
+  const willList=fundsachen.filter(x=>!x.uebergeben && !x.auktion && !x.entsorgt && !x.in_inventur
     && fundsachenVotes.some(v=>v.fundsache_id===x.id && v.vote_type==='will_wieder')
     && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)+' '+fundsachenVotes.filter(v=>v.fundsache_id===x.id&&v.vote_type==='will_wieder').map(v=>memberName(v.voter_id)).join(' ')).toLowerCase().includes(qw));
   document.getElementById('fsWillWiederCount').textContent=willList.length;
   document.getElementById('willWiederTable').innerHTML = willList.length
     ? `<table><thead><tr><th></th><th>Fundsache</th><th>Beansprucht von</th><th style="text-align:center">Zurückgegeben?</th><th></th></tr></thead><tbody>${willList.map(fsWillWiederRow).join('')}</tbody></table>`
     : '<div class="empty">Aktuell beansprucht niemand eine offene Fundsache.</div>';
+
+  const qi=(val('fsInventurSearch')).toLowerCase();
+  const inventurList=fundsachen.filter(x=>x.in_inventur && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qi));
+  document.getElementById('fsInventurCount').textContent=inventurList.length;
+  document.getElementById('fsInventurTable').innerHTML = fsTable(inventurList,false) || '<div class="empty">Noch nichts in die Inventur übernommen.</div>';
 
   const qe=(val('fsEntsorgtSearch')).toLowerCase();
   const entsorgtList=fundsachen.filter(x=>x.entsorgt && ((x.beschreibung||'')+' '+memberName(x.erstellt_von)).toLowerCase().includes(qe));
@@ -1971,6 +1991,25 @@ function renderFundsachen(){
 }
 async function fsSetFlag(id,field,value=true){
   const {error}=await sb.from('fundsachen').update({[field]:value}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+async function fsToInventur(id){
+  const x=fundsachen.find(y=>y.id===id); if(!x) return;
+  if(!confirm(`"${x.beschreibung}" als Artikel in die Inventur übernehmen?`)) return;
+  const invRow={
+    name:x.beschreibung, kategorie:'Fundsachen', menge:1, einheit:'Stück',
+    notiz:`Fundsache, gefunden von ${memberName(x.erstellt_von)} am ${fmtDate(x.created_at)}`,
+    bild_url:x.bild_url||null, ...bearbeiterPatch(),
+  };
+  const {data,error}=await sb.from('inventar').insert(invRow).select().single();
+  if(error){ alert('Konnte nicht in der Inventur angelegt werden: '+error.message); return; }
+  const {error:e2}=await sb.from('fundsachen').update({in_inventur:true, inventar_id:data.id}).eq('id',id);
+  if(e2){ alert('In der Inventur angelegt, aber Fundsache konnte nicht als übernommen markiert werden: '+e2.message); }
+  await loadAll();
+}
+async function fsUndoInventur(id){
+  const {error}=await sb.from('fundsachen').update({in_inventur:false}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
