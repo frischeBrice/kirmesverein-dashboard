@@ -1149,7 +1149,7 @@ function renderFinance(){
     <tbody>${adj.map(t=>`<tr>
       <td>${fmtDate(t.datum)}</td><td><b>${esc(t.beschreibung)}</b></td>
       <td style="text-align:right">${amount(t)}</td>
-      <td><div class="row-actions">${bearbeiterChip(t)}<button class="icon-btn" onclick="openAdjust('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button></div></td></tr>`).join('')}</tbody>
+      <td><div class="row-actions"><button class="icon-btn" onclick="openAdjust('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`).join('')}</tbody>
     <tfoot><tr><td>Summe Anpassungen</td><td colspan="1"></td><td style="text-align:right" class="amount ${adjustTotal()>=0?'plus':'minus'}">${adjustTotal()>=0?'+':''}${eur(adjustTotal())}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Anpassungen. Lege oben eine an (z. B. Anfangsbestand aus dem Vorjahr).</div>';
 }
@@ -1222,7 +1222,7 @@ function renderEvents(){
       <td>${artPill(e.art)}</td><td>${sichtPill(e.sichtbarkeit)}</td>
       <td>${zielgruppenPills(e)||'<span class="submuted">–</span>'}</td>
       <td style="color:var(--muted);max-width:220px">${esc(e.notiz)||''}</td>
-      <td><div class="row-actions">${bearbeiterChip(e)}<button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`;
+      <td><div class="row-actions"><button class="icon-btn" onclick="openEvent('${e.id}')">✏️</button><button class="icon-btn" onclick="delEvent('${e.id}')">🗑️</button>${bearbeiterChip(e)}</div></td></tr>`).join('')}</tbody></table>`;
 }
 
 /* ---- Kalender ---- */
@@ -2221,9 +2221,9 @@ function renderKartenvorverkauf(){
             <td style="text-align:right">${eur(kvvBetrag(t))}</td>
             <td>${t.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
             <td><div class="row-actions">
-              ${bearbeiterChip(t)}
               <button class="btn ghost sm" onclick="toggleKvvBezahlt('${t.id}')">${t.bezahlt?'auf offen':'bezahlt ✓'}</button>
               <button class="icon-btn" onclick="delKvvTeilnehmer('${t.id}')">🗑️</button>
+              ${bearbeiterChip(t)}
             </div></td></tr>`;}).join('')}</tbody>
         <tfoot><tr><td colspan="2">Summe</td><td>${totalKarten}</td><td style="text-align:right">${eur(totalBetrag)}</td><td colspan="2"></td></tr></tfoot></table>`
         :'<div class="empty">Noch keine Teilnehmer. Mitglied oben auswählen und hinzufügen.</div>'}
@@ -2852,9 +2852,9 @@ function renderStaendchenListe(){
           <td>${esc(x.hausnummer||'–')}</td>
           <td class="submuted">${esc(x.notiz||'')}</td>
           <td><div class="row-actions">
-            ${bearbeiterChip(x)}
             <button class="icon-btn" onclick="openStaendchen('${x.id}')">✏️</button>
             <button class="icon-btn" onclick="delStaendchen('${x.id}')">🗑️</button>
+            ${bearbeiterChip(x)}
           </div></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Einträge. Oben hinzufügen.</div>'}
     </div>`;
@@ -2916,7 +2916,7 @@ function renderStaendchenRoute(){
     <div class="panel">
       ${sorted.length?`<table>
         <thead><tr><th>Straße</th><th>Hausnr.</th><th>Name</th><th>Notiz</th><th></th></tr></thead>
-        <tbody>${sorted.map(x=>`<tr><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><div class="row-actions">${bearbeiterChip(x)}<a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺</a></div></td></tr>`).join('')}</tbody>
+        <tbody>${sorted.map(x=>`<tr><td>${esc(x.strasse||'–')}</td><td>${esc(x.hausnummer||'–')}</td><td><b>${esc(x.name)}</b></td><td class="submuted">${esc(x.notiz||'')}</td><td><div class="row-actions"><a href="${staendchenMapsUrl(x)}" target="_blank" rel="noopener" class="btn ghost sm">🗺</a>${bearbeiterChip(x)}</div></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Adressen erfasst – unter „Adresslisten" hinzufügen.</div>'}
     </div>`;
 }
@@ -2943,9 +2943,9 @@ function renderStaendchenSpenden(){
           <td style="text-align:right">${d.betrag!=null?eur(d.betrag):'<span class="pill warn">offen</span>'}</td>
           <td class="submuted">${esc(d.notiz||'')}</td>
           <td><div class="row-actions">
-            ${bearbeiterChip(d)}
             <button class="icon-btn" onclick="openStaendchenDose('${d.id}')">✏️</button>
             <button class="icon-btn" onclick="delStaendchenDose('${d.id}')">🗑️</button>
+            ${bearbeiterChip(d)}
           </div></td></tr>`).join('')}</tbody>
       </table>`:'<div class="empty">Noch keine Spendendosen erfasst. Oben hinzufügen.</div>'}
     </div>`;
