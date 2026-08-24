@@ -244,8 +244,8 @@
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
-    <button data-view="inventur" onclick="show('inventur')">📦 Inventur</button>
-    <button data-view="fundsachen" onclick="show('fundsachen')">🧦 Fundsachen</button>
+    <button data-view="inventur" onclick="show('inventur')"
+      onmouseenter="showInvFlyout(this)" onmouseleave="scheduleHideFlyout()">📦 Inventur ▾</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
     <button data-view="staendchen" onclick="show('staendchen')">🎶 Ständchen</button>
     <button data-view="sonstiges" onclick="show('sonstiges')"
@@ -866,7 +866,10 @@ async function loadAll(){
 /* ================= Navigation ================= */
 function show(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id===v));
-  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  // Fundsachen hängt jetzt als Unterpunkt an Inventur – dessen Nav-Button bleibt
+  // auch dort aktiv markiert, gleiches Prinzip wie bei Sonstiges' Flyout-Unterpunkten.
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',
+    b.dataset.view===v || (b.dataset.view==='inventur' && v==='fundsachen')));
   try{ localStorage.setItem('kv_activeTab', v); }catch(e){}
 }
 
@@ -2234,6 +2237,28 @@ function cancelHideFlyout(){ clearTimeout(flyoutHideTimer); }
 function scheduleHideFlyout(){ flyoutHideTimer=setTimeout(()=>{ const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show'); },200); }
 function selectSonstFlyout(key){
   sonstBereich=key; show('sonstiges'); renderSonstiges();
+  const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
+}
+/* ---- Inventur: Fundsachen als Unterpunkt (Hover-Flyout, gleiches Muster wie Sonstiges) ---- */
+const INV_ITEMS = [
+  {key:'inventur', label:'🍺 Getränke & Kleidung'},
+  {key:'fundsachen', label:'🧦 Fundsachen & Auktion'},
+];
+function showInvFlyout(btn){
+  clearTimeout(flyoutHideTimer);
+  const el=document.getElementById('navFlyout');
+  const activeView=document.querySelector('.view.active')?.id;
+  el.innerHTML=INV_ITEMS.map(it=>`<a class="${activeView===it.key?'active':''}" onclick="selectInvFlyout('${it.key}')">${it.label}</a>`).join('');
+  el.classList.add('show');
+  const r=btn.getBoundingClientRect();
+  const menuW=el.offsetWidth||210, margin=10;
+  let left=Math.min(r.left, window.innerWidth-menuW-margin);
+  if(left<margin) left=margin;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(r.bottom+4)+'px';
+}
+function selectInvFlyout(key){
+  show(key);
   const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
 }
 function setKvvSel(id){ kvvSel=id; renderKartenvorverkauf(); }
