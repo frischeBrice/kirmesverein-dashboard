@@ -783,7 +783,7 @@ async function loadAll(){
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
     sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
-    sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at'),
+    sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at,bearbeitet_von,bearbeitet_at'),
     sb.from('inventar').select('*').order('name'),
     sb.from('sponsoren').select('*').order('name'),
     sb.from('kartenvorverkauf').select('*').order('datum',{ascending:false}),
@@ -1165,11 +1165,15 @@ function renderBeitraege(){
     const total=bs.reduce((s,b)=>s+Number(b.betrag),0); const allPaid=bs.every(b=>b.bezahlt);
     soll+=total; if(allPaid) bez+=total;
     const btns=bs.map(b=>`<button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>`).join(' ');
+    const letzteBuchung=bs.reduce((a,b)=>{
+      const za=a.bearbeitet_at||a.bezahlt_at||''; const zb=b.bearbeitet_at||b.bezahlt_at||'';
+      return zb>za?b:a;
+    });
     return `<tr>
       <td>${nameWithAvatar(m)}</td>
       <td>${eur(total)}${bs.length>1?` <span class="submuted">(${bs.length}×)</span>`:''}</td>
       <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
-      <td><div class="row-actions">${btns}</div></td></tr>`;
+      <td><div class="row-actions">${btns}${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
   }).join('');
   tbl.innerHTML=`<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`;
@@ -1181,7 +1185,7 @@ function setPostenSel(id){ postenSel=id; renderBeitraege(); }
 async function togglePosten(buchungId){
   const bu=postenBuchungen.find(x=>x.id===buchungId); if(!bu) return;
   const paid=!bu.bezahlt;
-  const {error}=await sb.from('posten_buchungen').update({bezahlt:paid, bezahlt_at: paid?new Date().toISOString():null}).eq('id',buchungId);
+  const {error}=await sb.from('posten_buchungen').update({bezahlt:paid, bezahlt_at: paid?new Date().toISOString():null,...bearbeiterPatch()}).eq('id',buchungId);
   if(error){ alert('Konnte nicht speichern (evtl. fehlende Schreibrechte auf posten_buchungen): '+error.message); return; }
   await loadAll();
 }
@@ -1648,7 +1652,7 @@ function renderInventur(){
           <button class="icon-btn" title="${proz>0?'+10%':'Anbrechen'}" onclick="invAngebrochen('${i.id}',1)">➕</button>
         </span>`:'<span class="submuted">–</span>'}</td>
         <td>${esc(i.ort)||'–'}</td>
-        <td><div class="row-actions">${bearbeiterChip(i)}<button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button></div></td></tr>`;
+        <td><div class="row-actions"><button class="icon-btn" onclick="openInv('${i.id}')">✏️</button><button class="icon-btn" onclick="delInv('${i.id}')">🗑️</button>${bearbeiterChip(i)}</div></td></tr>`;
     }).join('')}</tbody></table>`
     :'<div class="empty">Noch keine Artikel. Lege oben einen an.</div>';
 }
@@ -1738,7 +1742,7 @@ function renderKleiderverleih(){
         <td style="text-align:right">${Number(k.anzahl_gesamt||0)}</td>
         <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
         <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
-        <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}${bearbeiterChip(k)}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button></div></td></tr>`;
+        <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button>${bearbeiterChip(k)}</div></td></tr>`;
     }).join('')}</tbody></table>` : '<div class="empty">Noch keine Kleidungsstücke. Lege oben eines an.</div>';
   const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben);
   document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
