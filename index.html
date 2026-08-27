@@ -128,7 +128,7 @@
   .grid-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:760px){.grid-charts{grid-template-columns:1fr}}
   /* Übersicht: Widgets als 2-spaltiges Grid, Breite per data-size steuerbar (siehe openDashWidgetSettings) */
-  #dashboard{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  #dashboard.active{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   #dashboard>.view-head{grid-column:1/-1}
   .dash-widget{grid-column:span 2}
   .dash-widget.size-small{grid-column:span 1}
