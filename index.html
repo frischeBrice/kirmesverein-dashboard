@@ -751,6 +751,9 @@ function sponsorIncomeTotal(){ return sponsorIncomeRows().reduce((a,s)=>a+Number
 function sponsorIncomeYear(jahr){ const y=jahr||new Date().getFullYear(); return sponsorIncomeRows().filter(s=>(s.jahr||y)===y).reduce((a,s)=>a+Number(s.betrag),0); }
 /* Bezahlte Kartenvorverkauf-Teilnahmen als Einnahmequelle */
 function kvvAktion(id){ return kartenvorverkauf.find(a=>a.id===id); }
+// Ist die verlinkte Auslage (finanzbuchungen) dieser Aktion komplett zurückerstattet?
+// (wird seit syncKvvAuslage automatisch aus den bezahlten Teilnehmern nachgezogen)
+function kvvAktionErstattet(a){ if(!a || !a.finanzbuchung_id) return false; const fb=transactions.find(x=>x.id===a.finanzbuchung_id); return !!(fb && fb.erstattet); }
 function kvvKarten(t){ return 1+Number(t.externe_anzahl||0); }               // Mitglied selbst + Externe
 function kvvBetrag(t){ const a=kvvAktion(t.aktion_id); return a ? kvvKarten(t)*Number(a.preis||0) : 0; }
 function kvvPaidRows(){ return kvTeilnehmer.filter(t=>t.bezahlt && kvvAktion(t.aktion_id)); }
@@ -1175,7 +1178,11 @@ function renderFinance(){
   // Wer ausgelegt hat, soll schon in der zugeklappten Sammelzeile sichtbar sein (nicht erst nach
   // dem Aufklappen) – bei genau einer auslegenden Person deren Namen zeigen, sonst generisch.
   const kvvAusgelegtVon=[...new Set(kvvInc.filter(t=>{const a=kvvAktion(t.aktion_id); return a&&a.zahlart==='ausgelegt';}).map(t=>kvvAktion(t.aktion_id).ausgelegt_von).filter(Boolean))];
-  const kvvAusgelegtPill=kvvHatAusgelegt?` <span class="pill mini" style="background:rgba(232,161,58,.15);color:var(--accent)">Ausgelegt von ${esc(kvvAusgelegtVon.length===1?kvvAusgelegtVon[0]:'mehreren')}</span>`:'';
+  const kvvAusgelegtAktionen=[...new Set(kvvInc.filter(t=>{const a=kvvAktion(t.aktion_id); return a&&a.zahlart==='ausgelegt';}).map(t=>t.aktion_id))].map(kvvAktion);
+  const kvvAusgelegtErstattet=kvvAusgelegtAktionen.length>0 && kvvAusgelegtAktionen.every(kvvAktionErstattet);
+  const kvvAusgelegtPill=kvvHatAusgelegt
+    ? ` <span class="pill mini" style="background:rgba(232,161,58,.15);color:var(--accent)">Ausgelegt von ${esc(kvvAusgelegtVon.length===1?kvvAusgelegtVon[0]:'mehreren')}</span>${kvvAusgelegtErstattet?` <span class="pill mini" style="background:rgba(63,178,127,.15);color:var(--green)">✓ zurückerstattet</span>`:''}`
+    : '';
   const fsSum=fsInc.reduce((s,f)=>s+Number(f.erloes),0);
   const sdSum=sdInc.reduce((s,d)=>s+Number(d.betrag),0);
   const realRows=inc.map(t=>`<tr>
@@ -1216,7 +1223,9 @@ function renderFinance(){
     const zahlart=a?(a.zahlart||'kasse'):'kasse';
     // Kein blaues "Vorverkauf"-Label mehr am Namen – stattdessen bei Ausgelegt eine orange
     // "Ausgelegt von X"-Pille direkt daneben (statt nur klein im Untertext).
-    const ausgelegtPill = zahlart==='ausgelegt' ? ` <span class="pill mini" style="background:rgba(232,161,58,.15);color:var(--accent)">Ausgelegt von ${esc(a.ausgelegt_von||'—')}</span>` : '';
+    const ausgelegtPill = zahlart==='ausgelegt'
+      ? ` <span class="pill mini" style="background:rgba(232,161,58,.15);color:var(--accent)">Ausgelegt von ${esc(a.ausgelegt_von||'—')}</span>${kvvAktionErstattet(a)?` <span class="pill mini" style="background:rgba(63,178,127,.15);color:var(--green)">✓ zurückerstattet</span>`:''}`
+      : '';
     const zahlartHinweis = zahlart==='selbst' ? ' · Jeder zahlt selbst' : '';
     return `<tr>
       <td>–</td><td class="submuted">↳</td>
