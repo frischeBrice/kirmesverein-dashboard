@@ -366,7 +366,10 @@
     <!-- BEITRÄGE -->
     <section class="view" id="beitraege">
       <div class="view-head"><h2>Beiträge / Posten</h2>
-        <div class="actions"><button class="btn" onclick="openPostenCreate()">＋ Neuer Posten</button></div></div>
+        <div class="actions">
+          <button class="btn ghost" onclick="printPostenPDF()">🖨 PDF / Drucken</button>
+          <button class="btn" onclick="openPostenCreate()">＋ Neuer Posten</button>
+        </div></div>
       <div class="note">Posten (z. B. „Mitgliedsbeitrag", „Kirmesshirt") legst du hier oder in der App an – beides ist live verbunden.</div>
       <div class="cards">
         <div class="card"><div class="label">Soll</div><div class="value" id="beiSoll">–</div></div>
@@ -634,6 +637,8 @@
     <div class="only-print" id="fkPrintArea"></div>
     <!-- Druckfläche für die Anwesenheitsliste (nur beim Drucken sichtbar) -->
     <div class="only-print" id="anwPrintArea"></div>
+    <!-- Druckfläche für die Beiträge/Posten-Übersicht (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="postenPrintArea"></div>
   </main>
 </div>
 
@@ -1430,6 +1435,66 @@ function deletePostenBuchungenForMember(mitgliedId,postenId){
   sb.from('posten_buchungen').delete().eq('mitglied_id',mitgliedId).eq('posten_id',postenId).then(({error})=>{
     if(error){ alert('Fehler: '+error.message); return; } loadAll();
   });
+}
+
+// ── PDF/Druck-Übersicht: einzelne Posten (z. B. Mitgliedsbeitrag) je eine eigene
+// Tabelle, Posten mit gemeinsamer Gruppe (z. B. Kirmeskleidung: Shirt/Jacke/
+// Bauchtasche) in EINER Tabelle mit je einer Spalte pro Posten. ──
+function printPostenPDF(){
+  if(!posten.length){ alert('Noch keine Posten angelegt.'); return; }
+  const gruppen={}; const einzeln=[];
+  posten.forEach(p=>{ if(p.gruppe) (gruppen[p.gruppe]=gruppen[p.gruppe]||[]).push(p); else einzeln.push(p); });
+  einzeln.sort((a,b)=>a.titel.localeCompare(b.titel,'de'));
+
+  let html=`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
+    <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
+    <div style="text-align:right;white-space:nowrap">
+      <h2 style="margin:0;text-decoration:underline;font-size:19px">Beiträge / Posten – Übersicht</h2>
+      <div style="font-size:12.5px;margin-top:2px">Stand: ${fmtDate(todayISO())}</div>
+    </div>
+  </div>`;
+
+  einzeln.forEach(p=>{
+    const rows=postenBuchungen.filter(b=>b.posten_id===p.id);
+    if(!rows.length) return;
+    const sorted=[...rows].sort((a,b)=>{
+      const ma=members.find(x=>x.id===a.mitglied_id), mb=members.find(x=>x.id===b.mitglied_id);
+      return (ma?.display_name||'').localeCompare(mb?.display_name||'','de');
+    });
+    html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(p.titel)} <span style="font-weight:400;color:#555">(${eur(p.betrag)} pro Person · ${sorted.length} zugewiesen)</span></h3>
+      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Status</th></tr></thead>
+      <tbody>${sorted.map(b=>{
+        const m=members.find(x=>x.id===b.mitglied_id);
+        return `<tr><td>${m?esc(m.display_name||m.username):'?'}</td><td>${eur(b.betrag)}</td><td>${b.bezahlt?'bezahlt':'offen'}</td></tr>`;
+      }).join('')}</tbody></table>`;
+  });
+
+  Object.keys(gruppen).sort((a,b)=>a.localeCompare(b,'de')).forEach(gruppeName=>{
+    const ps=gruppen[gruppeName];
+    const memberIds=new Set();
+    ps.forEach(p=>postenBuchungen.filter(b=>b.posten_id===p.id).forEach(b=>memberIds.add(b.mitglied_id)));
+    if(!memberIds.size) return;
+    const sortedMembers=[...memberIds].map(id=>members.find(m=>m.id===id)).filter(Boolean)
+      .sort((a,b)=>(a.display_name||'').localeCompare(b.display_name||'','de'));
+    html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(gruppeName)}</h3>
+      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}</tr></thead>
+      <tbody>${sortedMembers.map(m=>{
+        const cells=ps.map(p=>{
+          const b=postenBuchungen.find(x=>x.posten_id===p.id && x.mitglied_id===m.id);
+          if(!b) return '<td>–</td>';
+          return `<td>${b.groesse?esc(b.groesse):'✓'}${b.bemerkung?` <span style="color:#666">(${esc(b.bemerkung)})</span>`:''}</td>`;
+        }).join('');
+        return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}</tr>`;
+      }).join('')}</tbody></table>`;
+  });
+
+  if(!einzeln.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)) && !Object.values(gruppen).some(ps=>ps.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)))){
+    alert('Noch keinem Mitglied ein Posten zugewiesen – nichts zu drucken.');
+    return;
+  }
+  document.getElementById('postenPrintArea').innerHTML=html;
+  document.getElementById('postenPrintArea').classList.add('show');
+  printDoc('Beiträge – Übersicht');
 }
 
 function renderBeitraege(){
@@ -3362,7 +3427,8 @@ function printDoc(title){ if(title) document.title=title; window.print(); }
 window.addEventListener('afterprint',()=>{ document.title=__origTitle;
   const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
   const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
-  const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show'); });
+  const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show');
+  const el4=document.getElementById('postenPrintArea'); if(el4) el4.classList.remove('show'); });
 // Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
 // Tabelle Nr./Vorname/Nachname/Unterschrift, Fußzeile Optional/Pflicht/Offiziell).
 function splitVorNachname(full){
