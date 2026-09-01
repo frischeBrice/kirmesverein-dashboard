@@ -494,6 +494,7 @@
         <div class="panel"><div id="inventurTable"></div></div>
       </div>
       <div id="invBereichKleidung" style="display:none">
+        <div class="sectionbar" style="margin:0 0 16px" id="verleihTypTabs"></div>
         <div class="cards">
           <div class="card"><div class="label">Verleihstücke</div><div class="value" id="klGesamt">–</div></div>
           <div class="card"><div class="label">Verliehen</div><div class="value orange" id="klVerliehen">–</div></div>
@@ -2235,31 +2236,43 @@ function saveInv(id,btn){
 function delInv(id){ if(!confirm('Artikel wirklich löschen?'))return;
   sb.from('inventar').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 
-/* ---- Kleiderverleih (Kirmesleihklamotten: Shirts/Jacken) ---- */
+/* ---- Kleiderverleih (Kirmesleihklamotten: Shirts/Jacken + Blumen) ---- */
 function verliehenAnzahl(kleidungId){
   return kleidungVerleih.filter(v=>v.kleidung_id===kleidungId && !v.zurueckgegeben).reduce((a,v)=>a+Number(v.anzahl||0),0);
 }
 function kleidungLabel(k){
   return `${esc(k.typ)}${k.geschlecht?' ('+esc(k.geschlecht)+')':''}${k.groesse?' '+esc(k.groesse):''}`;
 }
+// Verleih ist in 3 eigenständige Tabs unterteilt: Ansteckblumen/Blumenstrauß haben ihren
+// eigenen Typ-Wert, "Kleidung" ist der Sammel-Tab für alles andere (Shirt, Jacke, …).
+const VERLEIH_TYP_TABS=['kleidung','Ansteckblumen','Blumenstrauß'];
+let verleihTyp='kleidung';
+function setVerleihTyp(v){ verleihTyp=v; renderKleiderverleih(); }
+function verleihMatchesTyp(k){
+  return verleihTyp==='kleidung' ? !VERLEIH_TYP_TABS.slice(1).includes(k.typ) : k.typ===verleihTyp;
+}
 function renderKleiderverleih(){
   const gEl=document.getElementById('klGesamt'); if(!gEl) return; // Inventur-View noch nicht im DOM
-  const gesamt=kleidung.reduce((a,k)=>a+Number(k.anzahl_gesamt||0),0);
-  const verliehen=kleidungVerleih.filter(v=>!v.zurueckgegeben).reduce((a,v)=>a+Number(v.anzahl||0),0);
+  const tabsEl=document.getElementById('verleihTypTabs');
+  if(tabsEl) tabsEl.innerHTML=VERLEIH_TYP_TABS.map(t=>`<button class="btn ghost sm${verleihTyp===t?' active':''}" onclick="setVerleihTyp('${t.replace(/'/g,"\\'")}')">${esc(t==='kleidung'?'👕 Kleidung':t)}</button>`).join('');
+  const kleidungGefiltert=kleidung.filter(verleihMatchesTyp);
+  const gefilterteIds=new Set(kleidungGefiltert.map(k=>k.id));
+  const gesamt=kleidungGefiltert.reduce((a,k)=>a+Number(k.anzahl_gesamt||0),0);
+  const verliehen=kleidungVerleih.filter(v=>!v.zurueckgegeben && gefilterteIds.has(v.kleidung_id)).reduce((a,v)=>a+Number(v.anzahl||0),0);
   gEl.textContent=gesamt;
   document.getElementById('klVerliehen').textContent=verliehen;
   document.getElementById('klVerfuegbar').textContent=Math.max(0,gesamt-verliehen);
-  document.getElementById('kleidungTable').innerHTML = kleidung.length ? `<table>
+  document.getElementById('kleidungTable').innerHTML = kleidungGefiltert.length ? `<table>
     <thead><tr><th>Verleihstück</th><th style="text-align:right">Gesamt</th><th style="text-align:right">Verliehen</th><th style="text-align:right">Verfügbar</th><th></th></tr></thead>
-    <tbody>${kleidung.map(k=>{
+    <tbody>${kleidungGefiltert.map(k=>{
       const v=verliehenAnzahl(k.id); const frei=Math.max(0,Number(k.anzahl_gesamt||0)-v);
       return `<tr><td><b>${esc(k.typ)}</b>${k.geschlecht?` <span class="pill blue mini">${esc(k.geschlecht)}</span>`:''}${k.groesse?` <span class="pill gray mini">${esc(k.groesse)}</span>`:''}${k.notiz?`<div class="submuted">${esc(k.notiz)}</div>`:''}</td>
         <td style="text-align:right">${Number(k.anzahl_gesamt||0)}</td>
         <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
         <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
         <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button>${bearbeiterChip(k)}</div></td></tr>`;
-    }).join('')}</tbody></table>` : '<div class="empty">Noch keine Verleihstücke. Lege oben eines an.</div>';
-  const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben);
+    }).join('')}</tbody></table>` : '<div class="empty">Noch keine Verleihstücke in diesem Tab. Lege oben eines an.</div>';
+  const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben && gefilterteIds.has(v.kleidung_id));
   document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
     <thead><tr><th>Mitglied</th><th>Verleihstück</th><th style="text-align:right">Anzahl</th><th>Ausgegeben am</th><th></th></tr></thead>
     <tbody>${offen.map(v=>{ const k=kleidung.find(x=>x.id===v.kleidung_id);
@@ -2273,7 +2286,7 @@ function openKleidung(id){
   openModal(`<h3>${id?'Verleihstück bearbeiten':'Neues Verleihstück'}</h3>
     <div class="grid2">
       <label class="field"><span>Typ *</span><input id="kl_typ" list="kltypen" value="${esc(k.typ)}">
-        <datalist id="kltypen"><option>Shirt</option><option>Jacke</option><option>Blumen(gesteck)</option></datalist></label>
+        <datalist id="kltypen"><option>Shirt</option><option>Jacke</option><option>Ansteckblumen</option><option>Blumenstrauß</option></datalist></label>
       <label class="field"><span>Geschlecht</span><select id="kl_geschlecht">
         <option value="" ${!k.geschlecht?'selected':''}>– keine Angabe –</option>
         <option value="Herren" ${k.geschlecht==='Herren'?'selected':''}>Herren</option>
