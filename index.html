@@ -889,7 +889,30 @@ async function loadAll(){
   if(kv&&kv.error) console.warn('kartenvorverkauf:',kv.error.message);
   if(kvt&&kvt.error) console.warn('kartenvorverkauf_teilnehmer:',kvt.error.message);
   document.getElementById('memberNames').innerHTML = members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('');
+  reconcileKvvAuslagen();
   renderAll();
+}
+// Selbstheilung: die "erstattet_betrag"/"erstattet"-Felder der Kartenvorverkauf-Auslagen
+// (finanzbuchungen) mit dem tatsächlichen Bezahlt-Status der Teilnehmer abgleichen — falls
+// ein Schreibvorgang mal nicht durchkam oder aus einer älteren Version noch nicht nachgezogen
+// wurde, repariert sich das bei jedem Laden von selbst (Korrektur lokal sofort sichtbar,
+// Speichern läuft im Hintergrund weiter).
+function reconcileKvvAuslagen(){
+  kartenvorverkauf.forEach(aktion=>{
+    if(aktion.zahlart!=='ausgelegt' || !aktion.finanzbuchung_id) return;
+    const rows=kvTeilnehmer.filter(x=>x.aktion_id===aktion.id);
+    const totalBetrag=rows.reduce((s,x)=>s+kvvBetrag(x),0);
+    const bezahltBetrag=rows.filter(x=>x.bezahlt).reduce((s,x)=>s+kvvBetrag(x),0);
+    const fb=transactions.find(x=>x.id===aktion.finanzbuchung_id);
+    if(!fb) return;
+    const erstattet=bezahltBetrag>=totalBetrag-0.005;
+    const betragDiff=Math.abs((Number(fb.betrag)||0)-totalBetrag)>0.005;
+    const erstattetDiff=Math.abs((Number(fb.erstattet_betrag)||0)-bezahltBetrag)>0.005 || !!fb.erstattet!==erstattet;
+    if(!betragDiff && !erstattetDiff) return;
+    fb.betrag=totalBetrag; fb.erstattet_betrag=bezahltBetrag; fb.erstattet=erstattet;
+    sb.from('finanzbuchungen').update({betrag:totalBetrag, erstattet_betrag:bezahltBetrag, erstattet}).eq('id',fb.id)
+      .then(({error})=>{ if(error) console.warn('reconcileKvvAuslagen:',error.message); });
+  });
 }
 
 /* ================= Navigation ================= */
