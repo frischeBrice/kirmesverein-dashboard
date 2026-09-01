@@ -2612,7 +2612,7 @@ function essenByMember(rundeId){
     const opt=essenOptionText(b);
     const preis=essenLinePreis(item,b.option1_wert);
     if(!map[b.mitglied_id]) map[b.mitglied_id]={items:[],total:0};
-    map[b.mitglied_id].items.push({name:opt?`${item.name} (${opt})`:item.name, anzahl:b.anzahl, preis});
+    map[b.mitglied_id].items.push({name:opt?`${item.name} (${opt})`:item.name, anzahl:b.anzahl, preis, bemerkung:b.bemerkung||null});
     map[b.mitglied_id].total += b.anzahl*preis;
   });
   return map;
@@ -2686,7 +2686,7 @@ function renderEssen(){
       <h3>📋 Bestellungen nach Mitglied</h3>
       ${Object.keys(byMember).length?`<table><thead><tr><th>Mitglied</th><th>Bestellt</th><th style="text-align:right">Betrag</th></tr></thead>
       <tbody>${Object.entries(byMember).map(([mid,entry])=>{const m=members.find(x=>x.id===mid);
-        return `<tr><td>${m?nameWithAvatar(m):'—'}</td><td class="submuted">${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}`).join(', ')}</td><td style="text-align:right">${eur(entry.total)}</td></tr>`;}).join('')}</tbody>
+        return `<tr><td>${m?nameWithAvatar(m):'—'}</td><td class="submuted">${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}${i.bemerkung?` (📝 ${esc(i.bemerkung)})`:''}`).join(', ')}</td><td style="text-align:right">${eur(entry.total)}</td></tr>`;}).join('')}</tbody>
       <tfoot><tr><td colspan="2">Summe</td><td style="text-align:right">${eur(total)}</td></tr></tfoot></table>`
       :'<div class="empty">Noch keine Bestellungen – Mitglieder bestellen über die App.</div>'}
     </div>`:''}
