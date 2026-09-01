@@ -495,11 +495,11 @@
       </div>
       <div id="invBereichKleidung" style="display:none">
         <div class="cards">
-          <div class="card"><div class="label">Kleidungsstücke</div><div class="value" id="klGesamt">–</div></div>
+          <div class="card"><div class="label">Verleihstücke</div><div class="value" id="klGesamt">–</div></div>
           <div class="card"><div class="label">Verliehen</div><div class="value orange" id="klVerliehen">–</div></div>
           <div class="card"><div class="label">Verfügbar</div><div class="value green" id="klVerfuegbar">–</div></div>
         </div>
-        <div class="panel"><h3>👕 Bestand</h3><div id="kleidungTable"></div></div>
+        <div class="panel"><h3>🔁 Bestand</h3><div id="kleidungTable"></div></div>
         <div class="panel"><h3>📋 Aktive Ausleihen</h3><div id="verleihTable"></div></div>
       </div>
     </section>
@@ -2111,7 +2111,7 @@ function setInvBereich(v){
 function updateInvActions(){
   const el=document.getElementById('invActions'); if(!el) return;
   el.innerHTML = invBereich==='kleidung'
-    ? '<button class="btn" onclick="openKleidung()">＋ Kleidungsstück</button>'
+    ? '<button class="btn" onclick="openKleidung()">＋ Verleihstück</button>'
     : '<button class="btn" onclick="openInv()">＋ Artikel</button>';
 }
 const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
@@ -2250,7 +2250,7 @@ function renderKleiderverleih(){
   document.getElementById('klVerliehen').textContent=verliehen;
   document.getElementById('klVerfuegbar').textContent=Math.max(0,gesamt-verliehen);
   document.getElementById('kleidungTable').innerHTML = kleidung.length ? `<table>
-    <thead><tr><th>Kleidungsstück</th><th style="text-align:right">Gesamt</th><th style="text-align:right">Verliehen</th><th style="text-align:right">Verfügbar</th><th></th></tr></thead>
+    <thead><tr><th>Verleihstück</th><th style="text-align:right">Gesamt</th><th style="text-align:right">Verliehen</th><th style="text-align:right">Verfügbar</th><th></th></tr></thead>
     <tbody>${kleidung.map(k=>{
       const v=verliehenAnzahl(k.id); const frei=Math.max(0,Number(k.anzahl_gesamt||0)-v);
       return `<tr><td><b>${esc(k.typ)}</b>${k.geschlecht?` <span class="pill blue mini">${esc(k.geschlecht)}</span>`:''}${k.groesse?` <span class="pill gray mini">${esc(k.groesse)}</span>`:''}${k.notiz?`<div class="submuted">${esc(k.notiz)}</div>`:''}</td>
@@ -2258,10 +2258,10 @@ function renderKleiderverleih(){
         <td style="text-align:right">${v>0?`<span class="pill warn mini">${v}</span>`:'0'}</td>
         <td style="text-align:right"><b${frei<=0?' style="color:var(--red)"':''}>${frei}</b></td>
         <td><div class="row-actions">${frei>0?`<button class="btn ghost sm" onclick="openVerleih('${k.id}')">👤 Ausleihen</button>`:''}<button class="icon-btn" onclick="openKleidung('${k.id}')">✏️</button><button class="icon-btn" onclick="delKleidung('${k.id}')">🗑️</button>${bearbeiterChip(k)}</div></td></tr>`;
-    }).join('')}</tbody></table>` : '<div class="empty">Noch keine Kleidungsstücke. Lege oben eines an.</div>';
+    }).join('')}</tbody></table>` : '<div class="empty">Noch keine Verleihstücke. Lege oben eines an.</div>';
   const offen=kleidungVerleih.filter(v=>!v.zurueckgegeben);
   document.getElementById('verleihTable').innerHTML = offen.length ? `<table>
-    <thead><tr><th>Mitglied</th><th>Kleidungsstück</th><th style="text-align:right">Anzahl</th><th>Ausgegeben am</th><th></th></tr></thead>
+    <thead><tr><th>Mitglied</th><th>Verleihstück</th><th style="text-align:right">Anzahl</th><th>Ausgegeben am</th><th></th></tr></thead>
     <tbody>${offen.map(v=>{ const k=kleidung.find(x=>x.id===v.kleidung_id);
       return `<tr><td>${esc(memberName(v.mitglied_id))}</td><td>${k?kleidungLabel(k):'–'}</td>
         <td style="text-align:right">${Number(v.anzahl||0)}</td><td>${fmtDate(v.ausgegeben_am)}</td>
@@ -2270,10 +2270,10 @@ function renderKleiderverleih(){
 }
 function openKleidung(id){
   const k=id?kleidung.find(x=>x.id===id):{typ:'',geschlecht:'',groesse:'',anzahl_gesamt:0,notiz:''};
-  openModal(`<h3>${id?'Kleidungsstück bearbeiten':'Neues Kleidungsstück'}</h3>
+  openModal(`<h3>${id?'Verleihstück bearbeiten':'Neues Verleihstück'}</h3>
     <div class="grid2">
       <label class="field"><span>Typ *</span><input id="kl_typ" list="kltypen" value="${esc(k.typ)}">
-        <datalist id="kltypen"><option>Shirt</option><option>Jacke</option></datalist></label>
+        <datalist id="kltypen"><option>Shirt</option><option>Jacke</option><option>Blumen(gesteck)</option></datalist></label>
       <label class="field"><span>Geschlecht</span><select id="kl_geschlecht">
         <option value="" ${!k.geschlecht?'selected':''}>– keine Angabe –</option>
         <option value="Herren" ${k.geschlecht==='Herren'?'selected':''}>Herren</option>
@@ -2297,7 +2297,7 @@ function saveKleidung(id,btn){
     closeModal(); await loadAll();
   });
 }
-function delKleidung(id){ if(!confirm('Kleidungsstück wirklich löschen? (bestehende Ausleihen bleiben ggf. verwaist)'))return;
+function delKleidung(id){ if(!confirm('Verleihstück wirklich löschen? (bestehende Ausleihen bleiben ggf. verwaist)'))return;
   sb.from('kleidung').delete().eq('id',id).then(({error})=>{ if(error)alert('Fehler: '+error.message); else loadAll(); }); }
 function openVerleih(kleidungId){
   const k=kleidung.find(x=>x.id===kleidungId); if(!k) return;
@@ -2666,7 +2666,7 @@ function selectSonstFlyout(key){
    (Tabelle inventar), nur mit unterschiedlichem Kategorie-Filter vorbelegt. ---- */
 const INV_ITEMS = [
   {id:'getraenke', label:'🍺 Getränke'},
-  {id:'kleidung', label:'👕 Kleidung'},
+  {id:'kleidung', label:'🔁 Verleih'},
   {id:'utensilien', label:'🧰 Utensilien'},
   {id:'fundsachen', label:'🧦 Fundsachen & Auktion'},
 ];
