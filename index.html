@@ -657,6 +657,8 @@ let me = null;
 let members = [], transactions = [], events = [];
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
+let postenHideUnassigned = false;
+function togglePostenHideUnassigned(){ postenHideUnassigned=!postenHideUnassigned; renderBeitraege(); }
 let inventar = [];
 let kleidung = [], kleidungVerleih = [];
 let invBereich = 'lager';
@@ -1520,6 +1522,7 @@ function renderBeitraege(){
   sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)}${p.gruppe?' ('+esc(p.gruppe)+')':''} · ${eur(p.betrag)}</option>`).join('');
   if(actionsEl) actionsEl.innerHTML=`
     <button class="btn ghost sm" onclick="openPostenAssign()">＋ Zuweisen</button>
+    ${!current.braucht_groesse?`<button class="btn ghost sm" onclick="togglePostenHideUnassigned()">${postenHideUnassigned?'👁 Nicht zugewiesene einblenden':'🙈 Nicht zugewiesene ausblenden'}</button>`:''}
     <button class="btn ghost sm" onclick="openPostenEdit('${current.id}')">✏️ Bearbeiten</button>
     <button class="btn ghost sm" style="color:var(--red)" onclick="deletePostenTemplate('${current.id}')">🗑 Löschen</button>`;
 
@@ -1556,7 +1559,9 @@ function renderBeitraege(){
     const byMember={}; rowsForPosten.forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
     // Mitglieder mit zugewiesenem Posten zuerst, nicht zugewiesene ans Ende
     // (Reihenfolge innerhalb der Gruppen bleibt erhalten, stabiler Sort).
-    const sortedMembers=[...members].sort((a,b)=>(byMember[a.id]?0:1)-(byMember[b.id]?0:1));
+    const sortedMembers=[...members]
+      .filter(m=>!postenHideUnassigned || byMember[m.id])
+      .sort((a,b)=>(byMember[a.id]?0:1)-(byMember[b.id]?0:1));
     const rows=sortedMembers.map(m=>{
       const bs=byMember[m.id]||[];
       if(!bs.length) return `<tr style="opacity:.55"><td>${nameWithAvatar(m)}</td><td colspan="2" style="color:var(--muted)">nicht zugewiesen</td><td></td></tr>`;
@@ -1573,8 +1578,10 @@ function renderBeitraege(){
         <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
         <td><div class="row-actions">${btns}<button class="icon-btn" onclick="deletePostenBuchungenForMember('${m.id}','${postenSel}')">🗑️</button>${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
     }).join('');
-    tableHtml=`<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
-      <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`;
+    tableHtml=sortedMembers.length
+      ? `<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
+         <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`
+      : '<div class="empty">Noch niemandem zugewiesen. Klicke auf „＋ Zuweisen".</div>';
   }
   tbl.innerHTML=tableHtml;
   document.getElementById('beiSoll').textContent=eur(soll);
