@@ -1481,17 +1481,18 @@ function printPostenPDF(){
     const spaltenSummen=ps.map(p=>postenBuchungen.filter(b=>b.posten_id===p.id).reduce((s,b)=>s+Number(b.betrag),0));
     const gesamt=spaltenSummen.reduce((s,x)=>s+x,0);
     html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(gruppeName)}</h3>
-      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}</tr></thead>
+      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}<th style="background:#ccc">Gesamt</th></tr></thead>
       <tbody>${sortedMembers.map(m=>{
+        let memberSumme=0;
         const cells=ps.map(p=>{
           const b=postenBuchungen.find(x=>x.posten_id===p.id && x.mitglied_id===m.id);
           if(!b) return '<td>–</td>';
+          memberSumme+=Number(b.betrag);
           return `<td>${b.groesse?esc(b.groesse):'✓'}${b.bemerkung?` <span style="color:#666">(${esc(b.bemerkung)})</span>`:''}</td>`;
         }).join('');
-        return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}</tr>`;
+        return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}<td>${eur(memberSumme)}</td></tr>`;
       }).join('')}</tbody>
-      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td>${spaltenSummen.map(s=>`<td>${eur(s)}</td>`).join('')}</tr></tfoot></table>
-      <div class="submuted" style="margin-top:2px">Gesamt „${esc(gruppeName)}": <b>${eur(gesamt)}</b></div>`;
+      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td>${spaltenSummen.map(s=>`<td>${eur(s)}</td>`).join('')}<td>${eur(gesamt)}</td></tr></tfoot></table>`;
   });
 
   if(!einzeln.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)) && !Object.values(gruppen).some(ps=>ps.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)))){
