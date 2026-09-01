@@ -2121,12 +2121,20 @@ const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
 function renderInventur(){
   updateInvActions();
   const q=(val('invSearch')).toLowerCase(); const sel=document.getElementById('invFilter'); const cur=sel.value; const f=cur;
-  const cats=[...new Set(inventar.map(i=>i.kategorie).filter(Boolean))].sort();
-  sel.innerHTML='<option value="">Alle Kategorien</option>'+cats.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+  // "Getränke" und "Utensilien" (alles außer Getränke) sind zwei feste Synthetik-Filter oben
+  // in der Liste (aus dem Inventur-Flyout anspringbar), echte Kategorien darunter — "Getränke"
+  // taucht dort nicht doppelt auf, weil isGetraenk()-Treffer aus der Liste rausgefiltert werden.
+  const cats=[...new Set(inventar.map(i=>i.kategorie).filter(Boolean).filter(c=>!isGetraenk(c)))].sort();
+  sel.innerHTML='<option value="">Alle Kategorien</option>'
+    +'<option value="__getraenke__">🍺 Getränke</option>'
+    +'<option value="__utensilien__">🧰 Utensilien (alles außer Getränke)</option>'
+    +cats.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+  sel.value=cur;
   const low=inventar.filter(i=>i.min_menge!=null && Number(i.menge)<=Number(i.min_menge)).length;
   document.getElementById('invCount').textContent=inventar.length;
   document.getElementById('invLow').textContent=low;
-  const list=inventar.filter(i=>((i.name||'').toLowerCase().includes(q)||(i.kategorie||'').toLowerCase().includes(q)) && (!f||i.kategorie===f));
+  const matchesKategorie = i => !f || (f==='__utensilien__' ? !isGetraenk(i.kategorie) : f==='__getraenke__' ? isGetraenk(i.kategorie) : i.kategorie===f);
+  const list=inventar.filter(i=>((i.name||'').toLowerCase().includes(q)||(i.kategorie||'').toLowerCase().includes(q)) && matchesKategorie(i));
   document.getElementById('inventurTable').innerHTML=list.length?`<table>
     <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Angebrochen</th><th>Ort</th><th></th></tr></thead>
     <tbody>${list.map(i=>{ const lowB=i.min_menge!=null && Number(i.menge)<=Number(i.min_menge);
@@ -2639,16 +2647,27 @@ function selectSonstFlyout(key){
   sonstBereich=key; show('sonstiges'); renderSonstiges();
   const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
 }
-/* ---- Inventur: Fundsachen als Unterpunkt (Hover-Flyout, gleiches Muster wie Sonstiges) ---- */
+/* ---- Inventur: Getränke/Kleidung/Utensilien/Fundsachen als Unterpunkte (Hover-Flyout,
+   gleiches Muster wie Sonstiges). Getränke und Utensilien sind beide der "lager"-Bereich
+   (Tabelle inventar), nur mit unterschiedlichem Kategorie-Filter vorbelegt. ---- */
 const INV_ITEMS = [
-  {key:'inventur', label:'🍺 Getränke & Kleidung'},
-  {key:'fundsachen', label:'🧦 Fundsachen & Auktion'},
+  {id:'getraenke', label:'🍺 Getränke'},
+  {id:'kleidung', label:'👕 Kleidung'},
+  {id:'utensilien', label:'🧰 Utensilien'},
+  {id:'fundsachen', label:'🧦 Fundsachen & Auktion'},
 ];
+function invFlyoutActiveId(){
+  const activeView=document.querySelector('.view.active')?.id;
+  if(activeView==='fundsachen') return 'fundsachen';
+  if(activeView!=='inventur') return null;
+  if(invBereich==='kleidung') return 'kleidung';
+  return val('invFilter')==='__utensilien__' ? 'utensilien' : 'getraenke';
+}
 function showInvFlyout(btn){
   clearTimeout(flyoutHideTimer);
   const el=document.getElementById('navFlyout');
-  const activeView=document.querySelector('.view.active')?.id;
-  el.innerHTML=INV_ITEMS.map(it=>`<a class="${activeView===it.key?'active':''}" onclick="selectInvFlyout('${it.key}')">${it.label}</a>`).join('');
+  const activeId=invFlyoutActiveId();
+  el.innerHTML=INV_ITEMS.map(it=>`<a class="${activeId===it.id?'active':''}" onclick="selectInvFlyout('${it.id}')">${it.label}</a>`).join('');
   el.classList.add('show');
   const r=btn.getBoundingClientRect();
   const menuW=el.offsetWidth||210, margin=10;
@@ -2657,9 +2676,15 @@ function showInvFlyout(btn){
   el.style.left=Math.round(left)+'px';
   el.style.top=Math.round(r.bottom+4)+'px';
 }
-function selectInvFlyout(key){
-  show(key);
+function selectInvFlyout(id){
   const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
+  if(id==='fundsachen'){ show('fundsachen'); return; }
+  show('inventur');
+  if(id==='kleidung'){ setInvBereich('kleidung'); return; }
+  setInvBereich('lager');
+  const sel=document.getElementById('invFilter');
+  if(sel){ sel.value = id==='utensilien' ? '__utensilien__' : '__getraenke__'; }
+  renderInventur();
 }
 function setKvvSel(id){ kvvSel=id; renderKartenvorverkauf(); }
 function ensureKvvSel(){ if(!kvvSel || !kartenvorverkauf.find(a=>a.id===kvvSel)) kvvSel = kartenvorverkauf[0]?kartenvorverkauf[0].id:null; }
