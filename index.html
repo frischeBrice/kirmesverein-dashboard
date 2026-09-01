@@ -260,6 +260,7 @@
     <button class="active" data-view="dashboard" onclick="show('dashboard')">📊 Übersicht</button>
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="members" onclick="show('members')">👥 Mitglieder</button>
+    <button data-view="aufgaben" onclick="show('aufgaben')">🗒 Aufgaben</button>
     <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
     <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
     <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
@@ -329,6 +330,14 @@
           <input id="helferSearch" placeholder="🔍 Suche nach Name…" oninput="renderHelfer()" style="flex:3;min-width:220px">
         </div>
         <div class="panel"><div id="helferTable"></div></div>
+      </div>
+    </section>
+
+    <!-- AUFGABEN (Platzhalter, Inhalt folgt) -->
+    <section class="view" id="aufgaben">
+      <div class="view-head"><h2>Aufgaben</h2></div>
+      <div class="panel">
+        <div class="empty">🚧 Kommt noch – hier gibt's bald Aufgaben zu sehen.</div>
       </div>
     </section>
 
