@@ -384,6 +384,7 @@
           </span>
           <div class="row-actions" id="postenSelActions"></div>
         </h3>
+        <div id="postenSelHeading" style="font-size:24px;font-weight:800;margin:2px 0 16px"></div>
         <div id="beitraegeTable"></div>
       </div>
     </section>
@@ -1437,76 +1438,77 @@ function deletePostenBuchung(id){
 // ── PDF/Druck-Übersicht: einzelne Posten (z. B. Mitgliedsbeitrag) je eine eigene
 // Tabelle, Posten mit gemeinsamer Gruppe (z. B. Kirmeskleidung: Shirt/Jacke/
 // Bauchtasche) in EINER Tabelle mit je einer Spalte pro Posten. ──
+// Druckt/PDFt nur den GERADE AUSGEWÄHLTEN Posten (bzw. bei Kirmeskleidung dessen ganze
+// Gruppe zusammen) — nicht mehr alle Posten auf einmal.
 function printPostenPDF(){
   if(!posten.length){ alert('Noch keine Posten angelegt.'); return; }
-  const gruppen={}; const einzeln=[];
-  posten.forEach(p=>{ if(p.gruppe) (gruppen[p.gruppe]=gruppen[p.gruppe]||[]).push(p); else einzeln.push(p); });
-  einzeln.sort((a,b)=>a.titel.localeCompare(b.titel,'de'));
+  const current=posten.find(p=>p.id===postenSel);
+  if(!current){ alert('Bitte zuerst einen Posten auswählen.'); return; }
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
     <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
     <div style="text-align:right;white-space:nowrap">
-      <h2 style="margin:0;text-decoration:underline;font-size:19px">Beiträge / Posten – Übersicht</h2>
+      <h2 style="margin:0;text-decoration:underline;font-size:19px">Beiträge – ${esc(current.gruppe||current.titel)}</h2>
       <div style="font-size:12.5px;margin-top:2px">Stand: ${fmtDate(todayISO())}</div>
     </div>
   </div>`;
+  let hasRows=false;
 
-  let einzelnIndex=0;
-  einzeln.forEach(p=>{
-    const rows=postenBuchungen.filter(b=>b.posten_id===p.id);
-    if(!rows.length) return;
-    const sorted=[...rows].sort((a,b)=>{
-      const ma=members.find(x=>x.id===a.mitglied_id), mb=members.find(x=>x.id===b.mitglied_id);
-      return (ma?.display_name||'').localeCompare(mb?.display_name||'','de');
-    });
-    const gesamt=sorted.reduce((s,b)=>s+Number(b.betrag),0);
-    // Jeder einzelne Posten bekommt eine auffällige, eigenständige Überschrift und startet
-    // (außer dem allerersten) auf einer neuen Seite, statt direkt an den vorigen anzuschließen.
-    const pageBreak=einzelnIndex>0?'page-break-before:always;':'';
-    einzelnIndex++;
-    html+=`<div style="${pageBreak}background:rgba(58,134,232,.15);border:1px solid rgba(58,134,232,.35);border-radius:10px;padding:10px 14px;margin:20px 0 10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-        <span style="color:var(--accent2);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:15px">${esc(p.titel)}</span>
-        <span style="color:#555;font-size:12.5px">${eur(p.betrag)} pro Person · ${sorted.length} zugewiesen</span>
-      </div>
-      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Status</th></tr></thead>
-      <tbody>${sorted.map(b=>{
-        const m=members.find(x=>x.id===b.mitglied_id);
-        return `<tr><td>${m?esc(m.display_name||m.username):'?'}</td><td>${eur(b.betrag)}</td><td>${b.bezahlt?'bezahlt':'offen'}</td></tr>`;
-      }).join('')}</tbody>
-      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td><td>${eur(gesamt)}</td><td></td></tr></tfoot></table>`;
-  });
-
-  Object.keys(gruppen).sort((a,b)=>a.localeCompare(b,'de')).forEach(gruppeName=>{
-    const ps=gruppen[gruppeName];
+  if(current.gruppe){
+    const ps=posten.filter(p=>p.gruppe===current.gruppe);
     const memberIds=new Set();
     ps.forEach(p=>postenBuchungen.filter(b=>b.posten_id===p.id).forEach(b=>memberIds.add(b.mitglied_id)));
-    if(!memberIds.size) return;
-    const sortedMembers=[...memberIds].map(id=>members.find(m=>m.id===id)).filter(Boolean)
-      .sort((a,b)=>(a.display_name||'').localeCompare(b.display_name||'','de'));
-    const spaltenSummen=ps.map(p=>postenBuchungen.filter(b=>b.posten_id===p.id).reduce((s,b)=>s+Number(b.betrag),0));
-    const gesamt=spaltenSummen.reduce((s,x)=>s+x,0);
-    html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(gruppeName)}</h3>
-      <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}<th style="background:#ccc">Gesamt</th></tr></thead>
-      <tbody>${sortedMembers.map(m=>{
-        let memberSumme=0;
-        const cells=ps.map(p=>{
-          const b=postenBuchungen.find(x=>x.posten_id===p.id && x.mitglied_id===m.id);
-          if(!b) return '<td>–</td>';
-          memberSumme+=Number(b.betrag);
-          return `<td>${b.groesse?esc(b.groesse):'✓'}${b.bemerkung?` <span style="color:#666">(${esc(b.bemerkung)})</span>`:''}</td>`;
-        }).join('');
-        return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}<td>${eur(memberSumme)}</td></tr>`;
-      }).join('')}</tbody>
-      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td>${spaltenSummen.map(s=>`<td>${eur(s)}</td>`).join('')}<td>${eur(gesamt)}</td></tr></tfoot></table>`;
-  });
+    hasRows=memberIds.size>0;
+    if(hasRows){
+      const sortedMembers=[...memberIds].map(id=>members.find(m=>m.id===id)).filter(Boolean)
+        .sort((a,b)=>(a.display_name||'').localeCompare(b.display_name||'','de'));
+      const spaltenSummen=ps.map(p=>postenBuchungen.filter(b=>b.posten_id===p.id).reduce((s,b)=>s+Number(b.betrag),0));
+      const gesamt=spaltenSummen.reduce((s,x)=>s+x,0);
+      html+=`<div style="background:rgba(58,134,232,.15);border:1px solid rgba(58,134,232,.35);border-radius:10px;padding:10px 14px;margin:20px 0 10px">
+          <span style="color:var(--accent2);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:15px">${esc(current.gruppe)}</span>
+        </div>
+        <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}<th style="background:#ccc">Gesamt</th></tr></thead>
+        <tbody>${sortedMembers.map(m=>{
+          let memberSumme=0;
+          const cells=ps.map(p=>{
+            const b=postenBuchungen.find(x=>x.posten_id===p.id && x.mitglied_id===m.id);
+            if(!b) return '<td>–</td>';
+            memberSumme+=Number(b.betrag);
+            return `<td>${b.groesse?esc(b.groesse):'✓'}${b.bemerkung?` <span style="color:#666">(${esc(b.bemerkung)})</span>`:''}</td>`;
+          }).join('');
+          return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}<td>${eur(memberSumme)}</td></tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td>${spaltenSummen.map(s=>`<td>${eur(s)}</td>`).join('')}<td>${eur(gesamt)}</td></tr></tfoot></table>`;
+    }
+  } else {
+    const rows=postenBuchungen.filter(b=>b.posten_id===current.id);
+    hasRows=rows.length>0;
+    if(hasRows){
+      const sorted=[...rows].sort((a,b)=>{
+        const ma=members.find(x=>x.id===a.mitglied_id), mb=members.find(x=>x.id===b.mitglied_id);
+        return (ma?.display_name||'').localeCompare(mb?.display_name||'','de');
+      });
+      const gesamt=sorted.reduce((s,b)=>s+Number(b.betrag),0);
+      html+=`<div style="background:rgba(58,134,232,.15);border:1px solid rgba(58,134,232,.35);border-radius:10px;padding:10px 14px;margin:20px 0 10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+          <span style="color:var(--accent2);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:15px">${esc(current.titel)}</span>
+          <span style="color:#555;font-size:12.5px">${eur(current.betrag)} pro Person · ${sorted.length} zugewiesen</span>
+        </div>
+        <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Status</th></tr></thead>
+        <tbody>${sorted.map(b=>{
+          const m=members.find(x=>x.id===b.mitglied_id);
+          return `<tr><td>${m?esc(m.display_name||m.username):'?'}</td><td>${eur(b.betrag)}</td><td>${b.bezahlt?'bezahlt':'offen'}</td></tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td><td>${eur(gesamt)}</td><td></td></tr></tfoot></table>`;
+    }
+  }
 
-  if(!einzeln.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)) && !Object.values(gruppen).some(ps=>ps.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)))){
-    alert('Noch keinem Mitglied ein Posten zugewiesen – nichts zu drucken.');
+  if(!hasRows){
+    alert(`„${current.gruppe||current.titel}" ist noch niemandem zugewiesen – nichts zu drucken.`);
     return;
   }
   document.getElementById('postenPrintArea').innerHTML=html;
   document.getElementById('postenPrintArea').classList.add('show');
-  printDoc('Beiträge – Übersicht');
+  printDoc('Beiträge – '+(current.gruppe||current.titel));
 }
 
 function renderBeitraege(){
@@ -1516,6 +1518,7 @@ function renderBeitraege(){
   if(!posten.length){
     sel.innerHTML='<option>–</option>';
     if(actionsEl) actionsEl.innerHTML='';
+    document.getElementById('postenSelHeading').textContent='';
     tbl.innerHTML='<div class="empty">Noch keine Posten angelegt. Klicke oben auf „＋ Neuer Posten".</div>';
     document.getElementById('beiSoll').textContent=eur(0); document.getElementById('beiBezahlt').textContent=eur(0); document.getElementById('beiOffen').textContent=eur(0);
     return;
@@ -1523,6 +1526,7 @@ function renderBeitraege(){
   if(!postenSel || !posten.find(p=>p.id===postenSel)) postenSel=posten[0].id;
   const current=posten.find(p=>p.id===postenSel);
   sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)}${p.gruppe?' ('+esc(p.gruppe)+')':''} · ${eur(p.betrag)}</option>`).join('');
+  document.getElementById('postenSelHeading').textContent=current.titel;
   if(actionsEl) actionsEl.innerHTML=`
     <button class="btn ghost sm" onclick="openPostenAssign()">＋ Zuweisen</button>
     ${!current.braucht_groesse?`<button class="btn ghost sm" onclick="togglePostenHideUnassigned()">${postenHideUnassigned?'👁 Nicht zugewiesene einblenden':'🙈 Nicht zugewiesene ausblenden'}</button>`:''}
