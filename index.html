@@ -1433,12 +1433,6 @@ function deletePostenBuchung(id){
     loadAll().then(()=>{ if(document.getElementById('overlay').classList.contains('open')){ const p=posten.find(x=>x.id===postenSel); if(p&&p.braucht_groesse) renderPostenAssignGroesseModal(p); } });
   });
 }
-function deletePostenBuchungenForMember(mitgliedId,postenId){
-  if(!confirm('Zuweisung(en) für dieses Mitglied wirklich löschen?')) return;
-  sb.from('posten_buchungen').delete().eq('mitglied_id',mitgliedId).eq('posten_id',postenId).then(({error})=>{
-    if(error){ alert('Fehler: '+error.message); return; } loadAll();
-  });
-}
 
 // ── PDF/Druck-Übersicht: einzelne Posten (z. B. Mitgliedsbeitrag) je eine eigene
 // Tabelle, Posten mit gemeinsamer Gruppe (z. B. Kirmeskleidung: Shirt/Jacke/
@@ -1457,6 +1451,7 @@ function printPostenPDF(){
     </div>
   </div>`;
 
+  let einzelnIndex=0;
   einzeln.forEach(p=>{
     const rows=postenBuchungen.filter(b=>b.posten_id===p.id);
     if(!rows.length) return;
@@ -1465,7 +1460,14 @@ function printPostenPDF(){
       return (ma?.display_name||'').localeCompare(mb?.display_name||'','de');
     });
     const gesamt=sorted.reduce((s,b)=>s+Number(b.betrag),0);
-    html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(p.titel)} <span style="font-weight:400;color:#555">(${eur(p.betrag)} pro Person · ${sorted.length} zugewiesen)</span></h3>
+    // Jeder einzelne Posten bekommt eine auffällige, eigenständige Überschrift und startet
+    // (außer dem allerersten) auf einer neuen Seite, statt direkt an den vorigen anzuschließen.
+    const pageBreak=einzelnIndex>0?'page-break-before:always;':'';
+    einzelnIndex++;
+    html+=`<div style="${pageBreak}background:rgba(58,134,232,.15);border:1px solid rgba(58,134,232,.35);border-radius:10px;padding:10px 14px;margin:20px 0 10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <span style="color:var(--accent2);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-size:15px">${esc(p.titel)}</span>
+        <span style="color:#555;font-size:12.5px">${eur(p.betrag)} pro Person · ${sorted.length} zugewiesen</span>
+      </div>
       <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Status</th></tr></thead>
       <tbody>${sorted.map(b=>{
         const m=members.find(x=>x.id===b.mitglied_id);
@@ -1524,8 +1526,7 @@ function renderBeitraege(){
   if(actionsEl) actionsEl.innerHTML=`
     <button class="btn ghost sm" onclick="openPostenAssign()">＋ Zuweisen</button>
     ${!current.braucht_groesse?`<button class="btn ghost sm" onclick="togglePostenHideUnassigned()">${postenHideUnassigned?'👁 Nicht zugewiesene einblenden':'🙈 Nicht zugewiesene ausblenden'}</button>`:''}
-    <button class="btn ghost sm" onclick="openPostenEdit('${current.id}')">✏️ Bearbeiten</button>
-    <button class="btn ghost sm" style="color:var(--red)" onclick="deletePostenTemplate('${current.id}')">🗑 Löschen</button>`;
+    <button class="btn ghost sm" onclick="openPostenEdit('${current.id}')">✏️ Bearbeiten</button>`;
 
   const rowsForPosten=postenBuchungen.filter(b=>b.posten_id===postenSel);
   let soll=0,bez=0,tableHtml;
@@ -1562,7 +1563,6 @@ function renderBeitraege(){
         <td>${b.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
         <td><div class="row-actions">
           <button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>
-          <button class="icon-btn" onclick="deletePostenBuchung('${b.id}')">🗑️</button>
           ${bearbeiterChip(b)}
         </div></td></tr>`;
     }).join('');
@@ -1591,7 +1591,7 @@ function renderBeitraege(){
         <td>${nameWithAvatar(m)}</td>
         <td>${eur(total)}${bs.length>1?` <span class="submuted">(${bs.length}×)</span>`:''}</td>
         <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
-        <td><div class="row-actions">${btns}<button class="icon-btn" onclick="deletePostenBuchungenForMember('${m.id}','${postenSel}')">🗑️</button>${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
+        <td><div class="row-actions">${btns}${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
     }).join('');
     tableHtml=sortedMembers.length
       ? `<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
