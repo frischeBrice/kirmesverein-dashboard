@@ -365,8 +365,9 @@
 
     <!-- BEITRÄGE -->
     <section class="view" id="beitraege">
-      <div class="view-head"><h2>Beiträge / Posten</h2></div>
-      <div class="note">Posten (z. B. „Mitgliedsbeitrag") werden in der <b>App</b> angelegt und Mitgliedern zugewiesen. Hier siehst du pro Posten den Bezahlstatus und kannst ihn abhaken – live mit der App verbunden.</div>
+      <div class="view-head"><h2>Beiträge / Posten</h2>
+        <div class="actions"><button class="btn" onclick="openPostenCreate()">＋ Neuer Posten</button></div></div>
+      <div class="note">Posten (z. B. „Mitgliedsbeitrag", „Kirmesshirt") legst du hier oder in der App an – beides ist live verbunden.</div>
       <div class="cards">
         <div class="card"><div class="label">Soll</div><div class="value" id="beiSoll">–</div></div>
         <div class="card"><div class="label">Bezahlt</div><div class="value green" id="beiBezahlt">–</div></div>
@@ -377,6 +378,7 @@
           <span class="grow">
             <select id="postenSel" onchange="setPostenSel(this.value)" style="width:auto;min-width:180px"></select>
           </span>
+          <div class="row-actions" id="postenSelActions"></div>
         </h3>
         <div id="beitraegeTable"></div>
       </div>
@@ -811,8 +813,8 @@ async function loadAll(){
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
-    sb.from('posten').select('id,titel,betrag,aktiv').order('titel'),
-    sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at,bearbeitet_von,bearbeitet_at'),
+    sb.from('posten').select('id,titel,betrag,aktiv,gruppe,braucht_groesse').order('titel'),
+    sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at,bearbeitet_von,bearbeitet_at,groesse,bemerkung'),
     sb.from('inventar').select('*').order('name'),
     sb.from('sponsoren').select('*').order('name'),
     sb.from('kartenvorverkauf').select('*').order('datum',{ascending:false}),
@@ -1250,43 +1252,259 @@ function renderFinance(){
     :'<div class="empty">Noch keine Anpassungen. Lege oben eine an (z. B. Anfangsbestand aus dem Vorjahr).</div>';
 }
 
-/* ---- Beiträge / Posten (aus der App) ---- */
+/* ---- Beiträge / Posten (App und Dashboard teilen sich dieselben Tabellen) ---- */
 function postenTitel(id){ const p=posten.find(x=>x.id===id); return p?p.titel:'Posten'; }
 function nameWithAvatar(m,size){ return `<span style="display:inline-flex;align-items:center;gap:8px">${pixelAvatar(m.username,m.avatar_color,size||26,m.avatar_url)}<b>${esc(m.display_name||m.username)}</b></span>`; }
+
+// Schnellauswahl beim Anlegen eines neuen Postens: füllt Titel/Gruppe/Größe-Pflicht
+// vor, der Betrag wird trotzdem immer manuell gesetzt (kann sich ändern).
+const POSTEN_PRESETS=[
+  {titel:'Mitgliedsbeitrag', gruppe:null, braucht_groesse:false},
+  {titel:'Kirmesshirt', gruppe:'Kirmeskleidung', braucht_groesse:true},
+  {titel:'Kirmesjacke', gruppe:'Kirmeskleidung', braucht_groesse:true},
+  {titel:'Bauchtasche', gruppe:'Kirmeskleidung', braucht_groesse:false},
+];
+const POSTEN_GROESSEN=['XS','S','M','L','XL','XXL','3XL'];
+
+let postenDraft=null; // {id, titel, betrag, aktiv, gruppe, braucht_groesse}
+
+function openPostenCreate(){
+  postenDraft={id:null, titel:'', betrag:'', aktiv:true, gruppe:null, braucht_groesse:false};
+  renderPostenFormModal();
+}
+function openPostenEdit(id){
+  const p=posten.find(x=>x.id===id); if(!p) return;
+  postenDraft={id:p.id, titel:p.titel, betrag:String(p.betrag), aktiv:p.aktiv!==false, gruppe:p.gruppe||null, braucht_groesse:!!p.braucht_groesse};
+  renderPostenFormModal();
+}
+function postenFormSync(){
+  if(!postenDraft) return;
+  postenDraft.titel=val('pf_titel');
+  postenDraft.betrag=val('pf_betrag');
+}
+function choosePostenPreset(i){
+  postenFormSync();
+  const pr=POSTEN_PRESETS[i];
+  postenDraft.titel=pr.titel; postenDraft.gruppe=pr.gruppe; postenDraft.braucht_groesse=pr.braucht_groesse;
+  renderPostenFormModal();
+}
+function togglePostenGroesse(){
+  postenFormSync();
+  postenDraft.braucht_groesse=!postenDraft.braucht_groesse;
+  renderPostenFormModal();
+}
+function renderPostenFormModal(){
+  const d=postenDraft;
+  openModal(`<h3>${d.id?'Posten bearbeiten':'Neuer Posten'}</h3>
+    ${!d.id?`<div class="submuted" style="margin-bottom:6px">Schnellauswahl (füllt Titel/Gruppe vor, Betrag danach eintragen):</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${POSTEN_PRESETS.map((pr,i)=>`<button type="button" class="btn ghost sm" onclick="choosePostenPreset(${i})">${esc(pr.titel)}</button>`).join('')}
+    </div>`:''}
+    <label class="field"><span>Titel *</span><input id="pf_titel" value="${esc(d.titel)}" placeholder="z. B. Kirmesshirt"></label>
+    <label class="field"><span>Betrag pro Person (€) *</span><input id="pf_betrag" type="number" step="0.01" min="0" value="${esc(d.betrag)}"></label>
+    ${d.gruppe?`<div class="submuted" style="margin-bottom:8px">Gruppe: <b>${esc(d.gruppe)}</b> – erscheint zusammen mit anderen Posten derselben Gruppe.</div>`:''}
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 12px">
+      <input type="checkbox" ${d.braucht_groesse?'checked':''} onchange="togglePostenGroesse()">
+      Braucht beim Zuweisen eine Größenauswahl (z. B. Kleidung)
+    </label>
+    <div class="modal-actions">
+      ${d.id?`<button class="btn ghost" style="color:var(--red)" onclick="closeModal();deletePostenTemplate('${d.id}')">🗑 Löschen</button>`:''}
+      <span class="grow"></span>
+      <button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="savePostenForm(this)">${d.id?'Speichern':'Anlegen'}</button>
+    </div>`);
+}
+async function savePostenForm(btn){
+  postenFormSync();
+  const d=postenDraft;
+  const titel=d.titel.trim();
+  const betrag=parseFloat(String(d.betrag).replace(',','.'));
+  if(!titel){ alert('Bitte einen Titel eingeben.'); return; }
+  if(isNaN(betrag)||betrag<0){ alert('Bitte einen gültigen Betrag eingeben.'); return; }
+  withBtn(btn, async()=>{
+    const row={titel, betrag, gruppe:d.gruppe||null, braucht_groesse:!!d.braucht_groesse};
+    let error;
+    if(d.id){ ({error}=await sb.from('posten').update(row).eq('id',d.id)); }
+    else { ({error}=await sb.from('posten').insert({...row, aktiv:true})); }
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+function deletePostenTemplate(id){
+  const p=posten.find(x=>x.id===id); if(!p) return;
+  const anzahl=postenBuchungen.filter(b=>b.posten_id===id).length;
+  if(!confirm(`"${p.titel}" wirklich löschen?${anzahl?` Damit werden auch ${anzahl} zugewiesene Buchung(en) gelöscht.`:''}`)) return;
+  (async()=>{
+    if(anzahl){ const {error}=await sb.from('posten_buchungen').delete().eq('posten_id',id); if(error){ alert('Fehler: '+error.message); return; } }
+    const {error}=await sb.from('posten').delete().eq('id',id);
+    if(error){ alert('Fehler: '+error.message); return; }
+    postenSel=null; await loadAll();
+  })();
+}
+
+// ── Posten zuweisen: bei braucht_groesse ein Mitglied nach dem anderen mit
+// Größe + Bemerkung, sonst wie gehabt mehrere Mitglieder auf einmal auswählen. ──
+let assignSelectedMembers=[];
+function openPostenAssign(){
+  const p=posten.find(x=>x.id===postenSel); if(!p) return;
+  assignSelectedMembers=[];
+  if(p.braucht_groesse) renderPostenAssignGroesseModal(p);
+  else renderPostenAssignBulkModal(p);
+}
+function renderPostenAssignBulkModal(p){
+  const assigned=new Set(postenBuchungen.filter(b=>b.posten_id===p.id).map(b=>b.mitglied_id));
+  const offene=members.filter(m=>!assigned.has(m.id));
+  const allChecked=offene.length>0 && offene.every(m=>assignSelectedMembers.includes(m.id));
+  openModal(`<h3>„${esc(p.titel)}" zuweisen</h3>
+    <div class="submuted" style="margin-bottom:8px">${eur(p.betrag)} pro Person. Bereits zugewiesene Mitglieder werden nicht mehr angezeigt.</div>
+    ${offene.length?`
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px">
+      <input type="checkbox" ${allChecked?'checked':''} onchange="toggleAssignAll(${JSON.stringify(offene.map(m=>m.id))})"> Alle auswählen
+    </label>
+    <div style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:6px">
+      ${offene.map(m=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px">
+        <input type="checkbox" value="${m.id}" ${assignSelectedMembers.includes(m.id)?'checked':''} onchange="toggleAssignMember('${m.id}')"> ${nameWithAvatar(m)}
+      </label>`).join('')}
+    </div>` : '<div class="empty">Allen Mitgliedern bereits zugewiesen.</div>'}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="savePostenAssignBulk('${p.id}',this)">Zuweisen</button></div>`, true);
+}
+function toggleAssignMember(id){ assignSelectedMembers=assignSelectedMembers.includes(id)?assignSelectedMembers.filter(x=>x!==id):[...assignSelectedMembers,id]; }
+function toggleAssignAll(ids){
+  const allSel=ids.every(id=>assignSelectedMembers.includes(id));
+  assignSelectedMembers=allSel ? assignSelectedMembers.filter(id=>!ids.includes(id)) : [...new Set([...assignSelectedMembers,...ids])];
+  const p=posten.find(x=>x.id===postenSel); if(p) renderPostenAssignBulkModal(p);
+}
+async function savePostenAssignBulk(postenId,btn){
+  const p=posten.find(x=>x.id===postenId); if(!p||!assignSelectedMembers.length){ alert('Bitte mindestens ein Mitglied auswählen.'); return; }
+  withBtn(btn, async()=>{
+    const inserts=assignSelectedMembers.map(mid=>({posten_id:p.id, mitglied_id:mid, betrag:p.betrag, titel:p.titel}));
+    const {error}=await sb.from('posten_buchungen').insert(inserts);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+function renderPostenAssignGroesseModal(p){
+  const rows=postenBuchungen.filter(b=>b.posten_id===p.id);
+  openModal(`<h3>„${esc(p.titel)}" zuweisen</h3>
+    <div class="submuted" style="margin-bottom:8px">${eur(p.betrag)} pro Person – ein Mitglied nach dem anderen mit Größe hinzufügen. Eine Person kann daneben auch andere Kleidungs-Posten (z. B. Jacke, Bauchtasche) bekommen.</div>
+    <div class="grid2">
+      <label class="field"><span>Mitglied</span>
+        <select id="pg_mitglied">${members.map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}</select>
+      </label>
+      <label class="field"><span>Größe</span>
+        <select id="pg_groesse">${POSTEN_GROESSEN.map(g=>`<option>${g}</option>`).join('')}</select>
+      </label>
+    </div>
+    <label class="field"><span>Bemerkung (optional)</span><input id="pg_bemerkung" placeholder="z. B. fällt klein aus"></label>
+    <button class="btn" onclick="addPostenAssignGroesse('${p.id}',this)">＋ Hinzufügen</button>
+    ${rows.length?`<div class="submuted" style="margin-top:14px;margin-bottom:4px">Bereits zugewiesen (${rows.length}):</div>
+    <table><thead><tr><th>Mitglied</th><th>Größe</th><th>Bemerkung</th><th></th></tr></thead>
+      <tbody>${rows.map(b=>{const m=members.find(x=>x.id===b.mitglied_id);
+        return `<tr><td>${m?esc(m.display_name||m.username):'?'}</td><td>${esc(b.groesse||'–')}</td><td class="submuted">${esc(b.bemerkung||'')}</td>
+          <td><button class="icon-btn" onclick="deletePostenBuchung('${b.id}')">🗑️</button></td></tr>`;}).join('')}</tbody></table>` : ''}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fertig</button></div>`, true);
+}
+async function addPostenAssignGroesse(postenId,btn){
+  const p=posten.find(x=>x.id===postenId); const mitgliedId=val('pg_mitglied');
+  if(!mitgliedId){ alert('Bitte ein Mitglied auswählen.'); return; }
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('posten_buchungen').insert({
+      posten_id:p.id, mitglied_id:mitgliedId, betrag:p.betrag, titel:p.titel,
+      groesse:val('pg_groesse')||null, bemerkung:val('pg_bemerkung')||null,
+    });
+    if(error) throw error;
+    await loadAll();
+    renderPostenAssignGroesseModal(posten.find(x=>x.id===postenId));
+  });
+}
+function deletePostenBuchung(id){
+  if(!confirm('Diese Zuweisung wirklich löschen?')) return;
+  sb.from('posten_buchungen').delete().eq('id',id).then(({error})=>{
+    if(error){ alert('Fehler: '+error.message); return; }
+    loadAll().then(()=>{ if(document.getElementById('overlay').classList.contains('open')){ const p=posten.find(x=>x.id===postenSel); if(p&&p.braucht_groesse) renderPostenAssignGroesseModal(p); } });
+  });
+}
+function deletePostenBuchungenForMember(mitgliedId,postenId){
+  if(!confirm('Zuweisung(en) für dieses Mitglied wirklich löschen?')) return;
+  sb.from('posten_buchungen').delete().eq('mitglied_id',mitgliedId).eq('posten_id',postenId).then(({error})=>{
+    if(error){ alert('Fehler: '+error.message); return; } loadAll();
+  });
+}
+
 function renderBeitraege(){
   const sel=document.getElementById('postenSel');
   const tbl=document.getElementById('beitraegeTable');
+  const actionsEl=document.getElementById('postenSelActions');
   if(!posten.length){
     sel.innerHTML='<option>–</option>';
-    tbl.innerHTML='<div class="empty">In der App wurden noch keine Posten angelegt.<br>Lege dort z. B. „Mitgliedsbeitrag" an und weise ihn Mitgliedern zu – dann erscheint er hier.</div>';
+    if(actionsEl) actionsEl.innerHTML='';
+    tbl.innerHTML='<div class="empty">Noch keine Posten angelegt. Klicke oben auf „＋ Neuer Posten".</div>';
     document.getElementById('beiSoll').textContent=eur(0); document.getElementById('beiBezahlt').textContent=eur(0); document.getElementById('beiOffen').textContent=eur(0);
     return;
   }
   if(!postenSel || !posten.find(p=>p.id===postenSel)) postenSel=posten[0].id;
-  sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)} (${eur(p.betrag)})</option>`).join('');
-  const byMember={}; postenBuchungen.filter(b=>b.posten_id===postenSel).forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
-  let soll=0,bez=0;
-  // Mitglieder mit zugewiesenem Posten zuerst, nicht zugewiesene ans Ende
-  // (Reihenfolge innerhalb der Gruppen bleibt erhalten, stabiler Sort).
-  const sortedMembers=[...members].sort((a,b)=>(byMember[a.id]?0:1)-(byMember[b.id]?0:1));
-  const rows=sortedMembers.map(m=>{
-    const bs=byMember[m.id]||[];
-    if(!bs.length) return `<tr style="opacity:.55"><td>${nameWithAvatar(m)}</td><td colspan="2" style="color:var(--muted)">nicht zugewiesen <span class="submuted">(in der App zuweisen)</span></td><td></td></tr>`;
-    const total=bs.reduce((s,b)=>s+Number(b.betrag),0); const allPaid=bs.every(b=>b.bezahlt);
-    soll+=total; if(allPaid) bez+=total;
-    const btns=bs.map(b=>`<button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>`).join(' ');
-    const letzteBuchung=bs.reduce((a,b)=>{
-      const za=a.bearbeitet_at||a.bezahlt_at||''; const zb=b.bearbeitet_at||b.bezahlt_at||'';
-      return zb>za?b:a;
+  const current=posten.find(p=>p.id===postenSel);
+  sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)}${p.gruppe?' ('+esc(p.gruppe)+')':''} · ${eur(p.betrag)}</option>`).join('');
+  if(actionsEl) actionsEl.innerHTML=`
+    <button class="btn ghost sm" onclick="openPostenAssign()">＋ Zuweisen</button>
+    <button class="btn ghost sm" onclick="openPostenEdit('${current.id}')">✏️ Bearbeiten</button>
+    <button class="btn ghost sm" style="color:var(--red)" onclick="deletePostenTemplate('${current.id}')">🗑 Löschen</button>`;
+
+  const rowsForPosten=postenBuchungen.filter(b=>b.posten_id===postenSel);
+  let soll=0,bez=0,tableHtml;
+
+  if(current.braucht_groesse){
+    // Größenpflichtige Posten (z. B. Kirmesshirt): jede Zuweisung einzeln, nicht pro
+    // Mitglied gebündelt, weil Größe/Bemerkung je Buchung unterschiedlich sein können.
+    const byName=[...rowsForPosten].sort((a,b)=>{
+      const ma=members.find(x=>x.id===a.mitglied_id), mb=members.find(x=>x.id===b.mitglied_id);
+      return (ma?.display_name||'').localeCompare(mb?.display_name||'');
     });
-    return `<tr>
-      <td>${nameWithAvatar(m)}</td>
-      <td>${eur(total)}${bs.length>1?` <span class="submuted">(${bs.length}×)</span>`:''}</td>
-      <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
-      <td><div class="row-actions">${btns}${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
-  }).join('');
-  tbl.innerHTML=`<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`;
+    const rows=byName.map(b=>{
+      const m=members.find(x=>x.id===b.mitglied_id);
+      soll+=Number(b.betrag); if(b.bezahlt) bez+=Number(b.betrag);
+      return `<tr>
+        <td>${m?nameWithAvatar(m):'?'}</td>
+        <td>${esc(b.groesse||'–')}</td>
+        <td class="submuted">${esc(b.bemerkung||'')}</td>
+        <td>${eur(b.betrag)}</td>
+        <td>${b.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
+        <td><div class="row-actions">
+          <button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>
+          <button class="icon-btn" onclick="deletePostenBuchung('${b.id}')">🗑️</button>
+          ${bearbeiterChip(b)}
+        </div></td></tr>`;
+    }).join('');
+    tableHtml=rowsForPosten.length
+      ? `<table><thead><tr><th>Mitglied</th><th>Größe</th><th>Bemerkung</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
+         <tfoot><tr><td colspan="3">Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`
+      : '<div class="empty">Noch niemandem zugewiesen. Klicke auf „＋ Zuweisen".</div>';
+  } else {
+    const byMember={}; rowsForPosten.forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
+    // Mitglieder mit zugewiesenem Posten zuerst, nicht zugewiesene ans Ende
+    // (Reihenfolge innerhalb der Gruppen bleibt erhalten, stabiler Sort).
+    const sortedMembers=[...members].sort((a,b)=>(byMember[a.id]?0:1)-(byMember[b.id]?0:1));
+    const rows=sortedMembers.map(m=>{
+      const bs=byMember[m.id]||[];
+      if(!bs.length) return `<tr style="opacity:.55"><td>${nameWithAvatar(m)}</td><td colspan="2" style="color:var(--muted)">nicht zugewiesen</td><td></td></tr>`;
+      const total=bs.reduce((s,b)=>s+Number(b.betrag),0); const allPaid=bs.every(b=>b.bezahlt);
+      soll+=total; if(allPaid) bez+=total;
+      const btns=bs.map(b=>`<button class="btn ghost sm" onclick="togglePosten('${b.id}')">${b.bezahlt?'auf offen':'bezahlt ✓'}</button>`).join(' ');
+      const letzteBuchung=bs.reduce((a,b)=>{
+        const za=a.bearbeitet_at||a.bezahlt_at||''; const zb=b.bearbeitet_at||b.bezahlt_at||'';
+        return zb>za?b:a;
+      });
+      return `<tr>
+        <td>${nameWithAvatar(m)}</td>
+        <td>${eur(total)}${bs.length>1?` <span class="submuted">(${bs.length}×)</span>`:''}</td>
+        <td>${allPaid?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}</td>
+        <td><div class="row-actions">${btns}<button class="icon-btn" onclick="deletePostenBuchungenForMember('${m.id}','${postenSel}')">🗑️</button>${bearbeiterChip(letzteBuchung)}</div></td></tr>`;
+    }).join('');
+    tableHtml=`<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
+      <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`;
+  }
+  tbl.innerHTML=tableHtml;
   document.getElementById('beiSoll').textContent=eur(soll);
   document.getElementById('beiBezahlt').textContent=eur(bez);
   document.getElementById('beiOffen').textContent=eur(soll-bez);
