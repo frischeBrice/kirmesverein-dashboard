@@ -1461,12 +1461,14 @@ function printPostenPDF(){
       const ma=members.find(x=>x.id===a.mitglied_id), mb=members.find(x=>x.id===b.mitglied_id);
       return (ma?.display_name||'').localeCompare(mb?.display_name||'','de');
     });
+    const gesamt=sorted.reduce((s,b)=>s+Number(b.betrag),0);
     html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(p.titel)} <span style="font-weight:400;color:#555">(${eur(p.betrag)} pro Person · ${sorted.length} zugewiesen)</span></h3>
       <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Status</th></tr></thead>
       <tbody>${sorted.map(b=>{
         const m=members.find(x=>x.id===b.mitglied_id);
         return `<tr><td>${m?esc(m.display_name||m.username):'?'}</td><td>${eur(b.betrag)}</td><td>${b.bezahlt?'bezahlt':'offen'}</td></tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td><td>${eur(gesamt)}</td><td></td></tr></tfoot></table>`;
   });
 
   Object.keys(gruppen).sort((a,b)=>a.localeCompare(b,'de')).forEach(gruppeName=>{
@@ -1476,6 +1478,8 @@ function printPostenPDF(){
     if(!memberIds.size) return;
     const sortedMembers=[...memberIds].map(id=>members.find(m=>m.id===id)).filter(Boolean)
       .sort((a,b)=>(a.display_name||'').localeCompare(b.display_name||'','de'));
+    const spaltenSummen=ps.map(p=>postenBuchungen.filter(b=>b.posten_id===p.id).reduce((s,b)=>s+Number(b.betrag),0));
+    const gesamt=spaltenSummen.reduce((s,x)=>s+x,0);
     html+=`<h3 style="margin:18px 0 6px;font-size:14px">${esc(gruppeName)}</h3>
       <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th>${ps.map(p=>`<th style="background:#ccc">${esc(p.titel)}</th>`).join('')}</tr></thead>
       <tbody>${sortedMembers.map(m=>{
@@ -1485,7 +1489,9 @@ function printPostenPDF(){
           return `<td>${b.groesse?esc(b.groesse):'✓'}${b.bemerkung?` <span style="color:#666">(${esc(b.bemerkung)})</span>`:''}</td>`;
         }).join('');
         return `<tr><td>${esc(m.display_name||m.username)}</td>${cells}</tr>`;
-      }).join('')}</tbody></table>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="font-weight:700"><td>Gesamtsumme</td>${spaltenSummen.map(s=>`<td>${eur(s)}</td>`).join('')}</tr></tfoot></table>
+      <div class="submuted" style="margin-top:2px">Gesamt „${esc(gruppeName)}": <b>${eur(gesamt)}</b></div>`;
   });
 
   if(!einzeln.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)) && !Object.values(gruppen).some(ps=>ps.some(p=>postenBuchungen.some(b=>b.posten_id===p.id)))){
