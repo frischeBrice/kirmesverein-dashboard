@@ -375,6 +375,7 @@
         <div class="card"><div class="label">Soll</div><div class="value" id="beiSoll">–</div></div>
         <div class="card"><div class="label">Bezahlt</div><div class="value green" id="beiBezahlt">–</div></div>
         <div class="card"><div class="label">Offen</div><div class="value red" id="beiOffen">–</div></div>
+        <div class="card" id="beiGruppeCard" style="display:none"><div class="label" id="beiGruppeLabel">Gruppe gesamt</div><div class="value" id="beiGruppeGesamt">–</div></div>
       </div>
       <div class="panel">
         <h3>🧾 Posten
@@ -1529,14 +1530,18 @@ function renderBeitraege(){
   const rowsForPosten=postenBuchungen.filter(b=>b.posten_id===postenSel);
   let soll=0,bez=0,tableHtml;
 
-  // Gehört der ausgewählte Posten zu einer Gruppe (z. B. Kirmeskleidung), zusätzlich die
-  // komplette Summe über alle Posten dieser Gruppe (Shirt+Jacke+Bauchtasche) anzeigen.
-  // labelColspan passt die Zeile an die jeweilige Tabellenbreite an (6 bzw. 4 Spalten).
-  function gruppeGesamtRow(labelColspan){
-    if(!current.gruppe) return '';
+  // Gehört der ausgewählte Posten zu einer Gruppe (z. B. Kirmeskleidung), oben rechts neben
+  // den Soll/Bezahlt/Offen-Kacheln zusätzlich eine Kachel mit der kompletten Summe über
+  // alle Posten dieser Gruppe (Shirt+Jacke+Bauchtasche) einblenden.
+  const beiGruppeCard=document.getElementById('beiGruppeCard');
+  if(current.gruppe){
     const gruppenPosten=posten.filter(p=>p.gruppe===current.gruppe);
     const gruppeGesamt=postenBuchungen.filter(b=>gruppenPosten.some(p=>p.id===b.posten_id)).reduce((s,b)=>s+Number(b.betrag),0);
-    return `<tr style="font-weight:700"><td${labelColspan>1?` colspan="${labelColspan}"`:''}>Gesamtsumme „${esc(current.gruppe)}" (alle ${gruppenPosten.length})</td><td>${eur(gruppeGesamt)}</td><td colspan="2"></td></tr>`;
+    document.getElementById('beiGruppeLabel').textContent=current.gruppe+' gesamt';
+    document.getElementById('beiGruppeGesamt').textContent=eur(gruppeGesamt);
+    beiGruppeCard.style.display='';
+  } else {
+    beiGruppeCard.style.display='none';
   }
 
   if(current.braucht_groesse){
@@ -1563,7 +1568,7 @@ function renderBeitraege(){
     }).join('');
     tableHtml=rowsForPosten.length
       ? `<table><thead><tr><th>Mitglied</th><th>Größe</th><th>Bemerkung</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
-         <tfoot><tr><td colspan="3">Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr>${gruppeGesamtRow(3)}</tfoot></table>`
+         <tfoot><tr><td colspan="3">Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`
       : '<div class="empty">Noch niemandem zugewiesen. Klicke auf „＋ Zuweisen".</div>';
   } else {
     const byMember={}; rowsForPosten.forEach(b=>{ (byMember[b.mitglied_id]=byMember[b.mitglied_id]||[]).push(b); });
@@ -1590,7 +1595,7 @@ function renderBeitraege(){
     }).join('');
     tableHtml=sortedMembers.length
       ? `<table><thead><tr><th>Mitglied</th><th>Betrag</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody>
-         <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr>${gruppeGesamtRow(1)}</tfoot></table>`
+         <tfoot><tr><td>Summe zugewiesen</td><td>${eur(soll)}</td><td colspan="2"></td></tr></tfoot></table>`
       : '<div class="empty">Noch niemandem zugewiesen. Klicke auf „＋ Zuweisen".</div>';
   }
   tbl.innerHTML=tableHtml;
