@@ -2589,6 +2589,11 @@ function essenKategorieRank(k){ const i = k ? ESSEN_KATEGORIE_ORDER.indexOf(k) :
 function essenSortByKategorie(a,b){ return essenKategorieRank(a.kategorie)-essenKategorieRank(b.kategorie) || (a.reihenfolge||0)-(b.reihenfolge||0); }
 function essenRundeById(id){ return essenRunden.find(r=>r.id===id); }
 function essenMenuOfRunde(id){ return essenMenu.filter(x=>x.runde_id===id).sort(essenSortByKategorie); }
+// Welche Kategorien gerade ausgeklappt sind (Start: alle eingeklappt).
+let essenMenuKatOpen = new Set();
+function toggleEssenMenuKat(k){ essenMenuKatOpen.has(k) ? essenMenuKatOpen.delete(k) : essenMenuKatOpen.add(k); renderEssen(); }
+let essenRestKatOpen = new Set(); // Keys: `${restaurantId}::${kategorie}`
+function toggleEssenRestKat(restaurantId, k){ const key=restaurantId+'::'+k; essenRestKatOpen.has(key) ? essenRestKatOpen.delete(key) : essenRestKatOpen.add(key); renderEssenRestaurantsModal(); }
 function essenBestellungenOfRunde(id){ return essenBestellungen.filter(x=>x.runde_id===id); }
 function essenOptionText(b){ return [b.option1_wert,b.option2_wert].filter(Boolean).join(', '); }
 /* Preis einer Bestellzeile: falls das Gericht je Wert der 1. Optionsgruppe unterschiedliche
@@ -2668,8 +2673,12 @@ function renderEssen(){
       ${menu.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th style="text-align:right">Bestellt</th></tr></thead>
       <tbody>${menu.map((item,i)=>{const anz=bestellungen.filter(b=>b.menu_id===item.id).reduce((s,b)=>s+b.anzahl,0);
         const opt1Text=(item.option1_werte||[]).map((w,i)=>item.option1_preise?`${w} (${eur(item.option1_preise[i])})`:w).join(' / ');
-        const kategorieRow = item.kategorie && item.kategorie!==menu[i-1]?.kategorie
-          ? `<tr><td colspan="3" class="submuted" style="font-weight:700;padding-top:12px">${esc(item.kategorie)}</td></tr>` : '';
+        const kat=item.kategorie;
+        const isNewKat = kat && kat!==menu[i-1]?.kategorie;
+        const isOpen = !kat || essenMenuKatOpen.has(kat);
+        const kategorieRow = isNewKat
+          ? `<tr class="essen-kat-row" onclick="toggleEssenMenuKat('${esc(kat).replace(/'/g,"\\'")}')"><td colspan="3" class="submuted" style="font-weight:700;padding-top:12px;cursor:pointer">${esc(kat)} <span style="font-weight:400">(${menu.filter(x=>x.kategorie===kat).length})</span> <span style="float:right">${isOpen?'▲':'▼'}</span></td></tr>` : '';
+        if(!isOpen) return kategorieRow;
         return `${kategorieRow}<tr><td>${esc(item.name)}${item.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(item.zusatz)}</div>`:''}${item.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(item.option1_label)}: ${esc(opt1Text)}${item.option2_label?` · ${esc(item.option2_label)}: ${esc((item.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${item.option1_preise?'ab '+eur(Math.min(...item.option1_preise)):eur(item.preis)}</td><td style="text-align:right">${anz}</td></tr>`;}).join('')}</tbody></table>`
       :'<div class="empty">Noch kein Menü angelegt.</div>'}
     </div>
@@ -2863,8 +2872,12 @@ function essenRestaurantCardHtml(r){
       </div>
       ${gerichte.length?`<table><thead><tr><th>Gericht</th><th style="text-align:right">Preis</th><th></th></tr></thead>
         <tbody>${gerichte.map((g,i)=>{const opt1Text=(g.option1_werte||[]).map((w,i)=>g.option1_preise?`${w} (${eur(g.option1_preise[i])})`:w).join(' / ');
-          const kategorieRow = g.kategorie && g.kategorie!==gerichte[i-1]?.kategorie
-            ? `<tr><td colspan="3" class="submuted" style="font-weight:700;padding-top:12px">${esc(g.kategorie)}</td></tr>` : '';
+          const kat=g.kategorie;
+          const isNewKat = kat && kat!==gerichte[i-1]?.kategorie;
+          const isOpen = !kat || essenRestKatOpen.has(r.id+'::'+kat);
+          const kategorieRow = isNewKat
+            ? `<tr class="essen-kat-row" onclick="toggleEssenRestKat('${r.id}','${esc(kat).replace(/'/g,"\\'")}')"><td colspan="3" class="submuted" style="font-weight:700;padding-top:12px;cursor:pointer">${esc(kat)} <span style="font-weight:400">(${gerichte.filter(x=>x.kategorie===kat).length})</span> <span style="float:right">${isOpen?'▲':'▼'}</span></td></tr>` : '';
+          if(!isOpen) return kategorieRow;
           return `${kategorieRow}<tr><td>${esc(g.name)}${g.zusatz?`<div class="submuted" style="font-size:11px;font-style:italic">${esc(g.zusatz)}</div>`:''}${g.option1_label?`<div class="submuted" style="font-size:11px">⚙️ ${esc(g.option1_label)}: ${esc(opt1Text)}${g.option2_label?` · ${esc(g.option2_label)}: ${esc((g.option2_werte||[]).join('/'))}`:''}</div>`:''}</td><td style="text-align:right">${g.option1_preise?'ab '+eur(Math.min(...g.option1_preise)):eur(g.preis)}</td><td><button class="icon-btn" onclick="delEssenRestGericht('${g.id}')">🗑️</button></td></tr>`;}).join('')}</tbody></table>`
         :'<div class="empty">Noch kein Menü hinterlegt.</div>'}
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
