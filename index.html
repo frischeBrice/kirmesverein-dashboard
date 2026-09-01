@@ -678,6 +678,7 @@ let kirmeshelfer = [];
 let sponsoren = [];
 let spInkomeExpanded = false; // Finanzen → Einnahmen: Sponsoring-Sammelzeile auf-/zugeklappt
 let kvvInkomeExpanded = false; // Finanzen → Einnahmen: Kartenvorverkauf-Sammelzeile auf-/zugeklappt
+let postenInkomeExpanded = new Set(); // Finanzen → Einnahmen: welche Posten-Titel (z. B. "Mitgliedsbeitrag") auf-/zugeklappt sind
 let _apCache = [], rbPerson = null;
 let calMonth = new Date();
 let kartenvorverkauf = [], kvTeilnehmer = [], kvvSel = null;
@@ -1158,6 +1159,7 @@ function subLine(t){
 }
 function toggleSpInkome(){ spInkomeExpanded=!spInkomeExpanded; renderFinance(); }
 function toggleKvvInkome(){ kvvInkomeExpanded=!kvvInkomeExpanded; renderFinance(); }
+function togglePostenInkome(titel){ postenInkomeExpanded.has(titel)?postenInkomeExpanded.delete(titel):postenInkomeExpanded.add(titel); renderFinance(); }
 function openKvvFromFinance(aktionId){ selectSonstFlyout('kartenvorverkauf'); setKvvSel(aktionId); }
 function renderFinance(){
   document.getElementById('finBalance').textContent=eur(balance());
@@ -1213,11 +1215,29 @@ function renderFinance(){
       <td><b>${esc(t.beschreibung)}</b>${subLine(t)}${statusLine(t)}</td>
       <td style="text-align:right">${amount(t)}</td>
       <td><div class="row-actions"><button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`).join('');
-  const postenRows=postenAgg.map(([titel,v])=>`<tr>
+  // Wie bei Sponsoring/Kartenvorverkauf: statt einer starren Zeile pro Posten-Titel eine
+  // auf-/zuklappbare Sammelzeile, die darunter jede bezahlte Zuweisung einzeln zeigt (Mitglied,
+  // Datum, ggf. Größe/Bemerkung bei Kleidung).
+  const postenRows=postenAgg.map(([titel,v])=>{
+    const expanded=postenInkomeExpanded.has(titel);
+    const titelEsc=esc(titel).replace(/'/g,"\\'");
+    const summary=`<tr style="cursor:pointer" onclick="togglePostenInkome('${titelEsc}')">
       <td>–</td><td>${esc(titel)}</td>
-      <td><b>${esc(titel)}</b> <span class="pill blue mini">App-Posten</span><div class="submuted">${v.count}× bezahlt · Verwaltung im Tab „Beiträge"</div></td>
+      <td><b>${expanded?'▾':'▸'} ${esc(titel)}</b> <span class="pill blue mini">${v.count}× App-Posten</span>
+        <div class="submuted">bezahlt · zum Auf-/Zuklappen anklicken</div></td>
       <td style="text-align:right"><span class="amount plus">+${eur(v.sum)}</span></td>
-      <td></td></tr>`).join('');
+      <td></td></tr>`;
+    const details=expanded?paidPosten().filter(b=>(b.titel||postenTitel(b.posten_id))===titel).map(b=>{
+      const m=members.find(x=>x.id===b.mitglied_id);
+      const extra=[b.groesse,b.bemerkung].filter(Boolean).join(' · ');
+      return `<tr>
+        <td>${b.bezahlt_at?fmtDate(b.bezahlt_at):'–'}</td><td class="submuted">↳</td>
+        <td style="padding-left:24px"><b>${m?esc(m.display_name||m.username):'?'}</b>${extra?`<div class="submuted">${esc(extra)}</div>`:''}</td>
+        <td style="text-align:right"><span class="amount plus">+${eur(b.betrag)}</span></td>
+        <td></td></tr>`;
+    }).join(''):'';
+    return summary+details;
+  }).join('');
   // Statt einer Zeile pro Sponsor (bläht die Liste bei vielen Sponsoren stark auf): eine
   // Sammel-Zeile mit Gesamtsumme, per Klick auf-/zuklappbar (spInkomeExpanded) zeigt darunter
   // jeden Sponsor einzeln. Datum-Spalte der Sammelzeile zeigt das jüngste "abgeschlossen_am"
