@@ -77,6 +77,13 @@
   tr:last-child td{border-bottom:none}
   tbody tr:hover td{background:#1a2028}
   .compact-table th,.compact-table td{padding:3px 8px;font-size:12.5px}
+  /* Posten-Auswahl selbst als große Überschrift, bleibt aber ein normales <select> */
+  .posten-heading-select{font-size:26px;font-weight:800;border:none;background:transparent;
+    color:var(--text);padding:2px 28px 2px 0;margin:0 0 2px;cursor:pointer;width:auto;max-width:100%;
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2395a3b2' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 4px center;background-size:20px}
+  .posten-heading-select:focus{outline:none}
   .anw-table td:first-child{width:32px}
   tfoot td{border-top:2px solid var(--line);font-weight:700}
   .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
@@ -378,13 +385,9 @@
         <div class="card" id="beiGruppeCard" style="display:none"><div class="label" id="beiGruppeLabel">Gruppe gesamt</div><div class="value" id="beiGruppeGesamt">–</div></div>
       </div>
       <div class="panel">
-        <h3>🧾 Posten
-          <span class="grow">
-            <select id="postenSel" onchange="setPostenSel(this.value)" style="width:auto;min-width:180px"></select>
-          </span>
-          <div class="row-actions" id="postenSelActions"></div>
-        </h3>
-        <div id="postenSelHeading" style="font-size:24px;font-weight:800;margin:2px 0 16px"></div>
+        <div class="submuted" style="margin-bottom:2px">🧾 Posten</div>
+        <select id="postenSel" onchange="setPostenSel(this.value)" class="posten-heading-select"></select>
+        <div class="row-actions" id="postenSelActions" style="margin:8px 0 16px"></div>
         <div id="beitraegeTable"></div>
       </div>
     </section>
@@ -1518,7 +1521,6 @@ function renderBeitraege(){
   if(!posten.length){
     sel.innerHTML='<option>–</option>';
     if(actionsEl) actionsEl.innerHTML='';
-    document.getElementById('postenSelHeading').textContent='';
     tbl.innerHTML='<div class="empty">Noch keine Posten angelegt. Klicke oben auf „＋ Neuer Posten".</div>';
     document.getElementById('beiSoll').textContent=eur(0); document.getElementById('beiBezahlt').textContent=eur(0); document.getElementById('beiOffen').textContent=eur(0);
     return;
@@ -1526,7 +1528,6 @@ function renderBeitraege(){
   if(!postenSel || !posten.find(p=>p.id===postenSel)) postenSel=posten[0].id;
   const current=posten.find(p=>p.id===postenSel);
   sel.innerHTML=posten.map(p=>`<option value="${p.id}" ${p.id===postenSel?'selected':''}>${esc(p.titel)}${p.gruppe?' ('+esc(p.gruppe)+')':''} · ${eur(p.betrag)}</option>`).join('');
-  document.getElementById('postenSelHeading').textContent=current.titel;
   if(actionsEl) actionsEl.innerHTML=`
     <button class="btn ghost sm" onclick="openPostenAssign()">＋ Zuweisen</button>
     ${!current.braucht_groesse?`<button class="btn ghost sm" onclick="togglePostenHideUnassigned()">${postenHideUnassigned?'👁 Nicht zugewiesene einblenden':'🙈 Nicht zugewiesene ausblenden'}</button>`:''}
