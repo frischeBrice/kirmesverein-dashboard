@@ -490,6 +490,7 @@
           <input id="invSearch" placeholder="🔍 Suche nach Artikel…" oninput="renderInventur()">
           <select id="invFilter" onchange="renderInventur()"><option value="">Alle Kategorien</option></select>
         </div>
+        <div id="invUtensilienChips" style="display:none;gap:6px;flex-wrap:wrap;margin:-8px 0 14px"></div>
         <div class="panel"><div id="inventurTable"></div></div>
       </div>
       <div id="invBereichKleidung" style="display:none">
@@ -2114,6 +2115,10 @@ function updateInvActions(){
     : '<button class="btn" onclick="openInv()">＋ Artikel</button>';
 }
 const isGetraenk=k=>/getr[äa]e?nk/i.test(k||'');
+// Feste Unterkategorien unter "Utensilien" (alles im Bestand außer Getränke) – hier ordnet
+// der Verein aktuell alle Utensilien-Artikel ein.
+const UTENSILIEN_SUBKAT=['Deko','Blumen(gesteck)','Verbrauchsmaterial'];
+function setInvFilterValue(v){ const sel=document.getElementById('invFilter'); if(sel){ sel.value=v; renderInventur(); } }
 function renderInventur(){
   updateInvActions();
   const q=(val('invSearch')).toLowerCase(); const sel=document.getElementById('invFilter'); const cur=sel.value; const f=cur;
@@ -2131,6 +2136,19 @@ function renderInventur(){
   document.getElementById('invLow').textContent=low;
   const matchesKategorie = i => !f || (f==='__utensilien__' ? !isGetraenk(i.kategorie) : f==='__getraenke__' ? isGetraenk(i.kategorie) : i.kategorie===f);
   const list=inventar.filter(i=>((i.name||'').toLowerCase().includes(q)||(i.kategorie||'').toLowerCase().includes(q)) && matchesKategorie(i));
+  // Utensilien-Hauptkategorie mit den 3 festen Unterkategorien als Schnellfilter-Chips
+  // (nur sichtbar, solange man im Utensilien-Kontext ist).
+  const chipsEl=document.getElementById('invUtensilienChips');
+  if(chipsEl){
+    const inUtensilienKontext = f==='__utensilien__' || UTENSILIEN_SUBKAT.includes(f);
+    if(inUtensilienKontext){
+      chipsEl.style.display='flex';
+      chipsEl.innerHTML=`<button class="btn ghost sm${f==='__utensilien__'?' active':''}" onclick="setInvFilterValue('__utensilien__')">Alle Utensilien</button>`
+        +UTENSILIEN_SUBKAT.map(c=>`<button class="btn ghost sm${f===c?' active':''}" onclick="setInvFilterValue('${c.replace(/'/g,"\\'")}')">${esc(c)}</button>`).join('');
+    } else {
+      chipsEl.style.display='none'; chipsEl.innerHTML='';
+    }
+  }
   document.getElementById('inventurTable').innerHTML=list.length?`<table>
     <thead><tr><th>Artikel</th><th>Kategorie</th><th>Bestand</th><th>Angebrochen</th><th>Ort</th><th></th></tr></thead>
     <tbody>${list.map(i=>{ const lowB=i.min_menge!=null && Number(i.menge)<=Number(i.min_menge);
