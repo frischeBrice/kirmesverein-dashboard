@@ -2697,14 +2697,16 @@ function toggleKvvZahlart(){
 // Aktion mit Zahlart "Ausgelegt": automatisch eine verlinkte Auslage in finanzbuchungen
 // pflegen (Betrag = Preis × aktuelle Kartenzahl über alle Teilnehmer), damit sie bei "Offene
 // Auslagen pro Person" auftaucht und über die normale 💶-Erstatten-Funktion abgerechnet werden
-// kann. WICHTIG: erstattet_betrag wird hier NICHT automatisch aus bezahlten Teilnehmern befüllt –
-// das würde die bewusste Trennung verwischen, dass "Teilnehmer hat bezahlt" (an die auslegende
-// Person, nicht an die Kasse) etwas anderes ist als "Kasse hat die Person zurückgezahlt" (echte
-// Erstattung, weiterhin nur manuell über 💶 Erstatten). Nur der offene Gesamtbetrag wird nachgezogen.
+// kann. erstattet_betrag wird dabei automatisch aus den Teilnehmern nachgezogen, die "bezahlt"
+// angehakt haben: die zahlen direkt an die auslegende Person zurück, wodurch die Kasse ihr
+// entsprechend WENIGER schuldet – sonst würde die Kasse am Ende doppelt zahlen (einmal über die
+// Teilnehmer, einmal über die Erstatten-Funktion). Volle Erstattung (erstattet=true) erst wenn
+// wirklich alle Teilnehmer bezahlt haben.
 async function syncKvvAuslage(aktionId){
   const aktion=kvvAktion(aktionId); if(!aktion) return;
   const rows=kvTeilnehmer.filter(t=>t.aktion_id===aktionId);
   const totalBetrag=rows.reduce((s,t)=>s+kvvBetrag(t),0);
+  const bezahltBetrag=rows.filter(t=>t.bezahlt).reduce((s,t)=>s+kvvBetrag(t),0);
   const sollAuslage = aktion.zahlart==='ausgelegt' && !!aktion.ausgelegt_von && totalBetrag>0;
 
   if(!sollAuslage){
@@ -2717,13 +2719,14 @@ async function syncKvvAuslage(aktionId){
   // In den Ausgaben (finanzbuchungen) bewusst MIT "Kartenvorverkauf: "-Präfix – anders als die
   // Einnahmen-Sammelzeile steht diese Buchung z.B. bei "Offene Auslagen pro Person" auch OHNE
   // eigene Kategorie-Spalte, da braucht's den Kontext direkt im Namen.
+  const erstattet = bezahltBetrag>=totalBetrag-0.005;
   if(aktion.finanzbuchung_id){
-    await sb.from('finanzbuchungen').update({betrag:totalBetrag, beschreibung:`Kartenvorverkauf: ${aktion.titel}`, ausgelegt_von:aktion.ausgelegt_von,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
+    await sb.from('finanzbuchungen').update({betrag:totalBetrag, beschreibung:`Kartenvorverkauf: ${aktion.titel}`, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:bezahltBetrag, erstattet,...bearbeiterPatch()}).eq('id',aktion.finanzbuchung_id);
   } else {
     const {data,error}=await sb.from('finanzbuchungen').insert({
       typ:'extern', art:'out', beschreibung:`Kartenvorverkauf: ${aktion.titel}`, kategorie:'Kartenvorverkauf',
       betrag:totalBetrag, datum:aktion.datum||todayISO(),
-      ausgelegt:true, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:0, erstattet:false, bezahlt:true,
+      ausgelegt:true, ausgelegt_von:aktion.ausgelegt_von, erstattet_betrag:bezahltBetrag, erstattet, bezahlt:true,
       created_by:me.id,...bearbeiterPatch(),
     }).select().single();
     if(!error && data){ await sb.from('kartenvorverkauf').update({finanzbuchung_id:data.id}).eq('id',aktionId); }
@@ -2778,6 +2781,10 @@ async function toggleKvvBezahlt(id){
   const bezahlt=!t.bezahlt;
   const {error}=await sb.from('kartenvorverkauf_teilnehmer').update({bezahlt, bezahlt_at: bezahlt?new Date().toISOString():null,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+  // Zahlt der Teilnehmer direkt an die auslegende Person, schuldet die Kasse dieser Person
+  // entsprechend weniger – Auslage (erstattet_betrag) automatisch nachziehen.
+  if(t.aktion_id) await syncKvvAuslage(t.aktion_id);
   await loadAll();
 }
 function delKvvTeilnehmer(id){ if(!confirm('Teilnehmer wirklich entfernen?'))return;
