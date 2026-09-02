@@ -3026,7 +3026,7 @@ function printKvvAktion(aktionId){
 }
 
 /* ---- Sonstiges: Essen bestellen (dieselben Tabellen wie in der App – live gekoppelt) ---- */
-const ESSEN_KATEGORIE_ORDER = ['Döner', 'Nudelgerichte', 'Nudelgerichte überbacken', 'Pizza'];
+const ESSEN_KATEGORIE_ORDER = ['Döner', 'Nudelgerichte', 'Nudelgerichte überbacken', 'Pizza', 'Schnitzel', 'Salate', 'Burger'];
 function essenKategorieRank(k){ const i = k ? ESSEN_KATEGORIE_ORDER.indexOf(k) : -1; return i===-1 ? ESSEN_KATEGORIE_ORDER.length : i; }
 function essenSortByKategorie(a,b){ return essenKategorieRank(a.kategorie)-essenKategorieRank(b.kategorie) || (a.reihenfolge||0)-(b.reihenfolge||0); }
 function essenRundeById(id){ return essenRunden.find(r=>r.id===id); }
