@@ -3249,12 +3249,12 @@ function essenManualKatRow(kat){
       <b style="font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--accent2)">${esc(kat)}</b>
       ${state.status==='declined'?`<span class="pill gray">Kein Wunsch</span>`:''}
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
-      <select style="flex:1;min-width:180px" onchange="essenManualPick('${kat}',this.value)">
+    <div style="margin-top:6px">
+      <select style="width:100%" onchange="essenManualPick('${kat}',this.value)">
         <option value="">– auswählen –</option>
         ${items.map(i=>`<option value="${i.id}" ${state.menuId===i.id?'selected':''}>${esc(i.name)}</option>`).join('')}
       </select>
-      <button class="btn ghost sm" onclick="essenManualDecline('${kat}')">Nein, ich will nichts</button>
+      <button class="btn danger" style="width:100%;justify-content:center;padding:14px 18px;font-size:16px;font-weight:800;margin-top:8px" onclick="essenManualDecline('${kat}')">Nein, ich will nichts</button>
     </div>
     ${chosenItem?`<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:6px">
       ${chosenItem.option1_label?`<label class="field" style="flex:1;min-width:140px"><span>${esc(chosenItem.option1_label)}</span>
