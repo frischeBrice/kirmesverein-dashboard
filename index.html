@@ -3128,7 +3128,9 @@ function renderEssen(){
       :'<div class="empty">Noch kein Menü angelegt.</div>'}
     </div>
     <div class="panel">
-      <h3>📋 Bestellungen nach Mitglied</h3>
+      <h3>📋 Bestellungen nach Mitglied
+        <span class="grow"><button class="btn ghost sm" onclick="openEssenManualBestellung()">＋ Bestellung nachtragen</button></span>
+      </h3>
       ${Object.keys(byMember).length?`<table><thead><tr><th>Mitglied</th><th>Bestellt</th><th style="text-align:right">Betrag</th></tr></thead>
       <tbody>${Object.entries(byMember).map(([mid,entry])=>{const m=members.find(x=>x.id===mid);
         return `<tr><td>${m?nameWithAvatar(m):'—'}</td><td class="submuted">${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}${i.bemerkung?` (📝 ${esc(i.bemerkung)})`:''}`).join(', ')}</td><td style="text-align:right">${eur(entry.total)}</td></tr>`;}).join('')}</tbody>
@@ -3205,6 +3207,89 @@ function printEssenPDF(){
   document.getElementById('essenPrintArea').innerHTML=html;
   document.getElementById('essenPrintArea').classList.add('show');
   printDoc('Essensbestellung – '+runde.titel);
+}
+
+// ── Bestellung nachtragen (Admin, z. B. weil ein Mitglied nicht selbst über die App
+// bestellt hat): geht Kategorie für Kategorie durch (wie die Speisekarte gruppiert),
+// pro Kategorie entweder ein Gericht wählen ODER explizit "Nein, ich will nichts"
+// klicken (statt es einfach leer/unklar zu lassen) – erst dann als entschieden markiert.
+let essenManualDraft = null;
+function essenManualKategorien(){
+  const menu=essenMenuOfRunde(essenSel);
+  const kats=[...new Set(menu.map(m=>m.kategorie||'Sonstiges'))];
+  return kats.sort((a,b)=>essenKategorieRank(a==='Sonstiges'?null:a)-essenKategorieRank(b==='Sonstiges'?null:b));
+}
+function openEssenManualBestellung(){
+  if(!essenSel){ alert('Bitte zuerst eine Bestellrunde auswählen.'); return; }
+  essenManualDraft={mitgliedId:null, kategorien:{}};
+  renderEssenManualModal();
+}
+function renderEssenManualModal(){
+  const d=essenManualDraft;
+  openModal(`<h3>Bestellung nachtragen</h3>
+    <div class="submuted" style="margin-bottom:10px">Für ein Mitglied manuell Positionen hinzufügen (z. B. wenn es nicht selbst über die App bestellt hat).</div>
+    <label class="field"><span>Mitglied</span>
+      <select id="em_mitglied" onchange="essenManualSetMitglied(this.value)">
+        <option value="">– auswählen –</option>
+        ${members.map(m=>`<option value="${m.id}" ${d.mitgliedId===m.id?'selected':''}>${esc(m.display_name||m.username)}</option>`).join('')}
+      </select>
+    </label>
+    ${d.mitgliedId?essenManualKategorien().map(essenManualKatRow).join(''):''}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      ${d.mitgliedId?`<button class="btn" onclick="saveEssenManualBestellung(this)">Bestellung speichern</button>`:''}
+    </div>`, true);
+}
+function essenManualSetMitglied(id){ essenManualDraft.mitgliedId=id||null; renderEssenManualModal(); }
+function essenManualKatRow(kat){
+  const items=essenMenuOfRunde(essenSel).filter(m=>(m.kategorie||'Sonstiges')===kat);
+  const state=essenManualDraft.kategorien[kat] || {status:'undecided'};
+  const chosenItem=state.menuId?items.find(i=>i.id===state.menuId):null;
+  return `<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <b style="font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--accent2)">${esc(kat)}</b>
+      ${state.status==='declined'?`<span class="pill gray">Kein Wunsch</span>`:''}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <select style="flex:1;min-width:180px" onchange="essenManualPick('${kat}',this.value)">
+        <option value="">– auswählen –</option>
+        ${items.map(i=>`<option value="${i.id}" ${state.menuId===i.id?'selected':''}>${esc(i.name)}</option>`).join('')}
+      </select>
+      <button class="btn ghost sm" onclick="essenManualDecline('${kat}')">Nein, ich will nichts</button>
+    </div>
+    ${chosenItem?`<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:6px">
+      ${chosenItem.option1_label?`<label class="field" style="flex:1;min-width:140px"><span>${esc(chosenItem.option1_label)}</span>
+        <select onchange="essenManualSetOpt('${kat}','opt1',this.value)">
+          ${(chosenItem.option1_werte||[]).map((w,i)=>`<option ${state.opt1===w?'selected':''}>${esc(w)}${chosenItem.option1_preise?' ('+eur(chosenItem.option1_preise[i])+')':''}</option>`).join('')}
+        </select></label>`:''}
+      ${chosenItem.option2_label?`<label class="field" style="flex:1;min-width:140px"><span>${esc(chosenItem.option2_label)}</span>
+        <select onchange="essenManualSetOpt('${kat}','opt2',this.value)">
+          ${(chosenItem.option2_werte||[]).map(w=>`<option ${state.opt2===w?'selected':''}>${esc(w)}</option>`).join('')}
+        </select></label>`:''}
+      <label class="field" style="width:80px"><span>Anzahl</span><input type="number" min="1" value="${state.anzahl||1}" onchange="essenManualSetAnzahl('${kat}',this.value)"></label>
+    </div>`:''}
+  </div>`;
+}
+function essenManualPick(kat,menuId){
+  if(!menuId){ delete essenManualDraft.kategorien[kat]; renderEssenManualModal(); return; }
+  const item=essenMenuOfRunde(essenSel).find(i=>i.id===menuId);
+  essenManualDraft.kategorien[kat]={status:'chosen', menuId, anzahl:1,
+    opt1:item?.option1_werte?.[0]||null, opt2:item?.option2_werte?.[0]||null};
+  renderEssenManualModal();
+}
+function essenManualDecline(kat){ essenManualDraft.kategorien[kat]={status:'declined'}; renderEssenManualModal(); }
+function essenManualSetOpt(kat,field,value){ essenManualDraft.kategorien[kat][field]=value; }
+function essenManualSetAnzahl(kat,value){ essenManualDraft.kategorien[kat].anzahl=Math.max(1,parseInt(value)||1); }
+async function saveEssenManualBestellung(btn){
+  const d=essenManualDraft;
+  if(!d.mitgliedId){ alert('Bitte ein Mitglied auswählen.'); return; }
+  const rows=Object.values(d.kategorien).filter(k=>k.status==='chosen'&&k.menuId)
+    .map(k=>({runde_id:essenSel, mitglied_id:d.mitgliedId, menu_id:k.menuId, anzahl:k.anzahl||1, option1_wert:k.opt1||null, option2_wert:k.opt2||null}));
+  if(!rows.length){ alert('Keine Position ausgewählt (bei jeder Kategorie entweder ein Gericht wählen oder „Nein, ich will nichts").'); return; }
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('essen_bestellungen').insert(rows);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
 }
 
 function openEssenRunde(){
