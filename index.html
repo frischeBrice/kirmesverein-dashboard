@@ -261,9 +261,8 @@
     <button data-view="kalender" onclick="show('kalender')">📅 Kalender</button>
     <button data-view="members" onclick="show('members')">👥 Mitglieder</button>
     <button data-view="aufgaben" onclick="show('aufgaben')">🗒 Aufgaben</button>
-    <button data-view="finance" onclick="show('finance')">💶 Finanzen</button>
-    <button data-view="beitraege" onclick="show('beitraege')">🧾 Beiträge</button>
-    <button data-view="sponsoren" onclick="show('sponsoren')">🤝 Sponsoren</button>
+    <button data-view="einnahmen" onclick="show('einnahmen')"
+      onmouseenter="showFinanzFlyout(this)" onmouseleave="scheduleHideFlyout()">💶 Finanzen ▾</button>
     <button data-view="inventur" onclick="show('inventur')"
       onmouseenter="showInvFlyout(this)" onmouseleave="scheduleHideFlyout()">📦 Inventur ▾</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
@@ -341,37 +340,33 @@
       </div>
     </section>
 
-    <!-- FINANCE -->
-    <section class="view" id="finance">
-      <div class="view-head"><h2>Finanzen</h2></div>
+    <!-- EINNAHMEN -->
+    <section class="view" id="einnahmen">
+      <div class="view-head"><h2>💰 Einnahmen</h2>
+        <div class="actions"><button class="btn green sm" onclick="openEinnahme()">＋ Einnahme</button></div></div>
       <div class="cards">
         <div class="card"><div class="label">Kassenstand</div><div class="value" id="finBalance">–</div></div>
         <div class="card"><div class="label">Einnahmen (Jahr)</div><div class="value green" id="finIncome">–</div></div>
+      </div>
+      <div class="filterbar"><input id="txSearch" placeholder="🔍 In Einnahmen suchen…" oninput="renderFinance()"></div>
+      <div class="panel"><div id="incomeTable"></div></div>
+    </section>
+
+    <!-- AUSGABEN -->
+    <section class="view" id="ausgaben">
+      <div class="view-head"><h2>💸 Ausgaben</h2>
+        <div class="actions">
+          <button class="btn sm" onclick="openEinkauf()">🛒 Einkauf</button>
+          <button class="btn sm" onclick="openExtern()">💸 Ausgabe</button>
+        </div></div>
+      <div class="cards">
         <div class="card"><div class="label">Ausgaben (Jahr)</div><div class="value red" id="finExpense">–</div></div>
         <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="finAuslagen">–</div></div>
         <div class="card"><div class="label">Offene Rechnungen</div><div class="value orange" id="finOffen">–</div></div>
       </div>
-      <div class="filterbar"><input id="txSearch" placeholder="🔍 In Buchungen suchen…" oninput="renderFinance()"></div>
+      <div class="filterbar"><input id="txSearchAusgaben" placeholder="🔍 In Ausgaben suchen…" oninput="renderFinance()"></div>
 
       <div id="auslagenPanel"></div>
-
-      <!-- Einnahmen -->
-      <div class="sectionbar">
-        <span class="dot" style="background:var(--green)"></span>
-        <h3>Einnahmen</h3>
-        <div class="actions"><button class="btn green sm" onclick="openEinnahme()">＋ Einnahme</button></div>
-      </div>
-      <div class="panel"><div id="incomeTable"></div></div>
-
-      <!-- Ausgaben -->
-      <div class="sectionbar">
-        <span class="dot" style="background:var(--red)"></span>
-        <h3>Ausgaben</h3>
-        <div class="actions">
-          <button class="btn sm" onclick="openEinkauf()">🛒 Einkauf</button>
-          <button class="btn sm" onclick="openExtern()">💸 Ausgabe</button>
-        </div>
-      </div>
       <div class="panel"><div id="expenseTable"></div></div>
 
       <!-- Kassenanpassungen -->
@@ -933,7 +928,8 @@ function show(v){
   // Fundsachen hängt jetzt als Unterpunkt an Inventur – dessen Nav-Button bleibt
   // auch dort aktiv markiert, gleiches Prinzip wie bei Sonstiges' Flyout-Unterpunkten.
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',
-    b.dataset.view===v || (b.dataset.view==='inventur' && v==='fundsachen')));
+    b.dataset.view===v || (b.dataset.view==='inventur' && v==='fundsachen')
+    || (b.dataset.view==='einnahmen' && ['einnahmen','ausgaben','beitraege','sponsoren'].includes(v))));
   try{ localStorage.setItem('kv_activeTab', v); }catch(e){}
 }
 
@@ -1185,8 +1181,13 @@ function renderFinance(){
     <h3>⚠️ Offene Auslagen pro Person <span class="grow"><span class="pill orange" style="background:rgba(232,161,58,.15);color:var(--accent)">gesamt ${eur(offeneAuslagen())}</span></span></h3>
     ${tbl(['Person','Ausgelegt','Verrechnet','Offen',''],ap.map(([p,netto,a,v],i)=>[esc(p),eur(a),v>0?('−'+eur(v)):'–',netto>=0?`<b class="amount minus">${eur(netto)}</b>`:`<b class="amount plus">+${eur(-netto)}</b><div class="submuted">an Kasse offen</div>`,a>0.005?`<button class="btn ghost sm" onclick="openReimburse(${i})">💶 Erstatten</button>`:'']))}</div>`:'';
 
+  // Einnahmen und Ausgaben sind jetzt getrennte Views mit je eigenem Suchfeld (txSearch bzw.
+  // txSearchAusgaben) – Kassenanpassungen hängen an der Ausgaben-Seite, nutzen daher deren Suche.
   const q=(val('txSearch')).toLowerCase();
-  const match=t=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
+  const qOut=(val('txSearchAusgaben')).toLowerCase();
+  const matchQ=(t,q)=>((t.beschreibung||'').toLowerCase().includes(q)||(t.kategorie||'').toLowerCase().includes(q)||(t.ausgelegt_von||'').toLowerCase().includes(q));
+  const match=t=>matchQ(t,q);
+  const matchOut=t=>matchQ(t,qOut);
 
   // Einnahmen (inkl. bezahlter App-Posten + erhaltener Sponsoren als abgeleitete Zeilen)
   const inc=transactions.filter(t=>t.art==='in' && typOf(t)!=='anpassung' && match(t));
@@ -1305,7 +1306,7 @@ function renderFinance(){
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
   // Ausgaben
-  const exp=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung' && match(t));
+  const exp=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung' && matchOut(t));
   document.getElementById('expenseTable').innerHTML=exp.length?`<table>
     <thead><tr><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Kategorie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${exp.map(t=>`<tr>
@@ -1321,7 +1322,7 @@ function renderFinance(){
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
 
   // Kassenanpassungen
-  const adj=adjustRows().filter(match);
+  const adj=adjustRows().filter(matchOut);
   document.getElementById('adjustTable').innerHTML=adj.length?`<table>
     <thead><tr><th>Datum</th><th>Beschreibung</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${adj.map(t=>`<tr>
@@ -2715,6 +2716,34 @@ function selectInvFlyout(id){
   if(sel){ sel.value = id==='utensilien' ? '__utensilien__' : '__getraenke__'; }
   renderInventur();
 }
+
+/* ---- Finanzen-Flyout: Einnahmen/Ausgaben/Beiträge/Sponsoren sind eigenständige Views,
+   "Finanzen" im Nav ist nur noch der Oberbegriff/Einstieg (gleiches Prinzip wie Sonstiges/
+   Inventur), Klick ohne Hover springt auf die erste, Einnahmen. ---- */
+const FINANZ_ITEMS = [
+  {id:'einnahmen', label:'💰 Einnahmen'},
+  {id:'ausgaben', label:'💸 Ausgaben'},
+  {id:'beitraege', label:'🧾 Beiträge'},
+  {id:'sponsoren', label:'🤝 Sponsoren'},
+];
+function showFinanzFlyout(btn){
+  clearTimeout(flyoutHideTimer);
+  const el=document.getElementById('navFlyout');
+  const activeView=document.querySelector('.view.active')?.id;
+  el.innerHTML=FINANZ_ITEMS.map(it=>`<a class="${activeView===it.id?'active':''}" onclick="selectFinanzFlyout('${it.id}')">${it.label}</a>`).join('');
+  el.classList.add('show');
+  const r=btn.getBoundingClientRect();
+  const menuW=el.offsetWidth||210, margin=10;
+  let left=Math.min(r.left, window.innerWidth-menuW-margin);
+  if(left<margin) left=margin;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(r.bottom+4)+'px';
+}
+function selectFinanzFlyout(id){
+  const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
+  show(id);
+}
+
 function setKvvSel(id){ kvvSel=id; renderKartenvorverkauf(); }
 function ensureKvvSel(){ if(!kvvSel || !kartenvorverkauf.find(a=>a.id===kvvSel)) kvvSel = kartenvorverkauf[0]?kartenvorverkauf[0].id:null; }
 
