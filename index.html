@@ -3102,7 +3102,7 @@ function renderEssen(){
         ${runde.status==='geschlossen'?' · <span class="pill gray">geschlossen</span>':' · <span class="pill ok">offen</span>'}
       </div>` : ''}
       ${runde && runde.status==='offen' ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        ${runde.restaurant_id?`<button class="btn ghost sm" onclick="syncEssenMenuWithRestaurant('${runde.id}')">🔄 Menü aktualisieren</button>`:''}
+        ${runde.restaurant_id?`<button class="btn ghost sm" onclick="syncEssenMenuWithRestaurant('${runde.id}',this)">🔄 Menü übernehmen</button>`:''}
         <button class="btn ghost sm" onclick="closeEssenRunde('${runde.id}')">✓ Schließen</button>
         <button class="btn ghost sm" onclick="discardEssenRunde('${runde.id}')">🗑 Verwerfen</button>
       </div>` : ''}
@@ -3430,26 +3430,40 @@ function discardEssenRunde(rundeId){
   if(!confirm('Die gesamte Bestellrunde inkl. aller Bestellungen wird gelöscht (keine Buchung). Fortfahren?')) return;
   sb.from('essen_runden').delete().eq('id',rundeId).then(({error})=>{ if(error)alert('Fehler: '+error.message); else { essenSel=null; loadAll(); } });
 }
-/* Menü einer laufenden Runde mit dem aktuellen Restaurant-Stand abgleichen: neue Gerichte
-   ergänzen, vorhandene aktualisieren (Preis/Beschreibung/Optionen) – löscht nichts, damit
-   bereits bestellte Gerichte nicht verschwinden. */
-async function syncEssenMenuWithRestaurant(rundeId){
+/* Menü einer laufenden Runde 1:1 vom Restaurant übernehmen: neue Gerichte ergänzen, vorhandene
+   aktualisieren (Preis/Beschreibung/Optionen), UND Gerichte entfernen, die im Restaurant nicht
+   mehr stehen – damit die Runde wirklich dem aktuellen Restaurant-Stand entspricht, statt nur
+   ergänzt zu werden. Bereits bestellte Gerichte werden nie entfernt, egal was im Restaurant steht.
+   Läuft über withBtn (Button wird sofort deaktiviert) UND lädt den Ist-Stand frisch aus der DB
+   statt aus dem evtl. veralteten lokalen State – behebt die Race Condition, die bei
+   Doppelklick vorher zu doppelten Menüzeilen geführt hat. */
+async function syncEssenMenuWithRestaurant(rundeId, btn){
   const runde=essenRundeById(rundeId); if(!runde || !runde.restaurant_id) return;
   const restItems=essenRestaurantGerichte.filter(g=>g.restaurant_id===runde.restaurant_id);
   if(!restItems.length){ alert('Dieses Restaurant hat kein Menü hinterlegt.'); return; }
-  const menuNow=essenMenuOfRunde(rundeId);
-  const byName={}; menuNow.forEach(m=>{ byName[m.name]=m; });
-  const toInsert=[]; const updates=[];
-  restItems.forEach((g,i)=>{
-    const fields={preis:g.preis, reihenfolge:i, zusatz:g.zusatz, option1_label:g.option1_label, option1_werte:g.option1_werte, option1_preise:g.option1_preise, option2_label:g.option2_label, option2_werte:g.option2_werte, kategorie:g.kategorie};
-    const existing=byName[g.name];
-    if(existing) updates.push({id:existing.id, ...fields});
-    else toInsert.push({runde_id:rundeId, name:g.name, ...fields});
+  await withBtn(btn, async()=>{
+    const {data:menuNow,error:loadErr}=await sb.from('essen_menu').select('*').eq('runde_id',rundeId);
+    if(loadErr) throw loadErr;
+    const bestellteMenuIds=new Set(essenBestellungenOfRunde(rundeId).map(b=>b.menu_id));
+    const byName={}; (menuNow||[]).forEach(m=>{ byName[m.name]=m; });
+
+    const toInsert=[]; const updates=[]; const keepNames=new Set();
+    restItems.forEach((g,i)=>{
+      keepNames.add(g.name);
+      const fields={preis:g.preis, reihenfolge:i, zusatz:g.zusatz, option1_label:g.option1_label, option1_werte:g.option1_werte, option1_preise:g.option1_preise, option2_label:g.option2_label, option2_werte:g.option2_werte, kategorie:g.kategorie};
+      const existing=byName[g.name];
+      if(existing) updates.push({id:existing.id, ...fields});
+      else toInsert.push({runde_id:rundeId, name:g.name, ...fields});
+    });
+    const toDelete=(menuNow||[]).filter(m=>!keepNames.has(m.name) && !bestellteMenuIds.has(m.id));
+
+    if(toInsert.length){ const {error}=await sb.from('essen_menu').insert(toInsert); if(error) throw error; }
+    for(const u of updates){ const {id,...rest}=u; const {error}=await sb.from('essen_menu').update(rest).eq('id',id); if(error) throw error; }
+    if(toDelete.length){ const {error}=await sb.from('essen_menu').delete().in('id',toDelete.map(x=>x.id)); if(error) throw error; }
+
+    await loadAll();
+    alert(`Menü übernommen: ${toInsert.length} neu, ${updates.length} aktualisiert${toDelete.length?`, ${toDelete.length} entfernt`:''}.`);
   });
-  if(toInsert.length){ const {error}=await sb.from('essen_menu').insert(toInsert); if(error){ alert('Fehler: '+error.message); return; } }
-  for(const u of updates){ const {id,...rest}=u; await sb.from('essen_menu').update(rest).eq('id',id); }
-  alert(`Menü aktualisiert: ${toInsert.length} neu hinzugefügt, ${updates.length} aktualisiert.`);
-  await loadAll();
 }
 
 /* ---- Restaurants mit wiederverwendbarem Menü (App und Web teilen sich dieselben Tabellen) ---- */
