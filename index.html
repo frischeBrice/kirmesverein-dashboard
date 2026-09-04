@@ -3162,7 +3162,7 @@ function printEssenPDF(){
   </div>`;
 
   // ── Seite 1: Sammelbestellung fürs Restaurant – je Gericht (und Variante, z. B. Pizzagröße)
-  // die Gesamtanzahl, ohne Namen/Preise, zum Aufgeben/Abgeben beim Restaurantbesitzer.
+  // die Gesamtanzahl samt Einzelpreis und Zeilensumme, zum Aufgeben/Abgeben beim Restaurantbesitzer.
   const sammelRows=[];
   menu.forEach(item=>{
     const perOption={};
@@ -3171,15 +3171,17 @@ function printEssenPDF(){
       perOption[opt]=(perOption[opt]||0)+b.anzahl;
     });
     Object.entries(perOption).forEach(([opt,qty])=>{
-      sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:''), qty});
+      const preis=essenLinePreis(item,opt!=='-'?opt:null);
+      sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:''), qty, preis});
     });
   });
   let html=kopf('Bestellung fürs Restaurant');
   if(sammelRows.length){
     const gesamtAnzahl=sammelRows.reduce((s,r)=>s+r.qty,0);
-    html+=`<table class="compact-table"><thead><tr><th style="background:#ccc">Gericht</th><th style="background:#ccc">Anzahl</th></tr></thead>
-    <tbody>${sammelRows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty}×</td></tr>`).join('')}</tbody>
-    <tfoot><tr style="font-weight:700"><td>Gesamt</td><td>${gesamtAnzahl}×</td></tr></tfoot></table>`;
+    const gesamtSumme=sammelRows.reduce((s,r)=>s+r.qty*r.preis,0);
+    html+=`<table class="compact-table"><thead><tr><th style="background:#ccc">Gericht</th><th style="background:#ccc">Anzahl</th><th style="background:#ccc">Einzelpreis</th><th style="background:#ccc">Summe</th></tr></thead>
+    <tbody>${sammelRows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty}×</td><td>${eur(r.preis)}</td><td>${eur(r.qty*r.preis)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr style="font-weight:700"><td>Gesamt</td><td>${gesamtAnzahl}×</td><td></td><td>${eur(gesamtSumme)}</td></tr></tfoot></table>`;
   } else {
     html+=`<div class="empty">Keine Positionen.</div>`;
   }
