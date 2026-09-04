@@ -3163,16 +3163,21 @@ function printEssenPDF(){
 
   // ── Seite 1: Sammelbestellung fürs Restaurant – je Gericht (und Variante, z. B. Pizzagröße)
   // die Gesamtanzahl samt Einzelpreis und Zeilensumme, zum Aufgeben/Abgeben beim Restaurantbesitzer.
+  // Bemerkungen (z. B. "ohne Zwiebeln") gehen dabei in die Gruppierung mit ein – sonst würde eine
+  // Portion mit Sonderwunsch unsichtbar in der Anzahl der normalen Portionen verschwinden.
   const sammelRows=[];
   menu.forEach(item=>{
-    const perOption={};
+    const perGroup={};
     bestellungen.filter(b=>b.menu_id===item.id).forEach(b=>{
       const opt=essenOptionText(b)||'-';
-      perOption[opt]=(perOption[opt]||0)+b.anzahl;
+      const bem=(b.bemerkung||'').trim();
+      const key=opt+'::'+bem;
+      if(!perGroup[key]) perGroup[key]={qty:0,opt,bem};
+      perGroup[key].qty+=b.anzahl;
     });
-    Object.entries(perOption).forEach(([opt,qty])=>{
+    Object.values(perGroup).forEach(({qty,opt,bem})=>{
       const preis=essenLinePreis(item,opt!=='-'?opt:null);
-      sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:''), qty, preis});
+      sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:'')+(bem?` – 📝 ${bem}`:''), qty, preis});
     });
   });
   let html=kopf('Bestellung fürs Restaurant');
