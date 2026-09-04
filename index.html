@@ -658,6 +658,8 @@
     <div class="only-print" id="anwPrintArea"></div>
     <!-- Druckfläche für die Beiträge/Posten-Übersicht (nur beim Drucken sichtbar) -->
     <div class="only-print" id="postenPrintArea"></div>
+    <!-- Druckfläche für die Essensbestellung (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="essenPrintArea"></div>
   </main>
 </div>
 
@@ -3091,6 +3093,7 @@ function renderEssen(){
           </select>
           <button class="btn ghost sm" onclick="openEssenRunde()">＋ Neue Runde</button>
           <button class="btn ghost sm" onclick="openEssenRestaurants()">🏬 Restaurants</button>
+          ${runde?`<button class="btn ghost sm" onclick="printEssenPDF()">🖨 Drucken / PDF</button>`:''}
         </span>
       </h3>
       ${runde?`<div class="submuted">
@@ -3133,6 +3136,66 @@ function renderEssen(){
       :'<div class="empty">Noch keine Bestellungen – Mitglieder bestellen über die App.</div>'}
     </div>`:''}
   `;
+}
+
+// ── PDF/Druck-Übersicht einer Bestellrunde: ZWEI getrennte Seiten (harter Seitenumbruch), damit
+// man sie auch als zwei Blätter auseinanderreißen/getrennt ausdrucken kann:
+//   Seite 1 – Sammelbestellung fürs Restaurant (nur Gericht + Gesamtanzahl, keine Namen/Preise)
+//   Seite 2 – Bestellungen nach Mitglied, für einen selbst zum Nachvollziehen/Kassieren
+// Druckt immer nur die GERADE AUSGEWÄHLTE Runde. ──
+function printEssenPDF(){
+  const runde=essenRundeById(essenSel);
+  if(!runde){ alert('Bitte zuerst eine Bestellrunde auswählen.'); return; }
+  const menu=essenMenuOfRunde(essenSel);
+  const bestellungen=essenBestellungenOfRunde(essenSel);
+  const byMember=essenByMember(essenSel);
+  const total=essenGrandTotal(essenSel);
+  if(!bestellungen.length){ alert(`„${esc(runde.titel)}" hat noch keine Bestellungen – nichts zu drucken.`); return; }
+
+  const kopf=(titelZusatz)=>`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
+    <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
+    <div style="text-align:right;white-space:nowrap">
+      <h2 style="margin:0;text-decoration:underline;font-size:19px">${esc(runde.titel)} – ${titelZusatz}</h2>
+      <div style="font-size:12.5px;margin-top:2px">${runde.ort?esc(runde.ort)+' · ':''}${ESSEN_ZAHLART_LABEL[runde.zahlart]}${runde.zahlart==='ausgelegt'&&runde.ausgelegt_von?' ('+esc(runde.ausgelegt_von)+')':''}</div>
+      <div style="font-size:12.5px">Stand: ${fmtDate(todayISO())}</div>
+    </div>
+  </div>`;
+
+  // ── Seite 1: Sammelbestellung fürs Restaurant – je Gericht (und Variante, z. B. Pizzagröße)
+  // die Gesamtanzahl, ohne Namen/Preise, zum Aufgeben/Abgeben beim Restaurantbesitzer.
+  const sammelRows=[];
+  menu.forEach(item=>{
+    const perOption={};
+    bestellungen.filter(b=>b.menu_id===item.id).forEach(b=>{
+      const opt=essenOptionText(b)||'-';
+      perOption[opt]=(perOption[opt]||0)+b.anzahl;
+    });
+    Object.entries(perOption).forEach(([opt,qty])=>{
+      sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:''), qty});
+    });
+  });
+  let html=kopf('Bestellung fürs Restaurant');
+  if(sammelRows.length){
+    const gesamtAnzahl=sammelRows.reduce((s,r)=>s+r.qty,0);
+    html+=`<table class="compact-table"><thead><tr><th style="background:#ccc">Gericht</th><th style="background:#ccc">Anzahl</th></tr></thead>
+    <tbody>${sammelRows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty}×</td></tr>`).join('')}</tbody>
+    <tfoot><tr style="font-weight:700"><td>Gesamt</td><td>${gesamtAnzahl}×</td></tr></tfoot></table>`;
+  } else {
+    html+=`<div class="empty">Keine Positionen.</div>`;
+  }
+
+  // ── Seite 2 (harter Seitenumbruch): Bestellungen nach Mitglied – für einen selbst, um
+  // nachzuvollziehen wer was hat und wer wieviel zahlt.
+  const sortedMembers=Object.entries(byMember).map(([mid,entry])=>({entry,m:members.find(x=>x.id===mid)}))
+    .sort((a,b)=>(a.m?.display_name||'').localeCompare(b.m?.display_name||'','de'));
+  html+=`<div style="page-break-before:always;break-before:page">${kopf('Bestellungen nach Mitglied')}
+  <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Bestellt</th><th style="background:#ccc">Betrag</th></tr></thead>
+  <tbody>${sortedMembers.map(({m,entry})=>`<tr><td>${m?esc(m.display_name||m.username):'—'}</td><td>${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}${i.bemerkung?` (📝 ${esc(i.bemerkung)})`:''}`).join(', ')}</td><td>${eur(entry.total)}</td></tr>`).join('')}</tbody>
+  <tfoot><tr style="font-weight:700"><td colspan="2">Gesamtsumme</td><td>${eur(total)}</td></tr></tfoot></table></div>`;
+
+  document.getElementById('essenPrintArea').innerHTML=html;
+  document.getElementById('essenPrintArea').classList.add('show');
+  printDoc('Essensbestellung – '+runde.titel);
 }
 
 function openEssenRunde(){
@@ -3587,7 +3650,8 @@ window.addEventListener('afterprint',()=>{ document.title=__origTitle;
   const el=document.getElementById('kvvPrintArea'); if(el) el.classList.remove('show');
   const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
   const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show');
-  const el4=document.getElementById('postenPrintArea'); if(el4) el4.classList.remove('show'); });
+  const el4=document.getElementById('postenPrintArea'); if(el4) el4.classList.remove('show');
+  const el5=document.getElementById('essenPrintArea'); if(el5) el5.classList.remove('show'); });
 // Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
 // Tabelle Nr./Vorname/Nachname/Unterschrift, Fußzeile Optional/Pflicht/Offiziell).
 function splitVorNachname(full){
