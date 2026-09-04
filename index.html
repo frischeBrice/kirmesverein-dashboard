@@ -3180,25 +3180,27 @@ function printEssenPDF(){
       sammelRows.push({name:item.name+(opt!=='-'?` (${opt})`:'')+(bem?` – 📝 ${bem}`:''), qty, preis});
     });
   });
+  // Checkliste: je Portion ein Kästchen zum Abhaken beim Zubereiten (nicht nur eine Zahl).
   let html=kopf('Bestellung fürs Restaurant');
   if(sammelRows.length){
     const gesamtAnzahl=sammelRows.reduce((s,r)=>s+r.qty,0);
     const gesamtSumme=sammelRows.reduce((s,r)=>s+r.qty*r.preis,0);
-    html+=`<table class="compact-table"><thead><tr><th style="background:#ccc">Gericht</th><th style="background:#ccc">Anzahl</th><th style="background:#ccc">Einzelpreis</th><th style="background:#ccc">Summe</th></tr></thead>
-    <tbody>${sammelRows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty}×</td><td>${eur(r.preis)}</td><td>${eur(r.qty*r.preis)}</td></tr>`).join('')}</tbody>
-    <tfoot><tr style="font-weight:700"><td>Gesamt</td><td>${gesamtAnzahl}×</td><td></td><td>${eur(gesamtSumme)}</td></tr></tfoot></table>`;
+    html+=`<table class="compact-table"><thead><tr><th style="background:#ccc">Gericht</th><th style="background:#ccc">Anzahl</th><th style="background:#ccc">Einzelpreis</th><th style="background:#ccc">Summe</th><th style="background:#ccc">Zubereitet</th></tr></thead>
+    <tbody>${sammelRows.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.qty}×</td><td>${eur(r.preis)}</td><td>${eur(r.qty*r.preis)}</td><td>${'<span class="chk-box"></span>'.repeat(r.qty)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr style="font-weight:700"><td>Gesamt</td><td>${gesamtAnzahl}×</td><td></td><td>${eur(gesamtSumme)}</td><td></td></tr></tfoot></table>`;
   } else {
     html+=`<div class="empty">Keine Positionen.</div>`;
   }
 
-  // ── Seite 2 (harter Seitenumbruch): Bestellungen nach Mitglied – für einen selbst, um
-  // nachzuvollziehen wer was hat und wer wieviel zahlt.
+  // ── Seite 2 (harter Seitenumbruch): Bestellungen nach Mitglied – Checkliste zum Abhaken,
+  // wer schon bezahlt hat (essen_bestellungen speichert keinen Bezahlt-Status, läuft bewusst
+  // nur auf Papier – wie die bestehende Kartenvorverkauf-Checkliste).
   const sortedMembers=Object.entries(byMember).map(([mid,entry])=>({entry,m:members.find(x=>x.id===mid)}))
     .sort((a,b)=>(a.m?.display_name||'').localeCompare(b.m?.display_name||'','de'));
   html+=`<div style="page-break-before:always;break-before:page">${kopf('Bestellungen nach Mitglied')}
-  <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Bestellt</th><th style="background:#ccc">Betrag</th></tr></thead>
-  <tbody>${sortedMembers.map(({m,entry})=>`<tr><td>${m?esc(m.display_name||m.username):'—'}</td><td>${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}${i.bemerkung?` (📝 ${esc(i.bemerkung)})`:''}`).join(', ')}</td><td>${eur(entry.total)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="font-weight:700"><td colspan="2">Gesamtsumme</td><td>${eur(total)}</td></tr></tfoot></table></div>`;
+  <table class="compact-table"><thead><tr><th style="background:#ccc">Mitglied</th><th style="background:#ccc">Bestellt</th><th style="background:#ccc">Betrag</th><th style="background:#ccc">Bezahlt</th></tr></thead>
+  <tbody>${sortedMembers.map(({m,entry})=>`<tr><td>${m?esc(m.display_name||m.username):'—'}</td><td>${entry.items.map(i=>`${i.anzahl}× ${esc(i.name)}${i.bemerkung?` (📝 ${esc(i.bemerkung)})`:''}`).join(', ')}</td><td>${eur(entry.total)}</td><td><span class="chk-box"></span></td></tr>`).join('')}</tbody>
+  <tfoot><tr style="font-weight:700"><td colspan="2">Gesamtsumme</td><td>${eur(total)}</td><td></td></tr></tfoot></table></div>`;
 
   document.getElementById('essenPrintArea').innerHTML=html;
   document.getElementById('essenPrintArea').classList.add('show');
