@@ -2002,6 +2002,7 @@ function openSponsorPDF(){
       <select id="spPdfSort">
         <option value="mitglied">👤 Nach Mitglied (Zuständig) gruppiert</option>
         <option value="betrag_desc">💶 Nach Betrag/Wert absteigend</option>
+        <option value="betrag_asc">💶 Nach Betrag/Wert aufsteigend</option>
         <option value="status">🚦 Nach Status</option>
         <option value="name">🔤 Alphabetisch nach Name</option>
       </select>
@@ -2038,13 +2039,14 @@ function printSponsorenPDF(){
   } else {
     let sorted=[...list];
     if(sort==='betrag_desc') sorted.sort((a,b)=>Number(b.betrag||0)-Number(a.betrag||0));
+    else if(sort==='betrag_asc') sorted.sort((a,b)=>Number(a.betrag||0)-Number(b.betrag||0));
     else if(sort==='status') sorted.sort((a,b)=>SPONSOR_STATUS_ORDER.indexOf(a.status||'offen')-SPONSOR_STATUS_ORDER.indexOf(b.status||'offen') || (a.name||'').localeCompare(b.name||'','de'));
     else sorted.sort((a,b)=>(a.name||'').localeCompare(b.name||'','de'));
     body=`<table class="compact-table"><thead><tr><th style="background:#ccc">Sponsor</th><th style="background:#ccc">Zuständig</th><th style="background:#ccc">Betrag/Wert</th><th style="background:#ccc">Status</th></tr></thead>
       <tbody>${sorted.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.betreuer||'–')}</td><td>${wert(s)}</td><td>${esc(SPONSOR_STATUS_LABEL[s.status||'offen'])}</td></tr>`).join('')}</tbody></table>`;
   }
 
-  const sortLabel={mitglied:'nach Mitglied gruppiert',betrag_desc:'nach Betrag absteigend',status:'nach Status',name:'alphabetisch'}[sort];
+  const sortLabel={mitglied:'nach Mitglied gruppiert',betrag_desc:'nach Betrag absteigend',betrag_asc:'nach Betrag aufsteigend',status:'nach Status',name:'alphabetisch'}[sort];
   const html=`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
     <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
     <div style="text-align:right;white-space:nowrap">
