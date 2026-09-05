@@ -404,7 +404,7 @@
     <!-- SPONSOREN -->
     <section class="view" id="sponsoren">
       <div class="view-head"><h2>Sponsoren</h2>
-        <div class="actions"><button class="btn ghost" onclick="printFreikartenChecklist()">🎫 Freikarten-Checkliste</button><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
+        <div class="actions"><button class="btn ghost" onclick="printFreikartenChecklist()">🎫 Freikarten-Checkliste</button><button class="btn ghost" onclick="openSponsorPDF()">🖨 PDF / Drucken</button><button class="btn" onclick="openSponsor()">＋ Sponsor</button></div></div>
       <div class="cards">
         <div class="card"><div class="label">Sponsoren</div><div class="value" id="spCount">–</div><div id="spStatusBreakdown" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div></div>
         <div class="card"><div class="label">Zugesagt</div><div class="value" id="spZugesagt">–</div></div>
@@ -655,6 +655,8 @@
     <div class="only-print" id="postenPrintArea"></div>
     <!-- Druckfläche für die Essensbestellung (nur beim Drucken sichtbar) -->
     <div class="only-print" id="essenPrintArea"></div>
+    <!-- Druckfläche für die Sponsoren-Übersicht (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="sponsorenPrintArea"></div>
   </main>
 </div>
 
@@ -1775,6 +1777,8 @@ function bearbeiterPatch(){ return {bearbeitet_von:me.id, bearbeitet_at:new Date
 
 function sponsorStatusPill(s){const c={'offen':'gray','angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'gray';return `<span class="pill ${c}">${esc(s||'offen')}</span>`;}
 const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
+const SPONSOR_STATUS_LABEL={offen:'Offen',angefragt:'Angefragt',zugesagt:'Zugesagt',erhalten:'Erhalten',abgelehnt:'Abgelehnt'};
+const SPONSOR_STATUS_ORDER=['offen','angefragt','zugesagt','erhalten','abgelehnt'];
 function sponsorStatusSelect(s){
   const cur=s.status||'offen'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
   const opts=[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
@@ -1986,6 +1990,74 @@ function resetSponsorFilters(){
   document.getElementById('spFreikartenFilter').value='';
   document.getElementById('spGroup').checked=false;
   renderSponsoren();
+}
+
+// ── PDF/Druck-Übersicht der Sponsoren: Sortierung erst per Auswahl-Dialog abfragen, dann
+// drucken. Berücksichtigt dieselben Filter (Status/Quittung/Freikarten/Suche), die oben in der
+// Liste gerade gesetzt sind – wer z. B. nur "Zugesagt" filtert, druckt auch nur die. ──
+function openSponsorPDF(){
+  openModal(`<h3>Sponsoren-PDF erstellen</h3>
+    <div class="submuted" style="margin-bottom:10px">Berücksichtigt die aktuell oben gesetzten Filter (Status/Quittung/Freikarten/Suche).</div>
+    <label class="field"><span>Sortierung</span>
+      <select id="spPdfSort">
+        <option value="mitglied">👤 Nach Mitglied (Zuständig) gruppiert</option>
+        <option value="betrag_desc">💶 Nach Betrag/Wert absteigend</option>
+        <option value="status">🚦 Nach Status</option>
+        <option value="name">🔤 Alphabetisch nach Name</option>
+      </select>
+    </label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="printSponsorenPDF()">🖨 Erstellen</button></div>`);
+}
+function printSponsorenPDF(){
+  const sort=val('spPdfSort');
+  const q=(val('spSearch')).toLowerCase(); const f=val('spFilter');
+  const fq=val('spQuittungFilter'); const ffk=val('spFreikartenFilter');
+  const list=sponsoren.filter(s=>((s.name||'').toLowerCase().includes(q)||(s.ansprechpartner||'').toLowerCase().includes(q)||(s.art||'').toLowerCase().includes(q)||(s.betreuer||'').toLowerCase().includes(q))
+    && (!f||s.status===f)
+    && (!fq||(fq==='__keine__'?!s.quittung:s.quittung===fq))
+    && (!ffk||((Number(s.freikarten_anzahl)>0?'ja':'nein')===ffk)));
+  closeModal();
+  if(!list.length){ alert('Keine Sponsoren (bei den aktuell gesetzten Filtern) zum Drucken.'); return; }
+
+  const wert=s=>isSachspende(s.art)?esc(s.sachspende_text||'Sachspende'):eur(s.betrag||0);
+  const geldSumme=arr=>arr.reduce((sum,s)=>sum+(isSachspende(s.art)?0:Number(s.betrag||0)),0);
+  const gesamt=geldSumme(list);
+
+  let body='';
+  if(sort==='mitglied'){
+    const groups={}; list.forEach(s=>{ const k=s.betreuer||'— ohne Zuständige —'; (groups[k]=groups[k]||[]).push(s); });
+    const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,'de'));
+    body=keys.map(k=>{
+      const arr=groups[k].sort((a,b)=>(a.name||'').localeCompare(b.name||'','de'));
+      return `<h3 style="margin:16px 0 6px;font-size:14px">👤 ${esc(k)} <span style="font-weight:400;color:#666">(${arr.length})</span></h3>
+        <table class="compact-table"><thead><tr><th style="background:#ccc">Sponsor</th><th style="background:#ccc">Betrag/Wert</th><th style="background:#ccc">Status</th></tr></thead>
+        <tbody>${arr.map(s=>`<tr><td>${esc(s.name)}</td><td>${wert(s)}</td><td>${esc(SPONSOR_STATUS_LABEL[s.status||'offen'])}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700"><td>Zwischensumme</td><td>${eur(geldSumme(arr))}</td><td></td></tr></tfoot></table>`;
+    }).join('');
+  } else {
+    let sorted=[...list];
+    if(sort==='betrag_desc') sorted.sort((a,b)=>Number(b.betrag||0)-Number(a.betrag||0));
+    else if(sort==='status') sorted.sort((a,b)=>SPONSOR_STATUS_ORDER.indexOf(a.status||'offen')-SPONSOR_STATUS_ORDER.indexOf(b.status||'offen') || (a.name||'').localeCompare(b.name||'','de'));
+    else sorted.sort((a,b)=>(a.name||'').localeCompare(b.name||'','de'));
+    body=`<table class="compact-table"><thead><tr><th style="background:#ccc">Sponsor</th><th style="background:#ccc">Zuständig</th><th style="background:#ccc">Betrag/Wert</th><th style="background:#ccc">Status</th></tr></thead>
+      <tbody>${sorted.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.betreuer||'–')}</td><td>${wert(s)}</td><td>${esc(SPONSOR_STATUS_LABEL[s.status||'offen'])}</td></tr>`).join('')}</tbody></table>`;
+  }
+
+  const sortLabel={mitglied:'nach Mitglied gruppiert',betrag_desc:'nach Betrag absteigend',status:'nach Status',name:'alphabetisch'}[sort];
+  const html=`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
+    <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
+    <div style="text-align:right;white-space:nowrap">
+      <h2 style="margin:0;text-decoration:underline;font-size:19px">Sponsoren</h2>
+      <div style="font-size:12.5px;margin-top:2px">${list.length} Sponsoren · sortiert ${sortLabel}</div>
+      <div style="font-size:12.5px">Stand: ${fmtDate(todayISO())}</div>
+    </div>
+  </div>${body}
+  <div style="margin-top:14px;font-size:13px;font-weight:700;text-align:right">Gesamt (Geldspenden): ${eur(gesamt)}</div>`;
+
+  document.getElementById('sponsorenPrintArea').innerHTML=html;
+  document.getElementById('sponsorenPrintArea').classList.add('show');
+  printDoc('Sponsoren');
 }
 function renderSponsoren(){
   const q=(val('spSearch')).toLowerCase(); const f=val('spFilter');
@@ -3703,7 +3775,8 @@ window.addEventListener('afterprint',()=>{ document.title=__origTitle;
   const el2=document.getElementById('fkPrintArea'); if(el2) el2.classList.remove('show');
   const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show');
   const el4=document.getElementById('postenPrintArea'); if(el4) el4.classList.remove('show');
-  const el5=document.getElementById('essenPrintArea'); if(el5) el5.classList.remove('show'); });
+  const el5=document.getElementById('essenPrintArea'); if(el5) el5.classList.remove('show');
+  const el6=document.getElementById('sponsorenPrintArea'); if(el6) el6.classList.remove('show'); });
 // Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
 // Tabelle Nr./Vorname/Nachname/Unterschrift, Fußzeile Optional/Pflicht/Offiziell).
 function splitVorNachname(full){
