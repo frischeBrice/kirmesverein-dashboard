@@ -1778,7 +1778,7 @@ function bearbeiterPatch(){ return {bearbeitet_von:me.id, bearbeitet_at:new Date
 function sponsorStatusPill(s){const c={'offen':'gray','angefragt':'warn','zugesagt':'blue','erhalten':'ok','abgelehnt':'no'}[s]||'gray';return `<span class="pill ${c}">${esc(s||'offen')}</span>`;}
 const SPONSOR_STATUS_COLOR={offen:'#95a3b2',angefragt:'#e8a13a',zugesagt:'#3a86e8',erhalten:'#3fb27f',abgelehnt:'#e05c5c'};
 const SPONSOR_STATUS_LABEL={offen:'Offen',angefragt:'Angefragt',zugesagt:'Zugesagt',erhalten:'Erhalten',abgelehnt:'Abgelehnt'};
-const SPONSOR_STATUS_ORDER=['offen','angefragt','zugesagt','erhalten','abgelehnt'];
+const SPONSOR_STATUS_ORDER=['erhalten','zugesagt','angefragt','offen','abgelehnt'];
 function sponsorStatusSelect(s){
   const cur=s.status||'offen'; const col=SPONSOR_STATUS_COLOR[cur]||'#95a3b2';
   const opts=[['offen','Offen'],['angefragt','Angefragt'],['zugesagt','Zugesagt'],['erhalten','Erhalten'],['abgelehnt','Abgelehnt']];
