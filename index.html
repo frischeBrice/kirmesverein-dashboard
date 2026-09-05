@@ -2036,11 +2036,22 @@ function printSponsorenPDF(){
         <tbody>${arr.map(s=>`<tr><td>${esc(s.name)}</td><td>${wert(s)}</td><td>${esc(SPONSOR_STATUS_LABEL[s.status||'offen'])}</td></tr>`).join('')}</tbody>
         <tfoot><tr style="font-weight:700"><td>Zwischensumme</td><td>${eur(geldSumme(arr))}</td><td></td></tr></tfoot></table>`;
     }).join('');
+  } else if(sort==='status'){
+    // Wie bei "nach Mitglied gruppiert": eine eigene Tabelle je Status (in fester Statusreihenfolge),
+    // innerhalb jeder Tabelle nach Betrag/Wert absteigend sortiert, mit eigener Zwischensumme.
+    const groups={}; list.forEach(s=>{ const k=s.status||'offen'; (groups[k]=groups[k]||[]).push(s); });
+    const keys=SPONSOR_STATUS_ORDER.filter(k=>groups[k]&&groups[k].length);
+    body=keys.map(k=>{
+      const arr=groups[k].sort((a,b)=>Number(b.betrag||0)-Number(a.betrag||0));
+      return `<h3 style="margin:16px 0 6px;font-size:14px">🚦 ${esc(SPONSOR_STATUS_LABEL[k])} <span style="font-weight:400;color:#666">(${arr.length})</span></h3>
+        <table class="compact-table"><thead><tr><th style="background:#ccc">Sponsor</th><th style="background:#ccc">Zuständig</th><th style="background:#ccc">Betrag/Wert</th></tr></thead>
+        <tbody>${arr.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.betreuer||'–')}</td><td>${wert(s)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700"><td colspan="2">Zwischensumme</td><td>${eur(geldSumme(arr))}</td></tr></tfoot></table>`;
+    }).join('');
   } else {
     let sorted=[...list];
     if(sort==='betrag_desc') sorted.sort((a,b)=>Number(b.betrag||0)-Number(a.betrag||0));
     else if(sort==='betrag_asc') sorted.sort((a,b)=>Number(a.betrag||0)-Number(b.betrag||0));
-    else if(sort==='status') sorted.sort((a,b)=>SPONSOR_STATUS_ORDER.indexOf(a.status||'offen')-SPONSOR_STATUS_ORDER.indexOf(b.status||'offen') || (a.name||'').localeCompare(b.name||'','de'));
     else sorted.sort((a,b)=>(a.name||'').localeCompare(b.name||'','de'));
     body=`<table class="compact-table"><thead><tr><th style="background:#ccc">Sponsor</th><th style="background:#ccc">Zuständig</th><th style="background:#ccc">Betrag/Wert</th><th style="background:#ccc">Status</th></tr></thead>
       <tbody>${sorted.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.betreuer||'–')}</td><td>${wert(s)}</td><td>${esc(SPONSOR_STATUS_LABEL[s.status||'offen'])}</td></tr>`).join('')}</tbody></table>`;
