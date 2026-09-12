@@ -1907,6 +1907,10 @@ function freikartenEligible(s){
 function fkBox(sym,col,title,onclick){
   return `<button class="icon-btn" style="font-size:15px;line-height:1;border:1px solid ${col};border-radius:6px;padding:3px 9px;${col!=='var(--line)'?`color:${col}`:''}" title="${title}" onclick="${onclick}">${sym}</button>`;
 }
+// Sponsoren-IDs, bei denen die Kartennummern gerade per Klick auf die Ticket-Kästchen wieder zum
+// Bearbeiten aufgeklappt wurden (sonst stehen die Nummern als reine Anzeige-Kästchen da).
+let fkEditing=new Set();
+function toggleFkEdit(id){ fkEditing.has(id)?fkEditing.delete(id):fkEditing.add(id); renderSponsoren(); }
 function freikartenCell(s){
   if(!freikartenEligible(s)) return '<span class="submuted">–</span>';
   const anz=s.freikarten_anzahl;
@@ -1914,10 +1918,18 @@ function freikartenCell(s){
   const isNein=(anz===0||anz==='0');
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
+    // Bereits vergebene Nummern werden als Ticket-Kästchen angezeigt (statt Textfeld) – jedes Kästchen
+    // symbolisiert eine Freikarte. Klick darauf klappt zum Bearbeiten wieder ein Eingabefeld auf.
+    if(nums.length && !fkEditing.has(s.id)){
+      return `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+        ${fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
+        ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:38px;height:32px;padding:0 9px;border:1.5px solid #3fb27f;border-radius:8px;font-weight:700;color:#3fb27f">🎫${esc(n)}</span>`).join('')}
+      </div>`;
+    }
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(anz)||2);
     return `<div style="display:flex;align-items:center;gap:4px">
       ${fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
-      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:110px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
+      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:110px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this);fkEditing.delete('${s.id}')">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
   }
   if(isNein){
