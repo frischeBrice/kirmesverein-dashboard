@@ -1900,13 +1900,29 @@ function sponsorTrend(s){
 function freikartenEligible(s){
   return ['zugesagt','erhalten'].includes(s.status) && (isSachspende(s.art) || Number(s.betrag||0)>=50);
 }
+// Gekastete Häkchen/Kreuz-Buttons: solange noch keine Entscheidung getroffen ist (freikarten_anzahl
+// leer), stehen beide nebeneinander zur Auswahl. Nach einem Klick verschwindet der jeweils andere und
+// übrig bleibt nur der gewählte, eingefärbte Button – ein Klick darauf setzt die Entscheidung wieder
+// zurück (beide Buttons erscheinen dann erneut).
+function fkBox(sym,col,title,onclick){
+  return `<button class="icon-btn" style="font-size:15px;line-height:1;border:1px solid ${col};border-radius:6px;padding:3px 9px;${col!=='var(--line)'?`color:${col}`:''}" title="${title}" onclick="${onclick}">${sym}</button>`;
+}
 function freikartenCell(s){
   if(!freikartenEligible(s)) return '<span class="submuted">–</span>';
-  const isJa=Number(s.freikarten_anzahl)>0;
-  let html=`<div style="display:flex;gap:4px">
-    <button class="icon-btn" style="font-size:17px;${isJa?'color:#3fb27f':''}" title="Freikarten zugesagt – Nummern eintragen" onclick="setSponsorFkJaNein('${s.id}','ja')">✓</button>
-    <button class="icon-btn" style="font-size:17px;${!isJa?'color:#e05c5c':''}" title="Angebot abgelehnt" onclick="setSponsorFkJaNein('${s.id}','nein')">✗</button>
-  </div>`;
+  const anz=s.freikarten_anzahl;
+  const isJa=Number(anz)>0;
+  const isNein=(anz===0||anz==='0');
+  let html;
+  if(isJa){
+    html=fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`);
+  } else if(isNein){
+    html=fkBox('✗','#e05c5c','Angebot abgelehnt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`);
+  } else {
+    html=`<div style="display:flex;gap:4px">
+      ${fkBox('✓','var(--line)','Freikarten zugesagt',`setSponsorFkJaNein('${s.id}','ja')`)}
+      ${fkBox('✗','var(--line)','Angebot abgelehnt',`setSponsorFkJaNein('${s.id}','nein')`)}
+    </div>`;
+  }
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(s.freikarten_anzahl)||2);
@@ -1914,15 +1930,24 @@ function freikartenCell(s){
       <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
     if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
-  } else {
+  } else if(isNein){
     html+=`<div class="submuted" style="margin-top:4px">Sponsor hat das Angebot abgelehnt</div>`;
   }
   return html;
 }
 async function setSponsorFkJaNein(id,value){
-  // Ja = feste Anzahl 2 (Standardfall); Nein = zurückgesetzt (auch Nummern, falls vorher Ja war)
+  // Ja = feste Anzahl 2 (Standardfall); Nein = explizit abgelehnt (Anzahl 0, keine Nummern)
   const patch = {...(value==='ja' ? {freikarten_anzahl:2} : {freikarten_anzahl:0,freikarten_nummern:null}), ...bearbeiterPatch()};
   const {error}=await sb.from('sponsoren').update(patch).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  await loadAll();
+}
+// Entscheidung (Ja/Nein) wieder aufheben, damit beide Buttons erneut zur Auswahl stehen.
+async function setSponsorFkReset(id){
+  const sp=sponsoren.find(x=>x.id===id);
+  const nums=sp?parseFreikarten(sp.freikarten_nummern):[];
+  if(nums.length && !confirm(`Damit werden die zugeordneten Kartennummern (#${nums.join(', #')}) wieder entfernt.\n\nFortfahren?`)) return;
+  const {error}=await sb.from('sponsoren').update({freikarten_anzahl:null,freikarten_nummern:null,...bearbeiterPatch()}).eq('id',id);
   if(error){ alert('Fehler: '+error.message); return; }
   await loadAll();
 }
