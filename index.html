@@ -1913,7 +1913,7 @@ let fkEditing=new Set();
 function toggleFkEdit(id){ fkEditing.has(id)?fkEditing.delete(id):fkEditing.add(id); renderSponsoren(); }
 // Einheitlicher Rahmen für alle vier Zustände (unentschieden/Ja mit Nummern/Ja ohne Nummern/Nein) –
 // damit die Zeilen in der Freikarten-Spalte untereinander immer gleich ausgerichtet sind.
-const FK_WRAP='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
+const FK_WRAP='display:flex;align-items:center;gap:6px;flex-wrap:nowrap';
 function freikartenCell(s){
   if(!freikartenEligible(s)) return '<span class="submuted">–</span>';
   const anz=s.freikarten_anzahl;
