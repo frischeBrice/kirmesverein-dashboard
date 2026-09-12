@@ -1895,17 +1895,18 @@ function sponsorTrend(s){
   if(c<v) return ` <span class="pill no mini">▼ −${eur(v-c)}</span>`;
   return ' <span class="pill gray mini">= gleich</span>';
 }
+// Freikarten-Berechtigung: Status zugesagt/erhalten, und entweder eine Sachspende (kein Mindestwert
+// nötig) oder eine Geldspende ab 50 €. Bei offen/angefragt/abgelehnt taucht hier gar nichts auf.
+function freikartenEligible(s){
+  return ['zugesagt','erhalten'].includes(s.status) && (isSachspende(s.art) || Number(s.betrag||0)>=50);
+}
 function freikartenCell(s){
-  // Freikarten-Auswahl gibt's nur, wenn der Sponsor überhaupt in Frage kommt (50 € + zugesagt/erhalten) –
-  // bei offen/angefragt/abgelehnt taucht hier gar nichts auf.
-  const eligible=Number(s.betrag||0)>=50 && ['zugesagt','erhalten'].includes(s.status);
-  if(!eligible) return '<span class="submuted">–</span>';
+  if(!freikartenEligible(s)) return '<span class="submuted">–</span>';
   const isJa=Number(s.freikarten_anzahl)>0;
-  const col=isJa?'#3fb27f':'#e05c5c';
-  let html=`<select class="status-select" style="border-color:${col};color:${col};font-weight:700" onchange="setSponsorFkJaNein('${s.id}',this.value)">
-    <option value="ja" ${isJa?'selected':''}>Ja</option>
-    <option value="nein" ${!isJa?'selected':''}>Nein</option>
-  </select>`;
+  let html=`<div style="display:flex;gap:4px">
+    <button class="icon-btn" style="font-size:17px;${isJa?'color:#3fb27f':''}" title="Freikarten zugesagt – Nummern eintragen" onclick="setSponsorFkJaNein('${s.id}','ja')">✓</button>
+    <button class="icon-btn" style="font-size:17px;${!isJa?'color:#e05c5c':''}" title="Angebot abgelehnt" onclick="setSponsorFkJaNein('${s.id}','nein')">✗</button>
+  </div>`;
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(s.freikarten_anzahl)||2);
@@ -1913,6 +1914,8 @@ function freikartenCell(s){
       <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
     if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
+  } else {
+    html+=`<div class="submuted" style="margin-top:4px">Sponsor hat das Angebot abgelehnt</div>`;
   }
   return html;
 }
@@ -3830,13 +3833,12 @@ function printAnwesenheitsliste(veranstaltungId){
   printDoc('Anwesenheit – '+(ev.titel||''));
 }
 function printFreikartenChecklist(){
-  // Zusätzlich zur reinen Freikarten-Anzahl/Nummern auch die Berechtigung prüfen (wie freikartenCell) –
-  // Sicherheitsnetz gegen verwaiste Werte, falls ein Sponsor mal ohne Aufräumen unter 50 €/Status
-  // gerutscht ist (z.B. Altdaten von vor diesem Fix).
-  const eligible=s=>Number(s.betrag||0)>=50 && ['zugesagt','erhalten'].includes(s.status);
+  // Zusätzlich zur reinen Freikarten-Anzahl/Nummern auch die Berechtigung prüfen (wie freikartenCell/
+  // freikartenEligible) – Sicherheitsnetz gegen verwaiste Werte, falls ein Sponsor mal ohne Aufräumen
+  // unter 50 €/Status gerutscht ist (z.B. Altdaten von vor diesem Fix).
   // Sortiert nach der kleinsten vergebenen Kartennummer (numerisch) – wer noch keine Nummer hat, landet ans Ende.
   const minNr=s=>{ const nums=parseFreikarten(s.freikarten_nummern).map(n=>parseInt(n,10)).filter(n=>!isNaN(n)); return nums.length?Math.min(...nums):Infinity; };
-  const list=sponsoren.filter(s=>eligible(s) && (Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length))
+  const list=sponsoren.filter(s=>freikartenEligible(s) && (Number(s.freikarten_anzahl)>0||parseFreikarten(s.freikarten_nummern).length))
     .sort((a,b)=>minNr(a)-minNr(b) || a.name.localeCompare(b.name,'de'));
   if(!list.length){ alert('Noch keine Freikarten vergeben.'); return; }
   const totalKarten=list.reduce((a,s)=>a+(Number(s.freikarten_anzahl)||parseFreikarten(s.freikarten_nummern).length),0);
