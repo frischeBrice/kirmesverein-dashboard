@@ -1927,7 +1927,7 @@ function freikartenCell(s){
     // Kreuz zur Auswahl, solange noch nichts entschieden wurde (siehe unten).
     if(nums.length && !fkEditing.has(s.id)){
       return `<div style="${FK_WRAP}">
-        ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:38px;height:32px;padding:0 9px;border:1.5px solid var(--muted);border-radius:8px;font-weight:700;color:var(--muted)">🎫${esc(n)}</span>`).join('')}
+        ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;gap:3px;white-space:nowrap;min-width:38px;height:32px;padding:0 9px;border:1.5px solid var(--muted);border-radius:8px;font-weight:700;color:var(--muted)">🎫${esc(n)}</span>`).join('')}
       </div>`;
     }
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(anz)||2);
