@@ -1912,28 +1912,23 @@ function freikartenCell(s){
   const anz=s.freikarten_anzahl;
   const isJa=Number(anz)>0;
   const isNein=(anz===0||anz==='0');
-  let html;
-  if(isJa){
-    html=fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`);
-  } else if(isNein){
-    html=fkBox('✗','#e05c5c','Angebot abgelehnt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`);
-  } else {
-    html=`<div style="display:flex;gap:4px">
-      ${fkBox('✓','var(--line)','Freikarten zugesagt',`setSponsorFkJaNein('${s.id}','ja')`)}
-      ${fkBox('✗','var(--line)','Angebot abgelehnt',`setSponsorFkJaNein('${s.id}','nein')`)}
-    </div>`;
-  }
   if(isJa){
     const nums=parseFreikarten(s.freikarten_nummern);
-    const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(s.freikarten_anzahl)||2);
-    html+=`<div style="margin-top:4px;display:flex;align-items:center;gap:4px">
-      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:120px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
+    const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(anz)||2);
+    return `<div style="display:flex;align-items:center;gap:4px">
+      ${fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
+      <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:110px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this)">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
-    if(nums.length) html+=`<div class="submuted" style="margin-top:2px">#${nums.join(', #')}</div>`;
-  } else if(isNein){
-    html+=`<div class="submuted" style="margin-top:4px">Sponsor hat das Angebot abgelehnt</div>`;
   }
-  return html;
+  if(isNein){
+    return `<div style="display:flex;align-items:center;gap:6px">
+      ${fkBox('✗','#e05c5c','Angebot abgelehnt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
+      <span class="submuted">Sponsor hat das Angebot abgelehnt</span></div>`;
+  }
+  return `<div style="display:flex;gap:4px">
+    ${fkBox('✓','var(--line)','Freikarten zugesagt',`setSponsorFkJaNein('${s.id}','ja')`)}
+    ${fkBox('✗','var(--line)','Angebot abgelehnt',`setSponsorFkJaNein('${s.id}','nein')`)}
+  </div>`;
 }
 async function setSponsorFkJaNein(id,value){
   // Ja = feste Anzahl 2 (Standardfall); Nein = explizit abgelehnt (Anzahl 0, keine Nummern)
