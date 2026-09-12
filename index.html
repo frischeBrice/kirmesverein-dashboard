@@ -1920,15 +1920,15 @@ function freikartenCell(s){
     const nums=parseFreikarten(s.freikarten_nummern);
     // Bereits vergebene Nummern werden als Ticket-Kästchen angezeigt (statt Textfeld) – jedes Kästchen
     // symbolisiert eine Freikarte. Klick darauf klappt zum Bearbeiten wieder ein Eingabefeld auf.
+    // Kein Häkchen mehr davor, sobald eine Auswahl getroffen ist – das steht nur noch zusammen mit dem
+    // Kreuz zur Auswahl, solange noch nichts entschieden wurde (siehe unten).
     if(nums.length && !fkEditing.has(s.id)){
       return `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-        ${fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
-        ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:38px;height:32px;padding:0 9px;border:1.5px solid #3fb27f;border-radius:8px;font-weight:700;color:#3fb27f">🎫${esc(n)}</span>`).join('')}
+        ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:38px;height:32px;padding:0 9px;border:1.5px solid var(--muted);border-radius:8px;font-weight:700;color:var(--muted)">🎫${esc(n)}</span>`).join('')}
       </div>`;
     }
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(anz)||2);
     return `<div style="display:flex;align-items:center;gap:4px">
-      ${fkBox('✓','#3fb27f','Freikarten zugesagt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
       <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:110px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this);fkEditing.delete('${s.id}')">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
   }
