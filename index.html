@@ -1911,6 +1911,9 @@ function fkBox(sym,col,title,onclick){
 // Bearbeiten aufgeklappt wurden (sonst stehen die Nummern als reine Anzeige-Kästchen da).
 let fkEditing=new Set();
 function toggleFkEdit(id){ fkEditing.has(id)?fkEditing.delete(id):fkEditing.add(id); renderSponsoren(); }
+// Einheitlicher Rahmen für alle vier Zustände (unentschieden/Ja mit Nummern/Ja ohne Nummern/Nein) –
+// damit die Zeilen in der Freikarten-Spalte untereinander immer gleich ausgerichtet sind.
+const FK_WRAP='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
 function freikartenCell(s){
   if(!freikartenEligible(s)) return '<span class="submuted">–</span>';
   const anz=s.freikarten_anzahl;
@@ -1923,21 +1926,21 @@ function freikartenCell(s){
     // Kein Häkchen mehr davor, sobald eine Auswahl getroffen ist – das steht nur noch zusammen mit dem
     // Kreuz zur Auswahl, solange noch nichts entschieden wurde (siehe unten).
     if(nums.length && !fkEditing.has(s.id)){
-      return `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+      return `<div style="${FK_WRAP}">
         ${nums.map(n=>`<span onclick="toggleFkEdit('${s.id}')" title="Kartennummer – klicken zum Bearbeiten" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:38px;height:32px;padding:0 9px;border:1.5px solid var(--muted);border-radius:8px;font-weight:700;color:var(--muted)">🎫${esc(n)}</span>`).join('')}
       </div>`;
     }
     const ph=nums.length?'#Nummern':nextFreikartenNummern(Number(anz)||2);
-    return `<div style="display:flex;align-items:center;gap:4px">
+    return `<div style="${FK_WRAP}">
       <input type="text" value="${esc(s.freikarten_nummern)}" placeholder="${esc(ph)}" class="status-select" style="max-width:110px;padding:4px 6px" onchange="setSponsorFkNummern('${s.id}',this.value,this);fkEditing.delete('${s.id}')">
       ${nums.length?'<span class="submuted" title="Bereits eingetragene Kartennummern sind gesperrt und brauchen zum Ändern eine Bestätigung">🔒</span>':''}</div>`;
   }
   if(isNein){
-    return `<div style="display:flex;align-items:center;gap:6px">
+    return `<div style="${FK_WRAP}">
       ${fkBox('✗','#e05c5c','Angebot abgelehnt – klicken zum Ändern',`setSponsorFkReset('${s.id}')`)}
       <span class="submuted">Sponsor hat das Angebot abgelehnt</span></div>`;
   }
-  return `<div style="display:flex;gap:4px">
+  return `<div style="${FK_WRAP}">
     ${fkBox('✓','var(--line)','Freikarten zugesagt',`setSponsorFkJaNein('${s.id}','ja')`)}
     ${fkBox('✗','var(--line)','Angebot abgelehnt',`setSponsorFkJaNein('${s.id}','nein')`)}
   </div>`;
