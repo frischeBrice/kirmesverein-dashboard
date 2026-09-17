@@ -4107,7 +4107,7 @@ function openEinkauf(id){
     <button class="btn ghost sm" style="margin-top:2px" onclick="addPos()">＋ Position</button>
     <div class="grid2" style="margin-top:12px">
       <label class="field"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}" oninput="calcEinkauf()"></label>
-      <label class="field"><span>Aufschlag (€) – z. B. Versand, wird aufgeschlagen</span><input type="number" step="0.01" min="0" id="f_aufschlag" value="${t.aufschlag||''}" oninput="calcEinkauf()"></label>
+      <label class="field"><span>Aufschlag (€) – wird aufgeschlagen</span><input type="number" step="0.01" min="0" id="f_aufschlag" value="${t.aufschlag||''}" oninput="calcEinkauf()"></label>
     </div>
     <div class="ek-total"><span>Pfand: <span id="ek_pfandVal">0,00 €</span><span class="submuted" id="ek_zurueckVal"></span><span class="submuted" id="ek_rabattVal"></span><span class="submuted" id="ek_aufschlagVal"></span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
     ${fieldVeranstaltung(t)}
