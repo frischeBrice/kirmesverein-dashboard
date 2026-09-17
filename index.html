@@ -1226,8 +1226,12 @@ function auslageStatusKey(t){
   return 'bezahlt';
 }
 function auslageStatusPill(t){
-  const m={erstattet:['✓ erstattet','ok'],teilw:['teilw. erstattet','warn'],offen:['Auslage offen','no'],unbezahlt:['offen','no'],bezahlt:['bezahlt','ok']}[auslageStatusKey(t)];
-  return `<span class="pill ${m[1]} mini">${m[0]}</span>`;
+  const k=auslageStatusKey(t);
+  const m={erstattet:['✓ erstattet','ok'],teilw:['teilw. erstattet','warn'],offen:['Auslage offen','no'],unbezahlt:['offen','no'],bezahlt:['bezahlt','ok']}[k];
+  const clickable=k==='offen'||k==='teilw'||k==='unbezahlt';
+  if(!clickable) return `<span class="pill ${m[1]} mini">${m[0]}</span>`;
+  const action=t.ausgelegt?'markErstattet':'markBezahlt';
+  return `<span class="pill ${m[1]} mini" style="cursor:pointer" title="Klicken zum Markieren als erledigt" onclick="${action}('${t.id}')">${m[0]} ✅</span>`;
 }
 function payerName(t){ return t.ausgelegt ? (t.ausgelegt_von||'') : (t.bezahlt===false ? '' : 'Vereinskasse'); }
 function statusLine(t,opts){
@@ -1414,8 +1418,6 @@ function renderFinance(){
       <td style="text-align:center">${payerInfo(t)}</td>
       <td style="text-align:right">${amount(t)}</td>
       <td><div class="row-actions">
-        ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
-        ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
         <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`;}).join('')}</tbody>
     <tfoot><tr><td colspan="7">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
