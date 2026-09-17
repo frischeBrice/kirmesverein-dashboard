@@ -1163,6 +1163,7 @@ function subLine(t){
   if(typOf(t)==='extern' && (t.zeitraum_von||t.zeitraum_bis)) parts.push(`🗓 ${fmtDate(t.zeitraum_von)} – ${fmtDate(t.zeitraum_bis)}`);
   if(t.kommission) parts.push('🔄 Kommission');
   if(Number(t.rabatt)>0) parts.push(`Rabatt/Pfandabgabe −${eur(t.rabatt)}`);
+  if(Number(t.aufschlag)>0) parts.push(`Aufschlag +${eur(t.aufschlag)}`);
   if(t.veranstaltung_id && eventName(t.veranstaltung_id)) parts.push(`🎪 ${esc(eventName(t.veranstaltung_id))}`);
   return parts.length?`<div class="submuted">${parts.join(' · ')}</div>`:'';
 }
@@ -4079,29 +4080,36 @@ function calcEinkauf(){
     const z=komm?Math.min(a,parseFloat(p.zurueck)||0):0; const c=Math.max(0,a-z);
     items+=c*pr; pfand+=c*pf; zurueckWert+=z*(pr+pf);});
   const rabatt=parseFloat(val('f_rabatt'))||0;
-  const total=Math.max(0, items+pfand-rabatt);
+  const aufschlag=parseFloat(val('f_aufschlag'))||0;
+  const total=Math.max(0, items+pfand-rabatt+aufschlag);
   const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v;};
   set('ek_pfandVal',eur(pfand));
   set('ek_zurueckVal', zurueckWert>0?(' · −'+eur(zurueckWert)+' zurück'):'');
   set('ek_rabattVal', rabatt>0?(' · −'+eur(rabatt)+' Rabatt'):'');
+  set('ek_aufschlagVal', aufschlag>0?(' · +'+eur(aufschlag)+' Aufschlag'):'');
   set('ek_totalVal',eur(total));
-  return {items,pfand,total,zurueckWert,rabatt};
+  return {items,pfand,total,zurueckWert,rabatt,aufschlag};
 }
 function openEinkauf(id){
-  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',datum:todayISO(),positionen:null,zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:'',kommission:false,rabatt:''};
+  const t=id?transactions.find(x=>x.id===id):{beschreibung:'',kategorie:'',datum:todayISO(),positionen:null,zahlungsart:'',ausgelegt:false,ausgelegt_von:'',erstattet:false,beleg_pfad:null,veranstaltung_id:'',kommission:false,rabatt:'',aufschlag:''};
   posRows=(Array.isArray(t.positionen)&&t.positionen.length?t.positionen:[posTemplate()]).map(p=>({artikel:p.artikel||'',anzahl:p.anzahl??1,preis:p.preis??'',pfand:p.pfand??'',zurueck:p.zurueck??''}));
+  const [bez,gesch]=splitBezGeschaeft(t.beschreibung);
   openModal(`<h3>${id?'Einkauf bearbeiten':'Neuer Einkauf'}</h3>
     <div class="grid2">
-      <label class="field"><span>Bezeichnung / Geschäft *</span><input id="ek_titel" value="${esc(t.beschreibung)}" placeholder="z. B. Getränkemarkt Müller"></label>
-      <label class="field"><span>Datum</span><input type="date" id="ek_datum" value="${t.datum||todayISO()}"></label>
+      <label class="field"><span>Bezeichnung *</span><input id="ek_titel" value="${esc(bez)}" placeholder="z. B. Getränke Einkauf"></label>
+      <label class="field"><span>Geschäft</span><input id="ek_geschaeft" value="${esc(gesch)}" placeholder="z. B. Getränkemarkt Müller"></label>
     </div>
+    <label class="field"><span>Datum</span><input type="date" id="ek_datum" value="${t.datum||todayISO()}"></label>
     <label class="field"><span>Kategorie</span><input id="ek_kat" list="ekcats" value="${esc(t.kategorie)}">
       <datalist id="ekcats"><option>Getränke</option><option>Essen / Lebensmittel</option><option>Deko</option><option>Material / Werkzeug</option><option>Reinigung</option><option>Sonstiges</option></datalist></label>
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13.5px"><input type="checkbox" id="ek_kommission" style="width:auto" ${t.kommission?'checked':''} onchange="toggleKommission()"> 🔄 Kommission – nicht Verbrauchtes zurückgebracht (nur Verbrauchtes wird berechnet)</label>
     <div id="posContainer"></div>
     <button class="btn ghost sm" style="margin-top:2px" onclick="addPos()">＋ Position</button>
-    <label class="field" style="margin-top:12px"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}" oninput="calcEinkauf()"></label>
-    <div class="ek-total"><span>Pfand: <span id="ek_pfandVal">0,00 €</span><span class="submuted" id="ek_zurueckVal"></span><span class="submuted" id="ek_rabattVal"></span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
+    <div class="grid2" style="margin-top:12px">
+      <label class="field"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}" oninput="calcEinkauf()"></label>
+      <label class="field"><span>Aufschlag (€) – z. B. Versand, wird aufgeschlagen</span><input type="number" step="0.01" min="0" id="f_aufschlag" value="${t.aufschlag||''}" oninput="calcEinkauf()"></label>
+    </div>
+    <div class="ek-total"><span>Pfand: <span id="ek_pfandVal">0,00 €</span><span class="submuted" id="ek_zurueckVal"></span><span class="submuted" id="ek_rabattVal"></span><span class="submuted" id="ek_aufschlagVal"></span></span><span>Gesamt: <b id="ek_totalVal">0,00 €</b></span></div>
     ${fieldVeranstaltung(t)}
     ${fieldZahlung(t)}
     ${fieldAuslage(t)}
@@ -4110,15 +4118,20 @@ function openEinkauf(id){
       <button class="btn" onclick="saveEinkauf('${id||''}',this)">Speichern</button></div>`,true);
   renderPosRows(); calcEinkauf();
 }
+function splitBezGeschaeft(beschreibung){
+  const s=beschreibung||''; const sep=' – '; const idx=s.indexOf(sep);
+  return idx<0 ? [s,''] : [s.slice(0,idx), s.slice(idx+sep.length)];
+}
 function saveEinkauf(id,btn){
-  const beschreibung=val('ek_titel');
-  if(!beschreibung){ alert('Bitte eine Bezeichnung / das Geschäft angeben.'); return; }
+  const bez=val('ek_titel'); const gesch=val('ek_geschaeft');
+  if(!bez){ alert('Bitte eine Bezeichnung eingeben.'); return; }
+  const beschreibung=gesch?(bez+' – '+gesch):bez;
   const komm=ekKomm();
   const clean=posRows.map(p=>({artikel:(p.artikel||'').trim(),anzahl:parseFloat(p.anzahl)||0,preis:parseFloat(p.preis)||0,pfand:parseFloat(p.pfand)||0,zurueck:komm?(parseFloat(p.zurueck)||0):0})).filter(p=>p.artikel||p.preis||p.pfand);
   if(!clean.length){ alert('Bitte mindestens eine Position mit Artikel/Preis erfassen.'); return; }
-  const {total,pfand,rabatt}=calcEinkauf();
+  const {total,pfand,rabatt,aufschlag}=calcEinkauf();
   const row={typ:'einkauf',art:'out',beschreibung,kategorie:val('ek_kat')||null,datum:val('ek_datum')||todayISO(),
-    betrag:total,pfand,rabatt,kommission:komm,positionen:clean,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
+    betrag:total,pfand,rabatt,aufschlag,kommission:komm,positionen:clean,zahlungsart:val('f_zahlung')||null,veranstaltung_id:val('f_event')||null,...readAuslage()};
   withBtn(btn,async()=>{ const f=document.getElementById('f_beleg').files[0]; if(f) row.beleg_pfad=await uploadBeleg(f); await upsertTx(id,row); closeModal(); await loadAll(); });
 }
 
