@@ -1151,15 +1151,23 @@ function payerInfo(t){
     :(t.bezahlt===false?`<span class="pill no mini">noch offen</span>`:'Vereinskasse');
   return `<div>${wer}</div>${wie?`<div style="margin-top:2px">${wie}</div>`:''}`;
 }
+function auslageStatusPill(t){
+  if(t.ausgelegt){ const e=erstattetBetrag(t), b=Number(t.betrag)||0;
+    if(e>=b-0.005) return '<span class="pill ok mini">✓ erstattet</span>';
+    if(e>0.005) return '<span class="pill warn mini">teilw. erstattet</span>';
+    return '<span class="pill no mini">Auslage offen</span>'; }
+  if(t.bezahlt===false) return '<span class="pill no mini">offen</span>';
+  return '<span class="pill ok mini">bezahlt</span>';
+}
 function statusLine(t,opts){
   opts=opts||{};
   const s=[];
   if(!opts.hideZahlung){ const zp=zahlPill(t.zahlungsart); if(zp)s.push(zp); }
-  if(t.ausgelegt){ const e=erstattetBetrag(t), b=Number(t.betrag)||0; const von=(opts.hideZahlung||!t.ausgelegt_von)?'':': '+esc(t.ausgelegt_von);
+  if(!opts.hideAuslage && t.ausgelegt){ const e=erstattetBetrag(t), b=Number(t.betrag)||0; const von=(opts.hideZahlung||!t.ausgelegt_von)?'':': '+esc(t.ausgelegt_von);
     if(e>=b-0.005) s.push(`<span class="pill ok mini">Auslage erstattet${von}</span>`);
     else if(e>0.005) s.push(`<span class="pill warn mini">Auslage ${eur(e)}/${eur(b)} erstattet${von}</span>`);
     else s.push(`<span class="pill no mini">Auslage offen${von}</span>`); }
-  if(!opts.hideZahlung && t.art==='out' && !t.ausgelegt && t.bezahlt===false) s.push('<span class="pill no mini">offen / unbezahlt</span>');
+  if(!opts.hideZahlung && !opts.hideAuslage && t.art==='out' && !t.ausgelegt && t.bezahlt===false) s.push('<span class="pill no mini">offen / unbezahlt</span>');
   if(t.art==='in' && t.verrechnet) s.push(`<span class="pill blue mini">verrechnet mit ${esc(t.verrechnet_mit||'?')}</span>`);
   if(t.beleg_pfad) s.push(`<a href="#" onclick="viewBeleg('${esc(t.beleg_pfad)}');return false" class="pill blue mini" style="text-decoration:none">📎 Beleg</a>`);
   return s.length?`<div class="statusline">${s.join('')}</div>`:'';
@@ -1318,10 +1326,11 @@ function renderFinance(){
   // Ausgaben
   const exp=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung' && matchOut(t));
   document.getElementById('expenseTable').innerHTML=exp.length?`<table>
-    <thead><tr><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Geschäft</th><th>Kategorie</th><th>Bezahlt von / Wie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
+    <thead><tr><th>Status</th><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Geschäft</th><th>Kategorie</th><th>Bezahlt von / Wie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${exp.map(t=>{const [bez,gesch]=splitBezGeschaeft(t.beschreibung);return `<tr>
+      <td>${auslageStatusPill(t)}</td>
       <td>${fmtDate(t.datum)}</td><td>${typPill(t)}</td>
-      <td><b>${esc(bez)}</b>${subLine(t)}${statusLine(t,{hideZahlung:true})}</td>
+      <td><b>${esc(bez)}</b>${subLine(t)}${statusLine(t,{hideZahlung:true,hideAuslage:true})}</td>
       <td>${gesch?esc(gesch):'–'}</td>
       <td>${esc(t.kategorie)||'–'}</td>
       <td>${payerInfo(t)}</td>
@@ -1330,7 +1339,7 @@ function renderFinance(){
         ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
         ${(!t.ausgelegt&&t.bezahlt===false)?`<button class="icon-btn" title="Als bezahlt markieren" onclick="markBezahlt('${t.id}')">✅</button>`:''}
         <button class="icon-btn" onclick="editTx('${t.id}')">✏️</button><button class="icon-btn" onclick="delTx('${t.id}')">🗑️</button>${bearbeiterChip(t)}</div></td></tr>`;}).join('')}</tbody>
-    <tfoot><tr><td colspan="6">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
+    <tfoot><tr><td colspan="7">Summe Ausgaben</td><td style="text-align:right" class="amount minus">${eur(exp.reduce((s,t)=>s+Number(t.betrag),0))}</td><td></td></tr></tfoot></table>`
     :'<div class="empty">Noch keine Ausgaben. Lege oben eine an.</div>';
 
   // Kassenanpassungen
