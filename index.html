@@ -364,9 +364,9 @@
         <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="finAuslagen">–</div></div>
         <div class="card"><div class="label">Offene Rechnungen</div><div class="value orange" id="finOffen">–</div></div>
       </div>
-      <div class="filterbar" style="flex-wrap:wrap;row-gap:8px">
-        <input id="txSearchAusgaben" placeholder="🔍 In Ausgaben suchen…" oninput="renderFinance()">
-        <select id="fltStatus" onchange="renderFinance()">
+      <div class="filterbar" style="flex-wrap:wrap;row-gap:8px;justify-content:center">
+        <input id="txSearchAusgaben" placeholder="🔍 In Ausgaben suchen…" oninput="renderFinance()" style="flex:0 1 220px">
+        <select id="fltStatus" onchange="renderFinance()" style="flex:0 1 180px">
           <option value="">Status: alle</option>
           <option value="bezahlt">✅ Bezahlt</option>
           <option value="offen">Auslage offen</option>
@@ -374,8 +374,8 @@
           <option value="erstattet">Auslage erstattet</option>
           <option value="unbezahlt">Offen / unbezahlt</option>
         </select>
-        <select id="fltVon" onchange="renderFinance()"><option value="">Bezahlt von: alle</option></select>
-        <select id="fltZahlung" onchange="renderFinance()">
+        <select id="fltVon" onchange="renderFinance()" style="flex:0 1 180px"><option value="">Bezahlt von: alle</option></select>
+        <select id="fltZahlung" onchange="renderFinance()" style="flex:0 1 180px">
           <option value="">Zahlungsart: alle</option>
           <option value="bar">Bar</option>
           <option value="karte">Karte</option>
@@ -451,6 +451,22 @@
         <button class="btn ghost" style="flex:none" onclick="resetSponsorFilters()">✕ Filter zurücksetzen</button>
       </div>
       <div class="panel"><div id="sponsorenTable"></div></div>
+    </section>
+
+    <!-- KATEGORIEN -->
+    <section class="view" id="kategorien">
+      <div class="view-head"><h2>Kategorien</h2></div>
+      <div class="note">Vorschlagslisten für das Kategorie-Feld bei Einkauf, Ausgabe und Einnahme – frei einsehbar, hier verwaltbar. Das Kategorie-Feld bleibt weiterhin frei beschreibbar; diese Liste liefert nur die Autovervollständigungs-Vorschläge.</div>
+      <div class="sectionbar" style="margin:0 0 16px">
+        <button class="btn ghost sm" id="katTabEinkauf" onclick="setKatTyp('einkauf')">🛒 Einkauf</button>
+        <button class="btn ghost sm" id="katTabAusgabe" onclick="setKatTyp('ausgabe')">💸 Ausgabe</button>
+        <button class="btn ghost sm" id="katTabEinnahme" onclick="setKatTyp('einnahme')">💰 Einnahme</button>
+      </div>
+      <div class="filterbar">
+        <input id="katNeu" placeholder="Neue Kategorie…" onkeydown="if(event.key==='Enter')addKategorie()">
+        <button class="btn sm" style="flex:none" onclick="addKategorie()">＋ Hinzufügen</button>
+      </div>
+      <div class="panel"><div id="kategorienTable"></div></div>
     </section>
 
     <!-- KALENDER -->
@@ -690,6 +706,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /* ================= Zustand ================= */
 let me = null;
 let members = [], transactions = [], events = [];
+let finanzKategorien = [];
+let katTyp = 'einkauf'; // Kategorien-Verwaltung: aktuell ausgewählter Typ-Tab
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
 let postenHideUnassigned = false;
@@ -854,7 +872,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -878,6 +896,7 @@ async function loadAll(){
     sb.from('essen_restaurant_gerichte').select('*'),
     sb.from('staendchen').select('*').order('name'),
     sb.from('staendchen_spendendosen').select('*').order('created_at',{ascending:false}),
+    sb.from('finanz_kategorien').select('*').order('name'),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -906,6 +925,8 @@ async function loadAll(){
   if(st&&st.error) console.warn('staendchen:',st.error.message);
   staendchenSpendendosen = (sd&&sd.data)||[];
   if(sd&&sd.error) console.warn('staendchen_spendendosen:',sd.error.message);
+  finanzKategorien = (fk&&fk.data)||[];
+  if(fk&&fk.error) console.warn('finanz_kategorien:',fk.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -948,12 +969,12 @@ function show(v){
   // auch dort aktiv markiert, gleiches Prinzip wie bei Sonstiges' Flyout-Unterpunkten.
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',
     b.dataset.view===v || (b.dataset.view==='inventur' && v==='fundsachen')
-    || (b.dataset.view==='einnahmen' && ['einnahmen','ausgaben','beitraege','sponsoren'].includes(v))));
+    || (b.dataset.view==='einnahmen' && ['einnahmen','ausgaben','beitraege','sponsoren','kategorien'].includes(v))));
   try{ localStorage.setItem('kv_activeTab', v); }catch(e){}
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderSonstiges(); renderReport(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderSonstiges(); renderReport(); renderKategorien(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
@@ -1122,6 +1143,34 @@ function setMemBereich(v){
   document.getElementById('memTabMitglieder').classList.toggle('active',v==='mitglieder');
   document.getElementById('memTabHelfer').classList.toggle('active',v==='helfer');
   document.getElementById('memActions').innerHTML = v==='helfer' ? '<button class="btn" onclick="openHelfer()">＋ Kirmeshelfer</button>' : '';
+}
+/* ---- Finanz-Kategorien (Verwaltung der Autovervollständigungs-Vorschläge) ---- */
+const KAT_TYP_LABEL={einkauf:'Einkauf',ausgabe:'Ausgabe',einnahme:'Einnahme'};
+function katList(typ){ return finanzKategorien.filter(k=>k.typ===typ).map(k=>k.name).sort((a,b)=>(a||'').localeCompare(b||'','de')); }
+function setKatTyp(v){ katTyp=v; renderKategorien(); }
+function renderKategorien(){
+  const tabs={einkauf:'katTabEinkauf',ausgabe:'katTabAusgabe',einnahme:'katTabEinnahme'};
+  Object.entries(tabs).forEach(([v,id])=>{ const el=document.getElementById(id); if(el) el.classList.toggle('active',katTyp===v); });
+  const el=document.getElementById('kategorienTable'); if(!el) return;
+  const list=finanzKategorien.filter(k=>k.typ===katTyp).sort((a,b)=>(a.name||'').localeCompare(b.name||'','de'));
+  el.innerHTML=list.length?`<table><tbody>${list.map(k=>`<tr><td>${esc(k.name)}</td><td style="text-align:right"><button class="icon-btn" title="Löschen" onclick="delKategorie('${k.id}')">🗑️</button></td></tr>`).join('')}</tbody></table>`
+    :`<div class="empty">Noch keine eigenen Kategorien für ${KAT_TYP_LABEL[katTyp]}.</div>`;
+}
+async function addKategorie(){
+  const name=val('katNeu'); if(!name) return;
+  if(finanzKategorien.some(k=>k.typ===katTyp&&(k.name||'').toLowerCase()===name.toLowerCase())){ alert('Diese Kategorie gibt es schon.'); return; }
+  const {data,error}=await sb.from('finanz_kategorien').insert({typ:katTyp,name,created_by:me.id}).select().single();
+  if(error){ alert('Fehler: '+error.message); return; }
+  finanzKategorien.push(data);
+  document.getElementById('katNeu').value='';
+  renderKategorien();
+}
+async function delKategorie(id){
+  if(!confirm('Diese Kategorie löschen? Bereits gespeicherte Buchungen mit dieser Kategorie bleiben unverändert.')) return;
+  const {error}=await sb.from('finanz_kategorien').delete().eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  finanzKategorien=finanzKategorien.filter(k=>k.id!==id);
+  renderKategorien();
 }
 function renderHelfer(){
   const el=document.getElementById('helferTable'); if(!el) return;
@@ -1355,14 +1404,14 @@ function renderFinance(){
   const matchFilters=t=>(!fltStatus||auslageStatusKey(t)===fltStatus)&&(!fltVon||payerName(t)===fltVon)&&(!fltZahlung||(t.zahlungsart||'')===fltZahlung);
   const exp=allOut.filter(t=>matchOut(t)&&matchFilters(t));
   document.getElementById('expenseTable').innerHTML=exp.length?`<table>
-    <thead><tr><th>Status</th><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Geschäft</th><th>Kategorie</th><th>Bezahlt von / Wie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
+    <thead><tr><th style="text-align:center">Status</th><th>Datum</th><th style="text-align:center">Art</th><th>Beschreibung</th><th>Geschäft</th><th>Kategorie</th><th style="text-align:center">Bezahlt von / Wie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${exp.map(t=>{const [bez,gesch]=splitBezGeschaeft(t.beschreibung);return `<tr>
-      <td>${auslageStatusPill(t)}</td>
-      <td>${fmtDate(t.datum)}</td><td>${typPill(t)}</td>
+      <td style="text-align:center">${auslageStatusPill(t)}</td>
+      <td>${fmtDate(t.datum)}</td><td style="text-align:center">${typPill(t)}</td>
       <td><b>${esc(bez)}</b>${subLine(t)}${statusLine(t,{hideZahlung:true,hideAuslage:true})}</td>
       <td>${gesch?esc(gesch):'–'}</td>
       <td>${esc(t.kategorie)||'–'}</td>
-      <td>${payerInfo(t)}</td>
+      <td style="text-align:center">${payerInfo(t)}</td>
       <td style="text-align:right">${amount(t)}</td>
       <td><div class="row-actions">
         ${(t.ausgelegt&&erstattetBetrag(t)<(Number(t.betrag)||0)-0.005)?`<button class="icon-btn" title="Auslage komplett als erstattet markieren" onclick="markErstattet('${t.id}')">✅</button>`:''}
@@ -2896,6 +2945,7 @@ const FINANZ_ITEMS = [
   {id:'ausgaben', label:'💸 Ausgaben'},
   {id:'beitraege', label:'🧾 Beiträge'},
   {id:'sponsoren', label:'🤝 Sponsoren'},
+  {id:'kategorien', label:'🏷 Kategorien'},
 ];
 function showFinanzFlyout(btn){
   clearTimeout(flyoutHideTimer);
@@ -4078,7 +4128,7 @@ function openEinnahme(id){
       <label class="field"><span>Datum</span><input type="date" id="i_datum" value="${t.datum||todayISO()}"></label>
     </div>
     <label class="field"><span>Kategorie</span><input id="i_kat" list="inccats" value="${esc(t.kategorie)}">
-      <datalist id="inccats"><option>Mitgliedsbeitrag</option><option>Eintritt</option><option>Getränkeverkauf</option><option>Essensverkauf</option><option>Sponsoring</option><option>Spende</option><option>Standgebühr</option><option>Zuschuss</option><option>Sonstiges</option></datalist></label>
+      <datalist id="inccats">${katList('einnahme').map(c=>`<option>${esc(c)}</option>`).join('')}</datalist></label>
     ${fieldVeranstaltung(t)}
     ${fieldZahlung(t)}
     <label class="field"><span>Eingang</span><select id="i_eingang" onchange="toggleVerrechnung()">
@@ -4148,7 +4198,7 @@ function openEinkauf(id){
     </div>
     <label class="field"><span>Datum</span><input type="date" id="ek_datum" value="${t.datum||todayISO()}"></label>
     <label class="field"><span>Kategorie</span><input id="ek_kat" list="ekcats" value="${esc(t.kategorie)}">
-      <datalist id="ekcats"><option>Getränke</option><option>Essen / Lebensmittel</option><option>Deko</option><option>Material / Werkzeug</option><option>Reinigung</option><option>Sonstiges</option></datalist></label>
+      <datalist id="ekcats">${katList('einkauf').map(c=>`<option>${esc(c)}</option>`).join('')}</datalist></label>
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13.5px"><input type="checkbox" id="ek_kommission" style="width:auto" ${t.kommission?'checked':''} onchange="toggleKommission()"> 🔄 Kommission – nicht Verbrauchtes zurückgebracht (nur Verbrauchtes wird berechnet)</label>
     <div id="posContainer"></div>
     <button class="btn ghost sm" style="margin-top:2px" onclick="addPos()">＋ Position</button>
@@ -4189,7 +4239,7 @@ function openExtern(id){
     <label class="field"><span>Wofür? *</span><input id="ex_desc" value="${esc(t.beschreibung)}" placeholder="z. B. Zeltmiete, Bühne, Leergut-Rückgabe"></label>
     <div class="grid2">
       <label class="field"><span>Kategorie</span><input id="ex_kat" list="excats" value="${esc(t.kategorie)}">
-        <datalist id="excats"><option>Location / Miete</option><option>Geräte / Technik</option><option>Musik / Band</option><option>Versicherung</option><option>Genehmigungen</option><option>Sonstiges</option></datalist></label>
+        <datalist id="excats">${katList('ausgabe').map(c=>`<option>${esc(c)}</option>`).join('')}</datalist></label>
       <label class="field"><span>Kosten (€) *</span><input type="number" step="0.01" min="0" id="ex_betrag" value="${(t.betrag!==''&&t.betrag!=null)?(Number(t.betrag)+Number(t.rabatt||0)):''}"></label>
     </div>
     <label class="field"><span>Rabatt / Pfandabgabe (€) – wird abgezogen</span><input type="number" step="0.01" min="0" id="f_rabatt" value="${t.rabatt||''}"></label>
