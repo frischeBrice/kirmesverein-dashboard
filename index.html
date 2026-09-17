@@ -364,7 +364,24 @@
         <div class="card"><div class="label">Offene Auslagen</div><div class="value orange" id="finAuslagen">–</div></div>
         <div class="card"><div class="label">Offene Rechnungen</div><div class="value orange" id="finOffen">–</div></div>
       </div>
-      <div class="filterbar"><input id="txSearchAusgaben" placeholder="🔍 In Ausgaben suchen…" oninput="renderFinance()"></div>
+      <div class="filterbar" style="flex-wrap:wrap;row-gap:8px">
+        <input id="txSearchAusgaben" placeholder="🔍 In Ausgaben suchen…" oninput="renderFinance()">
+        <select id="fltStatus" onchange="renderFinance()">
+          <option value="">Status: alle</option>
+          <option value="bezahlt">✅ Bezahlt</option>
+          <option value="offen">Auslage offen</option>
+          <option value="teilw">Teilw. erstattet</option>
+          <option value="erstattet">Auslage erstattet</option>
+          <option value="unbezahlt">Offen / unbezahlt</option>
+        </select>
+        <select id="fltVon" onchange="renderFinance()"><option value="">Bezahlt von: alle</option></select>
+        <select id="fltZahlung" onchange="renderFinance()">
+          <option value="">Zahlungsart: alle</option>
+          <option value="bar">Bar</option>
+          <option value="karte">Karte</option>
+          <option value="ueberweisung">Überweisung</option>
+        </select>
+      </div>
 
       <div id="auslagenPanel"></div>
       <div class="panel"><div id="expenseTable"></div></div>
@@ -1147,18 +1164,23 @@ function delHelfer(id){ if(!confirm('Kirmeshelfer wirklich löschen?'))return;
 function zahlPill(z){const m={bar:['Bar','gray'],karte:['Karte','blue'],ueberweisung:['Überweisung','gray']}[z];return m?`<span class="pill ${m[1]} mini">${m[0]}</span>`:'';}
 function payerInfo(t){
   const wie=zahlPill(t.zahlungsart);
-  const wer=t.ausgelegt?`<span class="pill warn mini">${esc(t.ausgelegt_von||'Person')}</span>`
-    :(t.bezahlt===false?`<span class="pill no mini">noch offen</span>`:'Vereinskasse');
+  const n=payerName(t);
+  const wer=t.ausgelegt?`<span class="pill warn mini">${esc(n||'Person')}</span>`:(n||`<span class="pill no mini">noch offen</span>`);
   return `<div>${wer}</div>${wie?`<div style="margin-top:2px">${wie}</div>`:''}`;
 }
-function auslageStatusPill(t){
+function auslageStatusKey(t){
   if(t.ausgelegt){ const e=erstattetBetrag(t), b=Number(t.betrag)||0;
-    if(e>=b-0.005) return '<span class="pill ok mini">✓ erstattet</span>';
-    if(e>0.005) return '<span class="pill warn mini">teilw. erstattet</span>';
-    return '<span class="pill no mini">Auslage offen</span>'; }
-  if(t.bezahlt===false) return '<span class="pill no mini">offen</span>';
-  return '<span class="pill ok mini">bezahlt</span>';
+    if(e>=b-0.005) return 'erstattet';
+    if(e>0.005) return 'teilw';
+    return 'offen'; }
+  if(t.bezahlt===false) return 'unbezahlt';
+  return 'bezahlt';
 }
+function auslageStatusPill(t){
+  const m={erstattet:['✓ erstattet','ok'],teilw:['teilw. erstattet','warn'],offen:['Auslage offen','no'],unbezahlt:['offen','no'],bezahlt:['bezahlt','ok']}[auslageStatusKey(t)];
+  return `<span class="pill ${m[1]} mini">${m[0]}</span>`;
+}
+function payerName(t){ return t.ausgelegt ? (t.ausgelegt_von||'') : (t.bezahlt===false ? '' : 'Vereinskasse'); }
 function statusLine(t,opts){
   opts=opts||{};
   const s=[];
@@ -1324,7 +1346,14 @@ function renderFinance(){
     :'<div class="empty">Noch keine Einnahmen. Lege oben eine an.</div>';
 
   // Ausgaben
-  const exp=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung' && matchOut(t));
+  const allOut=transactions.filter(t=>t.art==='out' && typOf(t)!=='anpassung');
+  const vonSel=document.getElementById('fltVon'); const vonCur=vonSel.value;
+  const vonNamen=[...new Set(allOut.map(payerName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de'));
+  vonSel.innerHTML='<option value="">Bezahlt von: alle</option>'+vonNamen.map(n=>`<option ${n===vonCur?'selected':''}>${esc(n)}</option>`).join('');
+  vonSel.value=vonCur;
+  const fltStatus=val('fltStatus'), fltVon=val('fltVon'), fltZahlung=val('fltZahlung');
+  const matchFilters=t=>(!fltStatus||auslageStatusKey(t)===fltStatus)&&(!fltVon||payerName(t)===fltVon)&&(!fltZahlung||(t.zahlungsart||'')===fltZahlung);
+  const exp=allOut.filter(t=>matchOut(t)&&matchFilters(t));
   document.getElementById('expenseTable').innerHTML=exp.length?`<table>
     <thead><tr><th>Status</th><th>Datum</th><th>Art</th><th>Beschreibung</th><th>Geschäft</th><th>Kategorie</th><th>Bezahlt von / Wie</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
     <tbody>${exp.map(t=>{const [bez,gesch]=splitBezGeschaeft(t.beschreibung);return `<tr>
