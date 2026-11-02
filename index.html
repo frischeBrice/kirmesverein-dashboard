@@ -1176,11 +1176,18 @@ function printBingoCards(){
   const perPage=4;
   const pages=[];
   for(let i=0;i<bingoCards.length;i+=perPage) pages.push(bingoCards.slice(i,i+perPage));
+  // Kein Abstand zwischen den Karten und pro Karte nur die Rand-Linien, die nicht schon von der
+  // Nachbarkarte gezeichnet werden (gemeinsame Schnittkante statt doppelter Linie) – so lässt sich
+  // die ganze Seite mit nur einem waagerechten und einem senkrechten Schnitt in 4 Karten teilen.
+  // Der Seitenrand bleibt über das Padding der Gesamtseite erhalten.
   const html=pages.map((page,pi)=>`
-    <div style="${pi>0?'page-break-before:always;':''}display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:6px 0">
+    <div style="${pi>0?'page-break-before:always;':''}display:grid;grid-template-columns:1fr 1fr;gap:0;padding:16px">
       ${page.map((card,ci)=>{
         const nr=pi*perPage+ci+1;
-        return `<div style="border:1.5px solid #ddb15a;border-radius:8px;padding:10px;break-inside:avoid">
+        const isRight=ci%2===1, isBottom=ci>=2;
+        const cut='1.5px solid #ddb15a';
+        const cardBorder=`border-top:${isBottom?'none':cut};border-left:${isRight?'none':cut};border-right:${cut};border-bottom:${cut}`;
+        return `<div style="${cardBorder};border-radius:0;padding:10px;break-inside:avoid">
           <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:9px">
             ${logo?`<img src="${logo}" style="height:50px;width:auto;flex:none">`:''}
             <div style="text-align:center">
