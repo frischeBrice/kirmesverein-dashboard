@@ -218,6 +218,10 @@
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
+    /* Ohne das hier lassen manche Browser (je nach Druckeinstellung „Hintergrundgrafiken") die
+       farbigen Flächen der Bingo-Buchstaben beim Drucken weg – dann wäre der weiße Buchstabe
+       unsichtbar auf weißem Grund. */
+    #bingoPrintArea, #bingoPrintArea *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
     .view{display:none !important}
     #report.active{display:block !important}
     .only-print.show{display:block !important}
