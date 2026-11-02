@@ -1161,7 +1161,7 @@ function renderBingoCardsPreview(){
         ${card.map((n,i2)=>{
           const drawn=bingoDrawn.has(n);
           const isSchnaps=i2===schnapsIdx;
-          return `<div style="position:relative;border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]};${drawn?'background:var(--accent2);color:#fff;text-decoration:line-through;':''}${isSchnaps?'border:2px solid #e85d9c;':''}" title="${isSchnaps?'🥃 Schnaps-Zahl!':''}">${n}${isSchnaps?'<span style="position:absolute;top:-7px;right:-5px;font-size:12px">🥃</span>':''}</div>`;
+          return `<div style="position:relative;border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]};${drawn?'background:var(--accent2);color:#fff;text-decoration:line-through;':''}${isSchnaps?'border:2px solid var(--red);background:rgba(224,92,92,.2);':''}" title="${isSchnaps?'Schnapszahl!':''}">${n}</div>`;
         }).join('')}
       </div>
     </div>`;
@@ -1252,10 +1252,10 @@ function printBingoCards(){
             ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;padding:4px 0;color:#fff;background:${BINGO_COLORS[c]};border:1px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
             ${card.map((n,i2)=>{
               const isSchnaps=i2===schnapsIdx;
-              return `<div style="position:relative;border:${isSchnaps?'2.5px solid #e85d9c':'1px solid #ccc'};border-top:${isSchnaps?'2.5px solid #e85d9c':`3px solid ${BINGO_COLORS[i2%6]}`};${isSchnaps?'background:rgba(232,93,156,.12);':''}aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}${isSchnaps?'<span style="position:absolute;top:-3px;right:0;font-size:9px">🥃</span>':''}</div>`;
+              return `<div style="border:${isSchnaps?'2.5px solid #d93f3f':'1px solid #ccc'};border-top:${isSchnaps?'2.5px solid #d93f3f':`3px solid ${BINGO_COLORS[i2%6]}`};${isSchnaps?'background:rgba(217,63,63,.15);':''}aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`;
             }).join('')}
           </div>
-          ${schnaps?'<div style="text-align:center;font-size:7.5px;color:#999;margin-top:4px">🥃 = Schnaps-Zahl – wird sie gezogen, laut "Schnaps!" rufen</div>':''}
+          ${schnaps?'<div style="text-align:center;font-size:7.5px;color:#999;margin-top:4px">Rotes Feld = Schnapszahl – wird sie gezogen, laut "Schnaps!" rufen</div>':''}
           <div style="text-align:center;margin-top:5px;padding-top:5px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
             Apfelstädter Jugendkirmesgesellschaft e.V.
           </div>
