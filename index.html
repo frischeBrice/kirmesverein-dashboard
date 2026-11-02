@@ -215,6 +215,8 @@
   .bingo-card-grid div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel);border-radius:3px}
   .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted)}
   .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
+  .bingo-card-mini.bingo-win{border-color:var(--green);box-shadow:0 0 0 2px var(--green)}
+  .bingo-highlight{outline:3px solid var(--accent2);outline-offset:3px;transition:outline-color .3s}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
@@ -676,7 +678,7 @@
         <div class="sectionbar"><h3 style="font-size:15px">🎟 Bingo-Karten</h3>
           <span class="grow"></span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">Veranstaltung
-            <input type="text" id="bingoEventName" value="Seniorenkirmes 2026" style="width:170px;padding:5px 8px">
+            <input type="text" id="bingoEventName" value="Seniorenkirmes 2026" style="width:170px;padding:5px 8px" onchange="saveBingoState();renderBingoCardsPreview()">
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">Anzahl
             <input type="number" id="bingoAnzahl" value="20" min="1" max="200" style="width:70px;padding:5px 8px">
@@ -684,16 +686,28 @@
           <button class="btn ghost sm" onclick="generateBingoCards()">🎲 Karten generieren</button>
           <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
         </div>
-        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50.</div>
+        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten.</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px">🔍 Karte Nr. suchen
+            <input type="number" id="bingoFindNr" min="1" style="width:70px;padding:5px 8px" onkeydown="if(event.key==='Enter')bingoFindCard()">
+          </label>
+          <button class="btn ghost sm" onclick="bingoFindCard()">Zur Karte springen</button>
+        </div>
         <div id="bingoCardsPreview"></div>
       </div>
       <div class="panel">
-        <div class="sectionbar"><h3 style="font-size:15px">🎙 Zahlen ziehen</h3>
+        <div class="sectionbar"><h3 style="font-size:15px">🎙 Zahlen eintragen</h3>
           <span class="grow"></span>
           <button class="btn ghost sm" onclick="bingoResetDraw()">↺ Neu starten</button>
         </div>
+        <div class="submuted" style="margin:-4px 0 12px">Primär: Zahl aus eurer Bingotrommel hier eintragen. Die zufällige Ziehung ist nur ein Notfall-Ersatz, falls die Trommel mal ausfällt.</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <input type="number" id="bingoManualNum" min="1" max="50" placeholder="Zahl 1–50" style="width:120px;padding:8px 10px;font-size:15px" onkeydown="if(event.key==='Enter')bingoManualDraw()">
+          <button class="btn" onclick="bingoManualDraw()">✓ Eintragen</button>
+          <span class="submuted" style="margin-left:18px">Notfall (Trommel defekt):</span>
+          <button class="btn ghost sm" onclick="bingoDrawNumber()">🎱 Zufällig ziehen</button>
+        </div>
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:16px">
-          <button class="btn" style="font-size:16px;padding:12px 22px" onclick="bingoDrawNumber()">🎱 Zahl ziehen</button>
           <div id="bingoCurrentNumber" style="font-size:40px;font-weight:800;min-width:90px;text-align:center">–</div>
           <div class="submuted" id="bingoDrawCount"></div>
         </div>
@@ -1036,31 +1050,79 @@ function clubLogoDataUri(){
 let bingoCards=[];
 let bingoDrawn=new Set();
 let bingoLastDrawn=null;
+// Karten und gezogene Zahlen liegen im echten Spiel auf Papier/in der Trommel – ein Neuladen der
+// Seite darf den Kontrolleur nicht zurück auf Null werfen, deshalb Stand im Browser merken.
+const BINGO_LS_KEY='kv_bingo_state_v1';
+let bingoLoaded=false;
+function saveBingoState(){
+  try{
+    localStorage.setItem(BINGO_LS_KEY, JSON.stringify({
+      eventName: val('bingoEventName')||'',
+      anzahl: val('bingoAnzahl')||'',
+      cards: bingoCards,
+      drawn: Array.from(bingoDrawn),
+      last: bingoLastDrawn
+    }));
+  }catch(e){}
+}
+function loadBingoState(){
+  bingoLoaded=true;
+  try{
+    const raw=localStorage.getItem(BINGO_LS_KEY); if(!raw) return;
+    const st=JSON.parse(raw);
+    if(Array.isArray(st.cards)) bingoCards=st.cards;
+    if(Array.isArray(st.drawn)) bingoDrawn=new Set(st.drawn);
+    if(st.last!=null) bingoLastDrawn=st.last;
+    const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
+    const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
+  }catch(e){}
+}
 function generateBingoCard(){
   const pool=[]; for(let i=BINGO_MIN;i<=BINGO_MAX;i++) pool.push(i);
   for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
   return pool.slice(0,BINGO_SIZE);
 }
 function generateBingoCards(){
+  if(bingoCards.length && !confirm('Die bereits vorhandenen Karten werden durch neue ersetzt (gezogene Zahlen bleiben erhalten). Fortfahren?')) return;
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
+  saveBingoState();
   renderBingo();
 }
+// Eine Reihe (6 Zahlen) gilt als Gewinn, sobald alle 6 Zahlen gezogen wurden – damit der
+// Kontrolleur sofort sieht, ob z. B. "Karte 56" wirklich Bingo hat.
+function bingoCardRows(card){ const rows=[]; for(let r=0;r<6;r++) rows.push(card.slice(r*6,r*6+6)); return rows; }
+function bingoCardHasWin(card){ return bingoCardRows(card).some(row=>row.every(n=>bingoDrawn.has(n))); }
 function renderBingoCardsPreview(){
   const el=document.getElementById('bingoCardsPreview'); if(!el) return;
   const btn=document.getElementById('bingoPrintBtn');
   if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
   if(btn) btn.style.display='inline-block';
   const eventName=val('bingoEventName')||'';
-  el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>`
-    <div class="bingo-card-mini">
+  el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>{
+    const win=bingoCardHasWin(card);
+    return `
+    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${i+1}">
       ${eventName?`<div style="text-align:center;font-weight:800;font-size:11px;letter-spacing:.3px;margin-bottom:3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
-      <div class="bc-title">Karte ${i+1}</div>
+      <div class="bc-title">Karte ${i+1}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}</div>
       <div class="bingo-card-grid">
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
-        ${card.map((n,i2)=>`<div style="border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]}">${n}</div>`).join('')}
+        ${card.map((n,i2)=>{
+          const drawn=bingoDrawn.has(n);
+          return `<div style="border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]};${drawn?'background:var(--accent2);color:#fff;text-decoration:line-through':''}">${n}</div>`;
+        }).join('')}
       </div>
-    </div>`).join('')}</div>`;
+    </div>`;
+  }).join('')}</div>`;
+}
+function bingoFindCard(){
+  const n=parseInt(val('bingoFindNr'),10);
+  if(!n){ return; }
+  const el=document.getElementById('bingo-card-'+n);
+  if(!el){ alert(`Karte ${n} gibt es nicht (aktuell ${bingoCards.length} Karten generiert).`); return; }
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.classList.add('bingo-highlight');
+  setTimeout(()=>el.classList.remove('bingo-highlight'), 2500);
 }
 // Mehrere Karten pro Druckseite (2 Spalten), damit nicht jede Karte ein eigenes Blatt braucht.
 // K-I-R-M-E-S über den Spalten statt der klassischen B-I-N-G-O-Buchstaben, je Spalte eine eigene
@@ -1105,19 +1167,37 @@ function renderBingoDraw(){
   const cnt=document.getElementById('bingoDrawCount');
   if(cnt) cnt.textContent=bingoDrawn.size?`${bingoDrawn.size} von ${BINGO_MAX-BINGO_MIN+1} Zahlen gezogen`:'Noch keine Zahl gezogen';
 }
+// Primärer Weg: die Zahl, die live aus der echten Bingotrommel gezogen wurde, hier eintragen.
+function bingoManualDraw(){
+  const inp=document.getElementById('bingoManualNum');
+  const n=parseInt(inp.value,10);
+  if(!n || n<BINGO_MIN || n>BINGO_MAX){ alert(`Bitte eine Zahl zwischen ${BINGO_MIN} und ${BINGO_MAX} eingeben.`); return; }
+  if(bingoDrawn.has(n)){ alert(`Zahl ${n} wurde bereits eingetragen.`); inp.value=''; return; }
+  bingoDrawn.add(n); bingoLastDrawn=n;
+  inp.value='';
+  saveBingoState();
+  renderBingo();
+}
+// Nur als Notfall-Ersatz, falls die echte Trommel mal ausfällt.
 function bingoDrawNumber(){
   const remaining=[]; for(let i=BINGO_MIN;i<=BINGO_MAX;i++) if(!bingoDrawn.has(i)) remaining.push(i);
   if(!remaining.length){ alert('Alle Zahlen wurden bereits gezogen.'); return; }
   const n=remaining[Math.floor(Math.random()*remaining.length)];
   bingoDrawn.add(n); bingoLastDrawn=n;
-  renderBingoDraw();
+  saveBingoState();
+  renderBingo();
 }
 function bingoResetDraw(){
   if(bingoDrawn.size && !confirm('Wirklich alle gezogenen Zahlen zurücksetzen?')) return;
   bingoDrawn.clear(); bingoLastDrawn=null;
+  saveBingoState();
+  renderBingo();
+}
+function renderBingo(){
+  if(!bingoLoaded) loadBingoState();
+  renderBingoCardsPreview();
   renderBingoDraw();
 }
-function renderBingo(){ renderBingoCardsPreview(); renderBingoDraw(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
