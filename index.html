@@ -1064,16 +1064,17 @@ function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); render
 /* ---- Rentnerkirmes: Bingo ---- */
 const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
 const BINGO_LETTERS=['K','I','R','M','E','S'];
-// Neues Farbschema statt Grün/Rot vom letzten Jahr – je KIRMES-Spalte eine eigene Akzentfarbe.
-const BINGO_COLORS=['#e9a23b','#3b6fa0','#8a4fae','#c94f91','#2f9bb0','#d97a3d'];
+// Farbschema je KIRMES-Spalte – K/R/M/S sind bewusst die vier Teamfarben (Rot/Blau/Grün/Gelb) fürs
+// interne Team-Duell, I/E bleiben zwei weitere, aber "neutrale" Farben (zählen für kein Team).
+const BINGO_COLORS=['#e05c5c','#8a4fae','#3a86e8','#3fb27f','#c94f91','#e8a13a'];
 // Internes Team-Duell: auf JEDER Bingokarte stehen die 36 Zahlen zufällig verteilt unter K-I-R-M-E-S
 // (jede Karte anders – dieselbe Zahl kann auf Karte 1 in der K-Spalte stehen und auf Karte 2 in der
-// S-Spalte). Vier der sechs Spalten gehören einem Team (K=Rot, R=Blau, M=Grün, S=Gelb; I/E zählen
-// für kein Team). Wird eine Zahl gezogen, bekommt ein Team für JEDE Karte einen Punkt, auf der diese
-// Zahl gerade in dessen Spalte steht – eine Zahl kann also mehrfach gleichzeitig punkten.
+// S-Spalte). Wird eine Zahl gezogen, bekommt ein Team für JEDE Karte einen Punkt, auf der diese Zahl
+// gerade in dessen Spalte steht – eine Zahl kann also mehrfach gleichzeitig punkten. Die Teamfarben
+// sind exakt dieselben wie die K/R/M/S-Kartenfarben (BINGO_COLORS), eine einzige Quelle für beides.
 const BINGO_TEAM_LETTERS=['K','R','M','S'];
 const BINGO_TEAM_NAMES=['Rot','Blau','Grün','Gelb'];
-const BINGO_TEAM_COLORS=['var(--red)','var(--accent2)','var(--green)','var(--accent)'];
+const BINGO_TEAM_COLORS=BINGO_TEAM_LETTERS.map(l=>BINGO_COLORS[BINGO_LETTERS.indexOf(l)]);
 // Spalte (0-5 = K,I,R,M,E,S), in der die Zahl n auf dieser konkreten Karte steht; -1 falls die Karte
 // die Zahl gar nicht enthält.
 function bingoCardColumnOf(card,n){ const idx=card.indexOf(n); return idx===-1?-1:idx%6; }
