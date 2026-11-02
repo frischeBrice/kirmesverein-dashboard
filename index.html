@@ -1047,8 +1047,10 @@ function renderBingoCardsPreview(){
   const btn=document.getElementById('bingoPrintBtn');
   if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
   if(btn) btn.style.display='inline-block';
+  const eventName=val('bingoEventName')||'';
   el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>`
     <div class="bingo-card-mini">
+      ${eventName?`<div style="text-align:center;font-weight:800;font-size:11px;letter-spacing:.3px;margin-bottom:3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
       <div class="bc-title">Karte ${i+1}</div>
       <div class="bingo-card-grid">
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
@@ -1072,6 +1074,7 @@ function printBingoCards(){
       ${page.map((card,ci)=>{
         const nr=pi*perPage+ci+1;
         return `<div style="border:1.5px solid #ddb15a;border-radius:8px;padding:10px;break-inside:avoid">
+          ${eventName?`<div style="text-align:center;font-weight:800;font-size:15px;letter-spacing:.3px;margin-bottom:6px;text-transform:uppercase">${eventName}</div>`:''}
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
             ${logo?`<img src="${logo}" style="height:34px;width:auto">`:''}
             <b style="font-size:13px">Bingo – Karte ${nr}</b>
@@ -1080,9 +1083,8 @@ function printBingoCards(){
             ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;padding:4px 0;color:#fff;background:${BINGO_COLORS[c]};border:1px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
             ${card.map((n,i2)=>`<div style="border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[i2%6]};aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:9px;padding-top:6px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
-            <span>${eventName}</span>
-            <span>Apfelstädter Jugendkirmesgesellschaft e.V.</span>
+          <div style="text-align:center;margin-top:9px;padding-top:6px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
+            Apfelstädter Jugendkirmesgesellschaft e.V.
           </div>
         </div>`;
       }).join('')}
