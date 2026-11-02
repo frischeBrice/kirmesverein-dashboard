@@ -1069,10 +1069,11 @@ const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
 const BINGO_LETTERS=['K','I','R','M','E','S'];
 // Neues Farbschema statt Grün/Rot vom letzten Jahr – je KIRMES-Spalte eine eigene Akzentfarbe.
 const BINGO_COLORS=['#e9a23b','#3b6fa0','#8a4fae','#c94f91','#2f9bb0','#d97a3d'];
-// Internes Team-Duell (hat nichts mit den gedruckten Karten/KIRMES-Farben zu tun): jede Zahl 1–50
-// gehört zufällig einem von 4 Teams, erkennbar am farbigen Rand im Zahlenraster.
-const BINGO_TEAM_NAMES=['Rot','Blau','Grün','Gelb'];
-const BINGO_TEAM_COLORS=['var(--red)','var(--accent2)','var(--green)','var(--accent)'];
+// Internes Team-Duell: jede Zahl 1–50 gehört zufällig einem von 4 Teams. Nutzt bewusst dieselben
+// Buchstaben/Farben wie die KIRMES-Spalten auf den Karten (K/I/R/M) – wer die Kartenfarben kennt,
+// erkennt sofort "K ist orange, also sammelt Team K hier Punkte".
+const BINGO_TEAM_NAMES=BINGO_LETTERS.slice(0,4);
+const BINGO_TEAM_COLORS=BINGO_COLORS.slice(0,4);
 let bingoTeamAssignment={};
 function clubLogoDataUri(){
   const cs=getComputedStyle(document.documentElement).getPropertyValue('--club-logo').trim();
@@ -1288,7 +1289,8 @@ function renderBingoDraw(){
       const team=bingoTeamAssignment[n];
       const teamBorder=team!=null?`border-left:4px solid ${BINGO_TEAM_COLORS[team]};`:'';
       const teamHint=team!=null?`Team ${BINGO_TEAM_NAMES[team]} – `:'';
-      return `<div class="bn${bingoDrawn.has(n)?' drawn':''}" style="${teamBorder}" onclick="bingoToggleNumber(${n})" title="${teamHint}${bingoDrawn.has(n)?'Klicken, um diese Zahl wieder zu entfernen':'Klicken, um diese Zahl als gezogen einzutragen'}">${n}</div>`;
+      const teamBadge=team!=null?`<span style="position:absolute;top:-6px;right:-5px;width:14px;height:14px;border-radius:50%;background:${BINGO_TEAM_COLORS[team]};color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">${BINGO_TEAM_NAMES[team]}</span>`:'';
+      return `<div class="bn${bingoDrawn.has(n)?' drawn':''}" style="position:relative;${teamBorder}" onclick="bingoToggleNumber(${n})" title="${teamHint}${bingoDrawn.has(n)?'Klicken, um diese Zahl wieder zu entfernen':'Klicken, um diese Zahl als gezogen einzutragen'}">${n}${teamBadge}</div>`;
     }).join('');
   const cur=document.getElementById('bingoCurrentNumber'); if(cur) cur.textContent=bingoLastDrawn!=null?bingoLastDrawn:'–';
   const cnt=document.getElementById('bingoDrawCount');
