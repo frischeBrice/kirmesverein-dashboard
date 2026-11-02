@@ -213,7 +213,6 @@
   .bingo-card-mini .bc-title{font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;font-weight:700}
   .bingo-card-grid{display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(7,26px);gap:2px}
   .bingo-card-grid div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel);border-radius:3px}
-  .bingo-card-grid .bl{background:transparent;color:var(--accent);font-size:13px;font-weight:800}
   .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted)}
   .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
   @media print{
@@ -1023,6 +1022,13 @@ function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); render
 /* ---- Rentnerkirmes: Bingo ---- */
 const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
 const BINGO_LETTERS=['K','I','R','M','E','S'];
+// Neues Farbschema statt Grün/Rot vom letzten Jahr – je KIRMES-Spalte eine eigene Akzentfarbe.
+const BINGO_COLORS=['#e9a23b','#3b6fa0','#8a4fae','#c94f91','#2f9bb0','#d97a3d'];
+function clubLogoDataUri(){
+  const cs=getComputedStyle(document.documentElement).getPropertyValue('--club-logo').trim();
+  const m=cs.match(/url\((?:"|')?(.*?)(?:"|')?\)/);
+  return m?m[1]:'';
+}
 let bingoCards=[];
 let bingoDrawn=new Set();
 let bingoLastDrawn=null;
@@ -1045,17 +1051,19 @@ function renderBingoCardsPreview(){
     <div class="bingo-card-mini">
       <div class="bc-title">Karte ${i+1}</div>
       <div class="bingo-card-grid">
-        ${BINGO_LETTERS.map(l=>`<div class="bl">${l}</div>`).join('')}
-        ${card.map(n=>`<div>${n}</div>`).join('')}
+        ${BINGO_LETTERS.map((l,c)=>`<div style="color:${BINGO_COLORS[c]};background:transparent;border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[c]}">${l}</div>`).join('')}
+        ${card.map((n,i2)=>`<div style="border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]}">${n}</div>`).join('')}
       </div>
     </div>`).join('')}</div>`;
 }
 // Mehrere Karten pro Druckseite (2 Spalten), damit nicht jede Karte ein eigenes Blatt braucht.
-// K-I-R-M-E-S über den Spalten statt der klassischen B-I-N-G-O-Buchstaben; Fußzeile mit
+// K-I-R-M-E-S über den Spalten statt der klassischen B-I-N-G-O-Buchstaben, je Spalte eine eigene
+// Akzentfarbe (statt Grün/Rot vom letzten Jahr) + Vereinslogo im Kartenkopf; Fußzeile mit
 // Veranstaltung (links) und Vereinsname (rechts).
 function printBingoCards(){
   if(!bingoCards.length) return;
   const eventName=esc(val('bingoEventName')||'');
+  const logo=clubLogoDataUri();
   const perPage=4;
   const pages=[];
   for(let i=0;i<bingoCards.length;i+=perPage) pages.push(bingoCards.slice(i,i+perPage));
@@ -1063,11 +1071,14 @@ function printBingoCards(){
     <div style="${pi>0?'page-break-before:always;':''}display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:6px 0">
       ${page.map((card,ci)=>{
         const nr=pi*perPage+ci+1;
-        return `<div style="border:1px solid #000;border-radius:6px;padding:10px;break-inside:avoid">
-          <div style="text-align:center;font-size:12px;margin-bottom:8px"><b>Bingo – Karte ${nr}</b></div>
+        return `<div style="border:1.5px solid #ddb15a;border-radius:8px;padding:10px;break-inside:avoid">
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
+            ${logo?`<img src="${logo}" style="height:34px;width:auto">`:''}
+            <b style="font-size:13px">Bingo – Karte ${nr}</b>
+          </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
-            ${BINGO_LETTERS.map(l=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;padding:2px 0">${l}</div>`).join('')}
-            ${card.map(n=>`<div style="border:1px solid #000;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
+            ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;padding:2px 0;color:${BINGO_COLORS[c]};border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
+            ${card.map((n,i2)=>`<div style="border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[i2%6]};aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
           </div>
           <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;font-size:10px">
             <span style="font-weight:700">${eventName}</span>
