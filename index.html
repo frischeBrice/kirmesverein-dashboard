@@ -720,6 +720,10 @@
           <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
         </div>
         <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten.</div>
+        <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:12px">
+          <input type="checkbox" id="bingoSchnapsEnabled" style="width:auto" onchange="saveBingoState();renderBingoCardsPreview()">
+          🥃 Schnaps-Zahl aktivieren (je Karte eine zufällige Zahl hervorgehoben – wird sie gezogen, "Schnaps!" rufen)
+        </label>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">🔍 Karte Nr. suchen
             <input type="number" id="bingoFindNr" min="1" style="width:70px;padding:5px 8px" onkeydown="if(event.key==='Enter')bingoFindCard()">
@@ -1091,7 +1095,8 @@ function saveBingoState(){
       last: bingoLastDrawn,
       winLog: bingoWinLog,
       prizeCount: val('bingoPrizeCount')||'',
-      generation: bingoGeneration
+      generation: bingoGeneration,
+      schnaps: bingoSchnapsEnabled()
     }));
   }catch(e){}
 }
@@ -1108,6 +1113,7 @@ function loadBingoState(){
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
+    const schEl=document.getElementById('bingoSchnapsEnabled'); if(schEl) schEl.checked=!!st.schnaps;
   }catch(e){}
 }
 function generateBingoCard(){
@@ -1127,6 +1133,10 @@ function generateBingoCards(){
 // Eine Reihe (6 Zahlen) gilt als Gewinn, sobald alle 6 Zahlen gezogen wurden – damit der
 // Kontrolleur sofort sieht, ob z. B. "Karte 56" wirklich Bingo hat.
 function bingoCardRows(card){ const rows=[]; for(let r=0;r<6;r++) rows.push(card.slice(r*6,r*6+6)); return rows; }
+// Deterministisch aus den Kartenzahlen selbst abgeleitet (kein Zusatz-Datenfeld nötig, funktioniert
+// auch für bereits gespeicherte Karten): jede Karte bekommt so immer dieselbe "Schnaps-Zahl".
+function bingoSchnapsIndex(card){ return card.reduce((a,b)=>a+b,0)%card.length; }
+function bingoSchnapsEnabled(){ const el=document.getElementById('bingoSchnapsEnabled'); return !!(el&&el.checked); }
 function bingoCardHasWin(card){ return bingoCardRows(card).some(row=>row.every(n=>bingoDrawn.has(n))); }
 function renderBingoCardsPreview(){
   const el=document.getElementById('bingoCardsPreview'); if(!el) return;
@@ -1136,8 +1146,10 @@ function renderBingoCardsPreview(){
   if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
   if(btn) btn.style.display='inline-block';
   const eventName=val('bingoEventName')||'';
+  const schnaps=bingoSchnapsEnabled();
   el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>{
     const win=bingoCardHasWin(card);
+    const schnapsIdx=schnaps?bingoSchnapsIndex(card):-1;
     return `
     <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${i+1}">
       <div style="text-align:center;font-family:'Fredoka',sans-serif">
@@ -1148,7 +1160,8 @@ function renderBingoCardsPreview(){
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
         ${card.map((n,i2)=>{
           const drawn=bingoDrawn.has(n);
-          return `<div style="border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]};${drawn?'background:var(--accent2);color:#fff;text-decoration:line-through':''}">${n}</div>`;
+          const isSchnaps=i2===schnapsIdx;
+          return `<div style="position:relative;border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]};${drawn?'background:var(--accent2);color:#fff;text-decoration:line-through;':''}${isSchnaps?'border:2px solid #e85d9c;':''}" title="${isSchnaps?'🥃 Schnaps-Zahl!':''}">${n}${isSchnaps?'<span style="position:absolute;top:-7px;right:-5px;font-size:12px">🥃</span>':''}</div>`;
         }).join('')}
       </div>
     </div>`;
@@ -1210,6 +1223,7 @@ function printBingoCards(){
   if(!bingoCards.length) return;
   const eventName=esc(val('bingoEventName')||'');
   const logo=clubLogoDataUri();
+  const schnaps=bingoSchnapsEnabled();
   const perPage=4;
   const pages=[];
   for(let i=0;i<bingoCards.length;i+=perPage) pages.push(bingoCards.slice(i,i+perPage));
@@ -1224,6 +1238,7 @@ function printBingoCards(){
         const isRight=ci%2===1, isBottom=ci>=2;
         const cut='3px solid #ddb15a';
         const cardBorder=`border-top:${isBottom?'none':cut};border-left:${isRight?'none':cut};border-right:${cut};border-bottom:${cut}`;
+        const schnapsIdx=schnaps?bingoSchnapsIndex(card):-1;
         return `<div style="${cardBorder};border-radius:0;padding:10px;break-inside:avoid;position:relative">
           <span style="position:absolute;left:3px;bottom:1px;font-size:6px;color:#bbb;line-height:1">Gen. ${bingoGeneration}</span>
           <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:9px">
@@ -1235,9 +1250,13 @@ function printBingoCards(){
           </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
             ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;padding:4px 0;color:#fff;background:${BINGO_COLORS[c]};border:1px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
-            ${card.map((n,i2)=>`<div style="border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[i2%6]};aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
+            ${card.map((n,i2)=>{
+              const isSchnaps=i2===schnapsIdx;
+              return `<div style="position:relative;border:${isSchnaps?'2.5px solid #e85d9c':'1px solid #ccc'};border-top:${isSchnaps?'2.5px solid #e85d9c':`3px solid ${BINGO_COLORS[i2%6]}`};${isSchnaps?'background:rgba(232,93,156,.12);':''}aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}${isSchnaps?'<span style="position:absolute;top:-3px;right:0;font-size:9px">🥃</span>':''}</div>`;
+            }).join('')}
           </div>
-          <div style="text-align:center;margin-top:9px;padding-top:6px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
+          ${schnaps?'<div style="text-align:center;font-size:7.5px;color:#999;margin-top:4px">🥃 = Schnaps-Zahl – wird sie gezogen, laut "Schnaps!" rufen</div>':''}
+          <div style="text-align:center;margin-top:5px;padding-top:5px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
             Apfelstädter Jugendkirmesgesellschaft e.V.
           </div>
         </div>`;
