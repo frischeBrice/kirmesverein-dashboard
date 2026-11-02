@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apfelstädter Jugendkirmesgesellschaft e.V. – Dashboard</title>
 <link rel="icon" type="image/png" id="faviconLink">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0f1216; --panel:#171c22; --panel2:#1e252d; --line:#2a333d;
@@ -705,6 +708,7 @@
       </div>
       <div class="panel">
         <div class="sectionbar"><h3 style="font-size:15px">🎟 Bingo-Karten</h3>
+          <span id="bingoGenBadge" class="pill gray mini" title="Wird bei jedem 'Karten generieren' hochgezählt – damit du eine gedruckte Karte mit dem aktuellen digitalen Stand abgleichen kannst"></span>
           <span class="grow"></span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">Veranstaltung
             <input type="text" id="bingoEventName" value="Seniorenkirmes 2026" style="width:170px;padding:5px 8px" onchange="saveBingoState();renderBingoCardsPreview()">
@@ -1069,6 +1073,10 @@ let bingoJustWon=[];
 // Verhindert, dass die "Spiel vorbei"-Meldung bei jedem weiteren Zug erneut aufploppt, solange die
 // Preisanzahl erreicht bleibt; wird zurückgesetzt, falls per Entfernen wieder unter die Schwelle fällt.
 let bingoGameOverNotified=false;
+// Wird bei jedem "Karten generieren" hochgezählt und klein auf jede gedruckte Karte sowie als Badge
+// im digitalen Tab gedruckt – damit sich eine bereits ausgedruckte Karte mit dem aktuellen digitalen
+// Stand abgleichen lässt, falls aus Versehen nochmal neu generiert wurde.
+let bingoGeneration=0;
 // Karten und gezogene Zahlen liegen im echten Spiel auf Papier/in der Trommel – ein Neuladen der
 // Seite darf den Kontrolleur nicht zurück auf Null werfen, deshalb Stand im Browser merken.
 const BINGO_LS_KEY='kv_bingo_state_v1';
@@ -1082,7 +1090,8 @@ function saveBingoState(){
       drawn: Array.from(bingoDrawn),
       last: bingoLastDrawn,
       winLog: bingoWinLog,
-      prizeCount: val('bingoPrizeCount')||''
+      prizeCount: val('bingoPrizeCount')||'',
+      generation: bingoGeneration
     }));
   }catch(e){}
 }
@@ -1095,6 +1104,7 @@ function loadBingoState(){
     if(Array.isArray(st.drawn)) bingoDrawn=new Set(st.drawn);
     if(st.last!=null) bingoLastDrawn=st.last;
     if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
+    if(st.generation!=null) bingoGeneration=st.generation;
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
@@ -1110,6 +1120,7 @@ function generateBingoCards(){
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
   bingoWinLog=[]; bingoJustWon=[];
+  bingoGeneration++;
   saveBingoState();
   renderBingo();
 }
@@ -1120,6 +1131,8 @@ function bingoCardHasWin(card){ return bingoCardRows(card).some(row=>row.every(n
 function renderBingoCardsPreview(){
   const el=document.getElementById('bingoCardsPreview'); if(!el) return;
   const btn=document.getElementById('bingoPrintBtn');
+  const genBadge=document.getElementById('bingoGenBadge');
+  if(genBadge) genBadge.textContent=bingoGeneration?`Gen. ${bingoGeneration}`:'';
   if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
   if(btn) btn.style.display='inline-block';
   const eventName=val('bingoEventName')||'';
@@ -1127,8 +1140,10 @@ function renderBingoCardsPreview(){
     const win=bingoCardHasWin(card);
     return `
     <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${i+1}">
-      ${eventName?`<div style="text-align:center;font-weight:800;font-size:11px;letter-spacing:.3px;margin-bottom:3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
-      <div class="bc-title">Karte ${i+1}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}</div>
+      <div style="text-align:center;font-family:'Fredoka',sans-serif">
+        ${eventName?`<div style="font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
+        <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${i+1}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}</div>
+      </div>
       <div class="bingo-card-grid">
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
         ${card.map((n,i2)=>{
@@ -1209,12 +1224,13 @@ function printBingoCards(){
         const isRight=ci%2===1, isBottom=ci>=2;
         const cut='3px solid #ddb15a';
         const cardBorder=`border-top:${isBottom?'none':cut};border-left:${isRight?'none':cut};border-right:${cut};border-bottom:${cut}`;
-        return `<div style="${cardBorder};border-radius:0;padding:10px;break-inside:avoid">
+        return `<div style="${cardBorder};border-radius:0;padding:10px;break-inside:avoid;position:relative">
+          <span style="position:absolute;left:3px;bottom:1px;font-size:6px;color:#bbb;line-height:1">Gen. ${bingoGeneration}</span>
           <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:9px">
             ${logo?`<img src="${logo}" style="height:50px;width:auto;flex:none">`:''}
-            <div style="text-align:center">
-              ${eventName?`<div style="font-weight:800;font-size:15px;letter-spacing:.3px;text-transform:uppercase">${eventName}</div>`:''}
-              <div style="font-size:13px;font-weight:700">Bingo – Karte ${nr}</div>
+            <div style="text-align:center;font-family:'Fredoka',sans-serif">
+              ${eventName?`<div style="font-weight:700;font-size:17px;letter-spacing:.3px;text-transform:uppercase">${eventName}</div>`:''}
+              <div style="font-size:14px;font-weight:600">Bingo – Karte ${nr}</div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
