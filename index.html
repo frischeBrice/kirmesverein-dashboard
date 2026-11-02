@@ -1066,26 +1066,17 @@ const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
 const BINGO_LETTERS=['K','I','R','M','E','S'];
 // Neues Farbschema statt Grün/Rot vom letzten Jahr – je KIRMES-Spalte eine eigene Akzentfarbe.
 const BINGO_COLORS=['#e9a23b','#3b6fa0','#8a4fae','#c94f91','#2f9bb0','#d97a3d'];
-// Internes Team-Duell: die Zahlen 1–50 werden – wie die KIRMES-Spalten auf den Karten – in 6
-// gleich große Blöcke in der Reihenfolge K-I-R-M-E-S eingeteilt (feste Bereiche, kein Zufall).
-// Vier der sechs Buchstaben sind einem Team zugeordnet (K=Rot, R=Blau, M=Grün, S=Gelb); I und E
-// zählen für kein Team. Wird eine Zahl aus so einem Bereich gezogen, bekommt das Team den Punkt.
+// Internes Team-Duell: auf JEDER Bingokarte stehen die 36 Zahlen zufällig verteilt unter K-I-R-M-E-S
+// (jede Karte anders – dieselbe Zahl kann auf Karte 1 in der K-Spalte stehen und auf Karte 2 in der
+// S-Spalte). Vier der sechs Spalten gehören einem Team (K=Rot, R=Blau, M=Grün, S=Gelb; I/E zählen
+// für kein Team). Wird eine Zahl gezogen, bekommt ein Team für JEDE Karte einen Punkt, auf der diese
+// Zahl gerade in dessen Spalte steht – eine Zahl kann also mehrfach gleichzeitig punkten.
 const BINGO_TEAM_LETTERS=['K','R','M','S'];
 const BINGO_TEAM_NAMES=['Rot','Blau','Grün','Gelb'];
 const BINGO_TEAM_COLORS=['var(--red)','var(--accent2)','var(--green)','var(--accent)'];
-function bingoLetterRanges(){
-  const n=BINGO_LETTERS.length, total=BINGO_MAX-BINGO_MIN+1;
-  const base=Math.floor(total/n), extra=total%n;
-  const ranges=[]; let start=BINGO_MIN;
-  for(let i=0;i<n;i++){ const size=base+(i<extra?1:0); ranges.push([start,start+size-1]); start+=size; }
-  return ranges;
-}
-function bingoNumberLetter(n){
-  const ranges=bingoLetterRanges();
-  for(let i=0;i<ranges.length;i++){ if(n>=ranges[i][0]&&n<=ranges[i][1]) return BINGO_LETTERS[i]; }
-  return null;
-}
-function bingoNumberTeamIndex(n){ return BINGO_TEAM_LETTERS.indexOf(bingoNumberLetter(n)); }
+// Spalte (0-5 = K,I,R,M,E,S), in der die Zahl n auf dieser konkreten Karte steht; -1 falls die Karte
+// die Zahl gar nicht enthält.
+function bingoCardColumnOf(card,n){ const idx=card.indexOf(n); return idx===-1?-1:idx%6; }
 function clubLogoDataUri(){
   const cs=getComputedStyle(document.documentElement).getPropertyValue('--club-logo').trim();
   const m=cs.match(/url\((?:"|')?(.*?)(?:"|')?\)/);
@@ -1294,35 +1285,36 @@ function printBingoCards(){
 function renderBingoDraw(){
   const grid=document.getElementById('bingoNumberGrid'); if(!grid) return;
   grid.innerHTML=Array.from({length:BINGO_MAX-BINGO_MIN+1},(_,i)=>BINGO_MIN+i)
-    .map(n=>{
-      const letter=bingoNumberLetter(n);
-      const team=bingoNumberTeamIndex(n);
-      const teamBorder=team>=0?`border-left:4px solid ${BINGO_TEAM_COLORS[team]};`:'';
-      const teamHint=team>=0?`${letter} = Team ${BINGO_TEAM_NAMES[team]} – `:'';
-      const teamBadge=team>=0?`<span style="position:absolute;top:-6px;right:-5px;width:14px;height:14px;border-radius:50%;background:${BINGO_TEAM_COLORS[team]};color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">${letter}</span>`:'';
-      return `<div class="bn${bingoDrawn.has(n)?' drawn':''}" style="position:relative;${teamBorder}" onclick="bingoToggleNumber(${n})" title="${teamHint}${bingoDrawn.has(n)?'Klicken, um diese Zahl wieder zu entfernen':'Klicken, um diese Zahl als gezogen einzutragen'}">${n}${teamBadge}</div>`;
-    }).join('');
+    .map(n=>`<div class="bn${bingoDrawn.has(n)?' drawn':''}" onclick="bingoToggleNumber(${n})" title="${bingoDrawn.has(n)?'Klicken, um diese Zahl wieder zu entfernen':'Klicken, um diese Zahl als gezogen einzutragen'}">${n}</div>`).join('');
   const cur=document.getElementById('bingoCurrentNumber'); if(cur) cur.textContent=bingoLastDrawn!=null?bingoLastDrawn:'–';
   const cnt=document.getElementById('bingoDrawCount');
   if(cnt) cnt.textContent=bingoDrawn.size?`${bingoDrawn.size} von ${BINGO_MAX-BINGO_MIN+1} Zahlen gezogen`:'Noch keine Zahl gezogen';
 }
-// Punktestand ist rein abgeleitet (aus den festen Zahlenbereichen + gezogenen Zahlen) – korrigiert
-// sich also automatisch, falls eine Zahl nachträglich entfernt/eingetragen wird.
+// Punktestand ist rein abgeleitet (aus den tatsächlichen Karten + gezogenen Zahlen) – korrigiert
+// sich automatisch, falls eine Zahl nachträglich entfernt/eingetragen wird oder Karten neu generiert
+// werden. Jede gezogene Zahl kann auf mehreren Karten gleichzeitig in einer Team-Spalte stehen und
+// zählt dann auch mehrfach.
 function bingoTeamScores(){
   const scores=[0,0,0,0];
-  bingoDrawn.forEach(n=>{ const t=bingoNumberTeamIndex(n); if(t>=0) scores[t]++; });
+  bingoDrawn.forEach(n=>{
+    bingoCards.forEach(card=>{
+      const col=bingoCardColumnOf(card,n); if(col===-1) return;
+      const t=BINGO_TEAM_LETTERS.indexOf(BINGO_LETTERS[col]);
+      if(t>=0) scores[t]++;
+    });
+  });
   return scores;
 }
 function renderBingoTeamScores(){
   const legendEl=document.getElementById('bingoTeamLegend');
   if(legendEl){
-    const ranges=bingoLetterRanges();
-    legendEl.textContent='Nur fürs Team sichtbar, hat nichts mit den gedruckten Karten zu tun: '
-      +BINGO_LETTERS.map((l,i)=>{ const t=BINGO_TEAM_LETTERS.indexOf(l); const r=ranges[i];
-        return `${l} (${r[0]}–${r[1]})${t>=0?' = Team '+BINGO_TEAM_NAMES[t]:' = neutral'}`; }).join(', ')
-      +'. Wird eine Zahl aus einem Team-Bereich gezogen, bekommt es einen Punkt.';
+    legendEl.textContent='Nur fürs Team sichtbar, hat nichts mit den Spielregeln für die Seniorenkirmes-Gäste zu tun: '
+      +BINGO_LETTERS.map(l=>{ const t=BINGO_TEAM_LETTERS.indexOf(l);
+        return `${l}${t>=0?' = Team '+BINGO_TEAM_NAMES[t]:' = neutral'}`; }).join(', ')
+      +'. Jede Karte hat ihre Zahlen zufällig in den 6 Spalten verteilt – wird eine Zahl gezogen, bekommt ein Team auf jeder Karte, auf der die Zahl gerade in dessen Spalte steht, einen Punkt.';
   }
   const el=document.getElementById('bingoTeamScores'); if(!el) return;
+  if(!bingoCards.length){ el.innerHTML='<span class="submuted">Noch keine Karten generiert.</span>'; return; }
   const scores=bingoTeamScores();
   el.innerHTML=BINGO_TEAM_LETTERS.map((letter,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;font-weight:700;font-size:13px;background:${BINGO_TEAM_COLORS[i]};color:#fff">${letter} = Team ${BINGO_TEAM_NAMES[i]}: ${scores[i]}</span>`).join('');
 }
