@@ -207,6 +207,14 @@
   /* Druck */
   .only-print{display:none}
   .chk-box{display:inline-block;width:15px;height:15px;border:1.4px solid #000;border-radius:2px;margin:1px 3px 1px 0;vertical-align:middle}
+  /* Bingo */
+  .bingo-preview-wrap{display:flex;flex-wrap:wrap;gap:14px}
+  .bingo-card-mini{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--panel2)}
+  .bingo-card-mini .bc-title{font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;font-weight:700}
+  .bingo-card-grid{display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(6,26px);gap:2px}
+  .bingo-card-grid div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel);border-radius:3px}
+  .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted)}
+  .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
@@ -267,6 +275,7 @@
       onmouseenter="showInvFlyout(this)" onmouseleave="scheduleHideFlyout()">📦 Inventur ▾</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
     <button data-view="staendchen" onclick="show('staendchen')">🎶 Ständchen</button>
+    <button data-view="rentnerkirmes" onclick="show('rentnerkirmes')">🎱 Rentnerkirmes</button>
     <button data-view="sonstiges" onclick="show('sonstiges')"
       onmouseenter="showSonstFlyout(this)" onmouseleave="scheduleHideFlyout()">🗂 Sonstiges ▾</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
@@ -656,6 +665,35 @@
       <div id="stBereichSpenden" style="display:none"></div>
     </section>
 
+    <!-- RENTNERKIRMES: Bingo-Kartengenerator + Zahlen ziehen -->
+    <section class="view" id="rentnerkirmes">
+      <div class="view-head"><h2>🎱 Rentnerkirmes – Bingo</h2></div>
+      <div class="panel">
+        <div class="sectionbar"><h3 style="font-size:15px">🎟 Bingo-Karten</h3>
+          <span class="grow"></span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px">Anzahl
+            <input type="number" id="bingoAnzahl" value="20" min="1" max="200" style="width:70px;padding:5px 8px">
+          </label>
+          <button class="btn ghost sm" onclick="generateBingoCards()">🎲 Karten generieren</button>
+          <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
+        </div>
+        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder mit 36 zufälligen, einmaligen Zahlen aus 1–50.</div>
+        <div id="bingoCardsPreview"></div>
+      </div>
+      <div class="panel">
+        <div class="sectionbar"><h3 style="font-size:15px">🎙 Zahlen ziehen</h3>
+          <span class="grow"></span>
+          <button class="btn ghost sm" onclick="bingoResetDraw()">↺ Neu starten</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:16px">
+          <button class="btn" style="font-size:16px;padding:12px 22px" onclick="bingoDrawNumber()">🎱 Zahl ziehen</button>
+          <div id="bingoCurrentNumber" style="font-size:40px;font-weight:800;min-width:90px;text-align:center">–</div>
+          <div class="submuted" id="bingoDrawCount"></div>
+        </div>
+        <div id="bingoNumberGrid" style="display:grid;grid-template-columns:repeat(10,1fr);gap:6px;max-width:580px"></div>
+      </div>
+    </section>
+
     <!-- SONSTIGES -->
     <section class="view" id="sonstiges">
       <div class="view-head"><h2>Sonstiges</h2>
@@ -682,6 +720,8 @@
     <div class="only-print" id="kvvPrintArea"></div>
     <!-- Druckfläche für die Freikarten-Checkliste (nur beim Drucken sichtbar) -->
     <div class="only-print" id="fkPrintArea"></div>
+    <!-- Druckfläche für die Bingo-Karten (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="bingoPrintArea"></div>
     <!-- Druckfläche für die Anwesenheitsliste (nur beim Drucken sichtbar) -->
     <div class="only-print" id="anwPrintArea"></div>
     <!-- Druckfläche für die Beiträge/Posten-Übersicht (nur beim Drucken sichtbar) -->
@@ -974,7 +1014,77 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderSonstiges(); renderReport(); renderKategorien(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderSonstiges(); renderReport(); renderKategorien(); }
+
+/* ---- Rentnerkirmes: Bingo ---- */
+const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
+let bingoCards=[];
+let bingoDrawn=new Set();
+let bingoLastDrawn=null;
+function generateBingoCard(){
+  const pool=[]; for(let i=BINGO_MIN;i<=BINGO_MAX;i++) pool.push(i);
+  for(let i=pool.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+  return pool.slice(0,BINGO_SIZE);
+}
+function generateBingoCards(){
+  const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
+  bingoCards=Array.from({length:n},()=>generateBingoCard());
+  renderBingo();
+}
+function renderBingoCardsPreview(){
+  const el=document.getElementById('bingoCardsPreview'); if(!el) return;
+  const btn=document.getElementById('bingoPrintBtn');
+  if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
+  if(btn) btn.style.display='inline-block';
+  el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>`
+    <div class="bingo-card-mini">
+      <div class="bc-title">Karte ${i+1}</div>
+      <div class="bingo-card-grid">${card.map(n=>`<div>${n}</div>`).join('')}</div>
+    </div>`).join('')}</div>`;
+}
+// Mehrere Karten pro Druckseite (2 Spalten), damit nicht jede Karte ein eigenes Blatt braucht.
+function printBingoCards(){
+  if(!bingoCards.length) return;
+  const perPage=4;
+  const pages=[];
+  for(let i=0;i<bingoCards.length;i+=perPage) pages.push(bingoCards.slice(i,i+perPage));
+  const html=pages.map((page,pi)=>`
+    <div style="${pi>0?'page-break-before:always;':''}display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:6px 0">
+      ${page.map((card,ci)=>{
+        const nr=pi*perPage+ci+1;
+        return `<div style="border:1px solid #000;border-radius:6px;padding:10px;break-inside:avoid">
+          <div style="text-align:center;font-size:12px;margin-bottom:8px">Apfelstädter Jugendkirmesgesellschaft e.V. – Bingo<br><b>Karte ${nr}</b></div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
+            ${card.map(n=>`<div style="border:1px solid #000;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+  document.getElementById('bingoPrintArea').innerHTML=html;
+  document.getElementById('bingoPrintArea').classList.add('show');
+  printDoc('Bingo-Karten');
+}
+function renderBingoDraw(){
+  const grid=document.getElementById('bingoNumberGrid'); if(!grid) return;
+  grid.innerHTML=Array.from({length:BINGO_MAX-BINGO_MIN+1},(_,i)=>BINGO_MIN+i)
+    .map(n=>`<div class="bn${bingoDrawn.has(n)?' drawn':''}">${n}</div>`).join('');
+  const cur=document.getElementById('bingoCurrentNumber'); if(cur) cur.textContent=bingoLastDrawn!=null?bingoLastDrawn:'–';
+  const cnt=document.getElementById('bingoDrawCount');
+  if(cnt) cnt.textContent=bingoDrawn.size?`${bingoDrawn.size} von ${BINGO_MAX-BINGO_MIN+1} Zahlen gezogen`:'Noch keine Zahl gezogen';
+}
+function bingoDrawNumber(){
+  const remaining=[]; for(let i=BINGO_MIN;i<=BINGO_MAX;i++) if(!bingoDrawn.has(i)) remaining.push(i);
+  if(!remaining.length){ alert('Alle Zahlen wurden bereits gezogen.'); return; }
+  const n=remaining[Math.floor(Math.random()*remaining.length)];
+  bingoDrawn.add(n); bingoLastDrawn=n;
+  renderBingoDraw();
+}
+function bingoResetDraw(){
+  if(bingoDrawn.size && !confirm('Wirklich alle gezogenen Zahlen zurücksetzen?')) return;
+  bingoDrawn.clear(); bingoLastDrawn=null;
+  renderBingoDraw();
+}
+function renderBingo(){ renderBingoCardsPreview(); renderBingoDraw(); }
 
 /* ---- Dashboard + Charts ---- */
 function chartMonthly(){
