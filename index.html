@@ -1179,10 +1179,12 @@ function printBingoCards(){
       ${page.map((card,ci)=>{
         const nr=pi*perPage+ci+1;
         return `<div style="border:1.5px solid #ddb15a;border-radius:8px;padding:10px;break-inside:avoid">
-          ${eventName?`<div style="text-align:center;font-weight:800;font-size:15px;letter-spacing:.3px;margin-bottom:6px;text-transform:uppercase">${eventName}</div>`:''}
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
-            ${logo?`<img src="${logo}" style="height:34px;width:auto">`:''}
-            <b style="font-size:13px">Bingo – Karte ${nr}</b>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:9px">
+            ${logo?`<img src="${logo}" style="height:50px;width:auto;flex:none">`:''}
+            <div style="text-align:center">
+              ${eventName?`<div style="font-weight:800;font-size:15px;letter-spacing:.3px;text-transform:uppercase">${eventName}</div>`:''}
+              <div style="font-size:13px;font-weight:700">Bingo – Karte ${nr}</div>
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
             ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;padding:4px 0;color:#fff;background:${BINGO_COLORS[c]};border:1px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
