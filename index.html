@@ -211,8 +211,9 @@
   .bingo-preview-wrap{display:flex;flex-wrap:wrap;gap:14px}
   .bingo-card-mini{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--panel2)}
   .bingo-card-mini .bc-title{font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;font-weight:700}
-  .bingo-card-grid{display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(6,26px);gap:2px}
+  .bingo-card-grid{display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(7,26px);gap:2px}
   .bingo-card-grid div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel);border-radius:3px}
+  .bingo-card-grid .bl{background:transparent;color:var(--accent);font-size:13px;font-weight:800}
   .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted)}
   .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
   @media print{
@@ -671,13 +672,16 @@
       <div class="panel">
         <div class="sectionbar"><h3 style="font-size:15px">🎟 Bingo-Karten</h3>
           <span class="grow"></span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px">Veranstaltung
+            <input type="text" id="bingoEventName" value="Seniorenkirmes 2026" style="width:170px;padding:5px 8px">
+          </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">Anzahl
             <input type="number" id="bingoAnzahl" value="20" min="1" max="200" style="width:70px;padding:5px 8px">
           </label>
           <button class="btn ghost sm" onclick="generateBingoCards()">🎲 Karten generieren</button>
           <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
         </div>
-        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder mit 36 zufälligen, einmaligen Zahlen aus 1–50.</div>
+        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50.</div>
         <div id="bingoCardsPreview"></div>
       </div>
       <div class="panel">
@@ -1018,6 +1022,7 @@ function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); render
 
 /* ---- Rentnerkirmes: Bingo ---- */
 const BINGO_MIN=1, BINGO_MAX=50, BINGO_SIZE=36;
+const BINGO_LETTERS=['K','I','R','M','E','S'];
 let bingoCards=[];
 let bingoDrawn=new Set();
 let bingoLastDrawn=null;
@@ -1039,12 +1044,18 @@ function renderBingoCardsPreview(){
   el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>`
     <div class="bingo-card-mini">
       <div class="bc-title">Karte ${i+1}</div>
-      <div class="bingo-card-grid">${card.map(n=>`<div>${n}</div>`).join('')}</div>
+      <div class="bingo-card-grid">
+        ${BINGO_LETTERS.map(l=>`<div class="bl">${l}</div>`).join('')}
+        ${card.map(n=>`<div>${n}</div>`).join('')}
+      </div>
     </div>`).join('')}</div>`;
 }
 // Mehrere Karten pro Druckseite (2 Spalten), damit nicht jede Karte ein eigenes Blatt braucht.
+// K-I-R-M-E-S über den Spalten statt der klassischen B-I-N-G-O-Buchstaben; Fußzeile mit
+// Veranstaltung (links) und Vereinsname (rechts).
 function printBingoCards(){
   if(!bingoCards.length) return;
+  const eventName=esc(val('bingoEventName')||'');
   const perPage=4;
   const pages=[];
   for(let i=0;i<bingoCards.length;i+=perPage) pages.push(bingoCards.slice(i,i+perPage));
@@ -1053,16 +1064,21 @@ function printBingoCards(){
       ${page.map((card,ci)=>{
         const nr=pi*perPage+ci+1;
         return `<div style="border:1px solid #000;border-radius:6px;padding:10px;break-inside:avoid">
-          <div style="text-align:center;font-size:12px;margin-bottom:8px">Apfelstädter Jugendkirmesgesellschaft e.V. – Bingo<br><b>Karte ${nr}</b></div>
+          <div style="text-align:center;font-size:12px;margin-bottom:8px"><b>Bingo – Karte ${nr}</b></div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
+            ${BINGO_LETTERS.map(l=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;padding:2px 0">${l}</div>`).join('')}
             ${card.map(n=>`<div style="border:1px solid #000;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;font-size:10px">
+            <span style="font-weight:700">${eventName}</span>
+            <span style="color:#555">Apfelstädter Jugendkirmesgesellschaft e.V.</span>
           </div>
         </div>`;
       }).join('')}
     </div>`).join('');
   document.getElementById('bingoPrintArea').innerHTML=html;
   document.getElementById('bingoPrintArea').classList.add('show');
-  printDoc('Bingo-Karten');
+  printDoc('Bingo-Karten'+(eventName?' – '+eventName:''));
 }
 function renderBingoDraw(){
   const grid=document.getElementById('bingoNumberGrid'); if(!grid) return;
