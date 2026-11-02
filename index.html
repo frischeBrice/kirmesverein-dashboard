@@ -1051,7 +1051,7 @@ function renderBingoCardsPreview(){
     <div class="bingo-card-mini">
       <div class="bc-title">Karte ${i+1}</div>
       <div class="bingo-card-grid">
-        ${BINGO_LETTERS.map((l,c)=>`<div style="color:${BINGO_COLORS[c]};background:transparent;border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[c]}">${l}</div>`).join('')}
+        ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
         ${card.map((n,i2)=>`<div style="border:1px solid var(--line);border-top:3px solid ${BINGO_COLORS[i2%6]}">${n}</div>`).join('')}
       </div>
     </div>`).join('')}</div>`;
@@ -1077,12 +1077,12 @@ function printBingoCards(){
             <b style="font-size:13px">Bingo – Karte ${nr}</b>
           </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
-            ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;padding:2px 0;color:${BINGO_COLORS[c]};border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
+            ${BINGO_LETTERS.map((l,c)=>`<div style="display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;padding:4px 0;color:#fff;background:${BINGO_COLORS[c]};border:1px solid ${BINGO_COLORS[c]};border-radius:3px">${l}</div>`).join('')}
             ${card.map((n,i2)=>`<div style="border:1px solid #ccc;border-top:3px solid ${BINGO_COLORS[i2%6]};aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">${n}</div>`).join('')}
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;font-size:10px">
-            <span style="font-weight:700">${eventName}</span>
-            <span style="color:#555">Apfelstädter Jugendkirmesgesellschaft e.V.</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:9px;padding-top:6px;border-top:1px solid #ddd;font-size:9.5px;font-weight:600;color:#555">
+            <span>${eventName}</span>
+            <span>Apfelstädter Jugendkirmesgesellschaft e.V.</span>
           </div>
         </div>`;
       }).join('')}
