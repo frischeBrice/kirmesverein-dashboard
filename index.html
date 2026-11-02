@@ -708,7 +708,7 @@
       </div>
       <div class="panel">
         <div class="sectionbar"><h3 style="font-size:15px">🎟 Bingo-Karten</h3>
-          <span id="bingoGenBadge" class="pill gray mini" title="Wird bei jedem 'Karten generieren' hochgezählt – damit du eine gedruckte Karte mit dem aktuellen digitalen Stand abgleichen kannst"></span>
+          <span id="bingoGenBadge" title="Wird bei jedem 'Karten generieren' hochgezählt – vergleiche diese Nummer mit der Mini-Angabe unten links auf einer gedruckten Karte" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:13px;font-weight:700;background:rgba(232,161,58,.15);color:var(--accent);border:1px solid var(--accent)">🔢 Gen. 0</span>
           <span class="grow"></span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px">Veranstaltung
             <input type="text" id="bingoEventName" value="Seniorenkirmes 2026" style="width:170px;padding:5px 8px" onchange="saveBingoState();renderBingoCardsPreview()">
@@ -1132,7 +1132,7 @@ function renderBingoCardsPreview(){
   const el=document.getElementById('bingoCardsPreview'); if(!el) return;
   const btn=document.getElementById('bingoPrintBtn');
   const genBadge=document.getElementById('bingoGenBadge');
-  if(genBadge) genBadge.textContent=bingoGeneration?`Gen. ${bingoGeneration}`:'';
+  if(genBadge) genBadge.textContent=`🔢 Gen. ${bingoGeneration}`;
   if(!bingoCards.length){ el.innerHTML='<div class="empty">Noch keine Karten generiert.</div>'; if(btn) btn.style.display='none'; return; }
   if(btn) btn.style.display='inline-block';
   const eventName=val('bingoEventName')||'';
