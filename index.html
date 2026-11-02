@@ -213,8 +213,10 @@
   .bingo-card-mini .bc-title{font-size:11px;color:var(--muted);margin-bottom:6px;text-align:center;font-weight:700}
   .bingo-card-grid{display:grid;grid-template-columns:repeat(6,26px);grid-template-rows:repeat(7,26px);gap:2px}
   .bingo-card-grid div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel);border-radius:3px}
-  .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted)}
+  .bn{display:flex;align-items:center;justify-content:center;height:34px;border-radius:7px;border:1.5px solid var(--line);font-weight:700;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .bn:hover{border-color:var(--accent2)}
   .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
+  .bn.drawn:hover{filter:brightness(1.1)}
   .bingo-card-mini.bingo-win{border-color:var(--green);box-shadow:0 0 0 2px var(--green)}
   .bingo-highlight{outline:3px solid var(--accent2);outline-offset:3px;transition:outline-color .3s}
   #bingoWinBanner{margin-bottom:14px;padding:10px 12px;border:1.5px solid var(--green);border-radius:10px;background:rgba(63,178,127,.1)}
@@ -1203,7 +1205,7 @@ function printBingoCards(){
 function renderBingoDraw(){
   const grid=document.getElementById('bingoNumberGrid'); if(!grid) return;
   grid.innerHTML=Array.from({length:BINGO_MAX-BINGO_MIN+1},(_,i)=>BINGO_MIN+i)
-    .map(n=>`<div class="bn${bingoDrawn.has(n)?' drawn':''}">${n}</div>`).join('');
+    .map(n=>`<div class="bn${bingoDrawn.has(n)?' drawn':''}" onclick="bingoToggleNumber(${n})" title="${bingoDrawn.has(n)?'Klicken, um diese Zahl wieder zu entfernen':'Klicken, um diese Zahl als gezogen einzutragen'}">${n}</div>`).join('');
   const cur=document.getElementById('bingoCurrentNumber'); if(cur) cur.textContent=bingoLastDrawn!=null?bingoLastDrawn:'–';
   const cnt=document.getElementById('bingoDrawCount');
   if(cnt) cnt.textContent=bingoDrawn.size?`${bingoDrawn.size} von ${BINGO_MAX-BINGO_MIN+1} Zahlen gezogen`:'Noch keine Zahl gezogen';
@@ -1233,6 +1235,27 @@ function bingoDrawNumber(){
 function bingoResetDraw(){
   if(bingoDrawn.size && !confirm('Wirklich alle gezogenen Zahlen und die Gewinner-Liste zurücksetzen?')) return;
   bingoDrawn.clear(); bingoLastDrawn=null; bingoWinLog=[]; bingoJustWon=[];
+  saveBingoState();
+  renderBingo();
+}
+// Entfernt aus dem Gewinner-Log jede Karte, die (nach dem Entfernen einer Zahl) keine volle Reihe
+// mehr hat – falls eine fälschlich eingetragene Zahl eine "Bingo"-Meldung ausgelöst hatte.
+function bingoRecheckWins(){
+  bingoWinLog=bingoWinLog.filter(nr=>{ const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
+}
+// Klick auf eine Zahl im Raster: noch nicht gezogen -> einträgt sie; bereits gezogen -> entfernt
+// sie wieder (z. B. falsch eingetragene Zahl rückgängig machen).
+function bingoToggleNumber(n){
+  if(bingoDrawn.has(n)){
+    if(!confirm(`Zahl ${n} wieder entfernen?`)) return;
+    bingoDrawn.delete(n);
+    if(bingoLastDrawn===n) bingoLastDrawn=null;
+    bingoJustWon=[];
+    bingoRecheckWins();
+  } else {
+    bingoDrawn.add(n); bingoLastDrawn=n;
+    bingoJustWon=bingoCheckNewWins();
+  }
   saveBingoState();
   renderBingo();
 }
