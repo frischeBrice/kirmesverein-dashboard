@@ -724,7 +724,8 @@
           <button class="btn ghost sm" onclick="generateBingoCards()">🎲 Karten generieren</button>
           <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
         </div>
-        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten. Mit 💀 an einer Karte lässt sich diese als "tot" markieren (z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst gezogen) – sie zählt dann weder bei Bingo noch beim Team-Duell mit.</div>
+        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten. Über die Auswahl an jeder Karte lässt sich diese als "nicht im Umlauf" oder "von Mitglied gezogen" markieren – beides zählt getrennt und nicht bei Bingo oder Team-Duell mit.</div>
+        <div class="submuted" id="bingoCardStatusSummary" style="margin:-8px 0 12px;font-weight:600"></div>
         <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:12px">
           <input type="checkbox" id="bingoSchnapsEnabled" style="width:auto" onchange="saveBingoState();renderBingoCardsPreview()">
           🥃 Schnaps-Zahl aktivieren (je Karte eine zufällige Zahl hervorgehoben – wird sie gezogen, "Schnaps!" rufen)
@@ -1086,9 +1087,11 @@ function clubLogoDataUri(){
 let bingoCards=[];
 let bingoDrawn=new Set();
 let bingoLastDrawn=null;
-// Kartennummern, die "tot" markiert sind – z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst
-// gezogen. Zählen weder bei der Bingo-Erkennung noch beim Team-Duell mit.
-let bingoDeadCards=new Set();
+// Karten-Sonderstatus (Kartennummer -> 'out' nicht im Umlauf | 'member' von einem Kirmesmitglied
+// selbst gezogen). Beide zählen weder bei der Bingo-Erkennung noch beim Team-Duell mit, werden aber
+// getrennt gezählt/angezeigt, damit man den Unterschied sieht.
+let bingoCardStatus={};
+const BINGO_CARD_STATUS_LABELS={out:'🚫 Nicht im Umlauf', member:'👤 Von Mitglied gezogen'};
 // Reihenfolge, in der Karten "Bingo" erreicht haben (persistiert) – dient als Gewinner-Meldung/-Log.
 let bingoWinLog=[];
 // Nur die Karten, die beim letzten Zug NEU gewonnen haben – für den kurzen Aufmerksamkeits-Puls
@@ -1117,7 +1120,7 @@ function saveBingoState(){
       prizeCount: val('bingoPrizeCount')||'',
       generation: bingoGeneration,
       schnaps: bingoSchnapsEnabled(),
-      deadCards: Array.from(bingoDeadCards)
+      cardStatus: bingoCardStatus
     }));
   }catch(e){}
 }
@@ -1131,7 +1134,7 @@ function loadBingoState(){
     if(st.last!=null) bingoLastDrawn=st.last;
     if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
     if(st.generation!=null) bingoGeneration=st.generation;
-    if(Array.isArray(st.deadCards)) bingoDeadCards=new Set(st.deadCards);
+    if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
@@ -1147,7 +1150,7 @@ function generateBingoCards(){
   if(bingoCards.length && !confirm('Die bereits vorhandenen Karten werden durch neue ersetzt (gezogene Zahlen bleiben erhalten). Fortfahren?')) return;
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
-  bingoWinLog=[]; bingoJustWon=[]; bingoDeadCards=new Set();
+  bingoWinLog=[]; bingoJustWon=[]; bingoCardStatus={};
   bingoGeneration++;
   saveBingoState();
   renderBingo();
@@ -1169,19 +1172,28 @@ function renderBingoCardsPreview(){
   if(btn) btn.style.display='inline-block';
   const eventName=val('bingoEventName')||'';
   const schnaps=bingoSchnapsEnabled();
+  const statusCounts={out:0,member:0};
+  Object.values(bingoCardStatus).forEach(s=>{ if(statusCounts[s]!=null) statusCounts[s]++; });
+  const sumEl=document.getElementById('bingoCardStatusSummary');
+  if(sumEl) sumEl.textContent=(statusCounts.out||statusCounts.member)?`🚫 ${statusCounts.out} nicht im Umlauf · 👤 ${statusCounts.member} von Mitgliedern gezogen`:'';
   el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>{
     const nr=i+1;
-    const dead=bingoDeadCards.has(nr);
-    const win=!dead&&bingoCardHasWin(card);
+    const status=bingoCardStatus[nr]||'';
+    const win=!status&&bingoCardHasWin(card);
     const schnapsIdx=schnaps?bingoSchnapsIndex(card):-1;
+    const wrapStyle=status==='out'?'opacity:.45;filter:grayscale(1)':(status==='member'?'opacity:.75;border-color:var(--accent2)':'');
     return `
-    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${nr}" style="${dead?'opacity:.45;filter:grayscale(1)':''}">
+    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${nr}" style="${wrapStyle}">
       <div style="display:flex;align-items:center;justify-content:center;gap:4px">
         <div style="text-align:center;font-family:'Fredoka',sans-serif;flex:1">
           ${eventName?`<div style="font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
-          <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${nr}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}${dead?' · <span style="color:var(--red)">🚫 nicht im Umlauf</span>':''}</div>
+          <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${nr}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}${status?` · <span style="color:${status==='out'?'var(--red)':'var(--accent2)'}">${BINGO_CARD_STATUS_LABELS[status]}</span>`:''}</div>
         </div>
-        <button class="icon-btn" style="font-size:12px" title="${dead?'Karte wieder aktivieren':'Karte als tot markieren (nicht im Umlauf / vom Kirmesmitglied selbst gezogen)'}" onclick="bingoToggleDeadCard(${nr})">${dead?'↩️':'💀'}</button>
+        <select class="status-select" style="font-size:11px;padding:3px 5px;max-width:110px" title="Sonderstatus dieser Karte" onchange="bingoSetCardStatus(${nr},this.value)">
+          <option value=""${status===''?' selected':''}>✅ Aktiv</option>
+          <option value="out"${status==='out'?' selected':''}>🚫 Nicht im Umlauf</option>
+          <option value="member"${status==='member'?' selected':''}>👤 Von Mitglied gezogen</option>
+        </select>
       </div>
       <div class="bingo-card-grid">
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
@@ -1214,7 +1226,7 @@ function bingoCheckNewWins(){
   const fresh=[];
   bingoCards.forEach((card,i)=>{
     const nr=i+1;
-    if(bingoDeadCards.has(nr)) return; // tot/nicht im Umlauf -> zählt nicht als Gewinner
+    if(bingoCardStatus[nr]) return; // nicht im Umlauf / von Mitglied gezogen -> zählt nicht als Gewinner
     if(!known.has(nr) && bingoCardHasWin(card)){ bingoWinLog.push(nr); fresh.push(nr); }
   });
   return fresh;
@@ -1310,7 +1322,7 @@ function bingoTeamScores(){
   const scores=[0,0,0,0];
   bingoDrawn.forEach(n=>{
     bingoCards.forEach((card,i)=>{
-      if(bingoDeadCards.has(i+1)) return; // tot/nicht im Umlauf -> zählt nicht mit
+      if(bingoCardStatus[i+1]) return; // nicht im Umlauf / von Mitglied gezogen -> zählt nicht mit
       const col=bingoCardColumnOf(card,n); if(col===-1) return;
       const t=BINGO_TEAM_LETTERS.indexOf(BINGO_LETTERS[col]);
       if(t>=0) scores[t]++;
@@ -1362,18 +1374,17 @@ function bingoResetDraw(){
 // Entfernt aus dem Gewinner-Log jede Karte, die (nach dem Entfernen einer Zahl) keine volle Reihe
 // mehr hat – falls eine fälschlich eingetragene Zahl eine "Bingo"-Meldung ausgelöst hatte.
 function bingoRecheckWins(){
-  bingoWinLog=bingoWinLog.filter(nr=>{ if(bingoDeadCards.has(nr)) return false; const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
+  bingoWinLog=bingoWinLog.filter(nr=>{ if(bingoCardStatus[nr]) return false; const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
 }
-// Markiert/entmarkiert eine Karte als "tot" (nicht im Umlauf oder von einem Kirmesmitglied selbst
-// gezogen) – zählt dann weder bei der Bingo-Erkennung noch beim Team-Duell mit.
-function bingoToggleDeadCard(nr){
-  if(bingoDeadCards.has(nr)){
-    bingoDeadCards.delete(nr);
-  } else {
-    if(!confirm(`Karte ${nr} als "tot" markieren (z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst gezogen)?\n\nSie zählt dann weder bei der Bingo-Erkennung noch beim Team-Duell mit.`)) return;
-    bingoDeadCards.add(nr);
-  }
+// Setzt den Sonderstatus einer Karte: '' = aktiv/normal, 'out' = nicht im Umlauf, 'member' = von
+// einem Kirmesmitglied selbst gezogen. Beide Sonderstatus zählen weder bei der Bingo-Erkennung noch
+// beim Team-Duell mit, werden aber getrennt gezählt/angezeigt.
+function bingoSetCardStatus(nr,status){
+  if(status){ bingoCardStatus[nr]=status; } else { delete bingoCardStatus[nr]; }
   bingoRecheckWins();
+  // Falls gerade reaktiviert und die Reihe schon vorher voll war, muss der Gewinn auch nachträglich
+  // erkannt werden (nicht nur beim nächsten Zug).
+  bingoJustWon=bingoCheckNewWins();
   saveBingoState();
   renderBingo();
 }
