@@ -754,7 +754,12 @@
 
     <!-- ANSAUFEN - MOTTO -->
     <section class="view" id="ansaufen">
-      <div class="view-head"><h2>🍻 Ansaufen - Motto</h2></div>
+      <div class="view-head"><h2>🍻 Ansaufen - Motto</h2><span class="submuted" id="ansaufenMottoHeading" style="font-size:15px;margin-left:12px"></span></div>
+      <div class="panel">
+        <div class="sectionbar"><h3 style="font-size:15px">🎭 Motto</h3></div>
+        <input type="text" id="ansaufenMotto" placeholder="z. B. Zirkus, Mottenkiste, 80er…" style="width:100%;max-width:420px;padding:9px 12px;font-size:16px;font-weight:700" oninput="saveAnsaufenMotto()">
+        <div class="submuted" style="margin-top:6px">Nur auf diesem Gerät gespeichert (wie die Checkliste unten) – hier festhalten, worauf ihr euch geeinigt habt.</div>
+      </div>
       <div class="panel">
         <div class="sectionbar"><h3 style="font-size:15px">✅ Teilnahme-Checkliste</h3>
           <span class="grow"></span>
@@ -1090,10 +1095,31 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderAnsaufenChecklist(); renderSonstiges(); renderReport(); renderKategorien(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderAnsaufen(); renderSonstiges(); renderReport(); renderKategorien(); }
 
-/* ---- Ansaufen - Motto: Teilnahme-Checkliste aller Mitglieder ---- */
-// Nur lokal gespeichert (wie die Bingo-Liste) – reine Abhak-Hilfe, keine Vereinsstatistik.
+/* ---- Ansaufen - Motto: Thema/Motto + Teilnahme-Checkliste aller Mitglieder ---- */
+// Nur lokal gespeichert (wie die Bingo-Liste) – reines Festhalten/Abhaken, keine Vereinsstatistik.
+const ANSAUFEN_MOTTO_LS_KEY='kv_ansaufen_motto_v1';
+let ansaufenMottoLoaded=false;
+function loadAnsaufenMotto(){
+  ansaufenMottoLoaded=true;
+  let m=''; try{ m=localStorage.getItem(ANSAUFEN_MOTTO_LS_KEY)||''; }catch(e){}
+  const el=document.getElementById('ansaufenMotto'); if(el) el.value=m;
+  renderAnsaufenMottoHeading();
+}
+function saveAnsaufenMotto(){
+  try{ localStorage.setItem(ANSAUFEN_MOTTO_LS_KEY, val('ansaufenMotto')||''); }catch(e){}
+  renderAnsaufenMottoHeading();
+}
+function renderAnsaufenMottoHeading(){
+  const el=document.getElementById('ansaufenMottoHeading');
+  const m=val('ansaufenMotto');
+  if(el) el.textContent = m ? `– Motto: ${m}` : '';
+}
+function renderAnsaufen(){
+  if(!ansaufenMottoLoaded) loadAnsaufenMotto();
+  renderAnsaufenChecklist();
+}
 let ansaufenChecked=new Set();
 let ansaufenLoaded=false;
 const ANSAUFEN_LS_KEY='kv_ansaufen_checked_v1';
