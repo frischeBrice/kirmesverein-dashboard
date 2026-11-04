@@ -221,12 +221,17 @@
   .bn.drawn{background:var(--accent);border-color:var(--accent);color:#fff}
   .bn.drawn:hover{filter:brightness(1.1)}
   .bingo-card-mini.bingo-win{border-color:var(--green);box-shadow:0 0 0 2px var(--green)}
+  .bingo-card-mini.bingo-win-member{border-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
   .bingo-highlight{outline:3px solid var(--accent2);outline-offset:3px;transition:outline-color .3s}
   #bingoWinBanner{margin-bottom:14px;padding:10px 12px;border:1.5px solid var(--green);border-radius:10px;background:rgba(63,178,127,.1)}
+  #bingoMemberWinBanner{margin-bottom:14px;padding:10px 12px;border:1.5px solid var(--accent2);border-radius:10px;background:rgba(58,134,232,.1)}
   .bingo-win-chip{background:var(--green);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer}
   .bingo-win-chip:hover{filter:brightness(1.1)}
   .bingo-win-chip.new{animation:bingoPulse 1s ease-in-out 3}
+  .bingo-win-chip.member{background:var(--accent2)}
+  .bingo-win-chip.member.new{animation:bingoPulseMember 1s ease-in-out 3}
   @keyframes bingoPulse{0%,100%{box-shadow:0 0 0 0 rgba(63,178,127,.7)}50%{box-shadow:0 0 0 9px rgba(63,178,127,0)}}
+  @keyframes bingoPulseMember{0%,100%{box-shadow:0 0 0 0 rgba(58,134,232,.7)}50%{box-shadow:0 0 0 9px rgba(58,134,232,0)}}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
     body{background:#fff;color:#000}
@@ -694,6 +699,7 @@
         </div>
         <div class="submuted" style="margin:-4px 0 12px">Primär: Zahl aus eurer Bingotrommel hier eintragen. Die zufällige Ziehung ist nur ein Notfall-Ersatz, falls die Trommel mal ausfällt.</div>
         <div id="bingoWinBanner" style="display:none"></div>
+        <div id="bingoMemberWinBanner" style="display:none"></div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
           <input type="number" id="bingoManualNum" min="1" max="50" placeholder="Zahl 1–50" style="width:120px;padding:8px 10px;font-size:15px" onkeydown="if(event.key==='Enter')bingoManualDraw()">
           <button class="btn" onclick="bingoManualDraw()">✓ Eintragen</button>
@@ -1097,6 +1103,10 @@ let bingoWinLog=[];
 // Nur die Karten, die beim letzten Zug NEU gewonnen haben – für den kurzen Aufmerksamkeits-Puls
 // in der Meldung; wird bei jedem neuen Zug/Reset/Neugenerieren zurückgesetzt.
 let bingoJustWon=[];
+// Separates Log nur für "von Mitglied gezogen"-Karten: zählt NICHT für Preise/Team-Duell, wird aber
+// trotzdem angezeigt, damit ihr seht, wenn so eine Karte eigentlich Bingo hätte.
+let bingoMemberWinLog=[];
+let bingoMemberJustWon=[];
 // Verhindert, dass die "Spiel vorbei"-Meldung bei jedem weiteren Zug erneut aufploppt, solange die
 // Preisanzahl erreicht bleibt; wird zurückgesetzt, falls per Entfernen wieder unter die Schwelle fällt.
 let bingoGameOverNotified=false;
@@ -1117,6 +1127,7 @@ function saveBingoState(){
       drawn: Array.from(bingoDrawn),
       last: bingoLastDrawn,
       winLog: bingoWinLog,
+      memberWinLog: bingoMemberWinLog,
       prizeCount: val('bingoPrizeCount')||'',
       generation: bingoGeneration,
       schnaps: bingoSchnapsEnabled(),
@@ -1133,6 +1144,7 @@ function loadBingoState(){
     if(Array.isArray(st.drawn)) bingoDrawn=new Set(st.drawn);
     if(st.last!=null) bingoLastDrawn=st.last;
     if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
+    if(Array.isArray(st.memberWinLog)) bingoMemberWinLog=st.memberWinLog;
     if(st.generation!=null) bingoGeneration=st.generation;
     if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
@@ -1150,7 +1162,7 @@ function generateBingoCards(){
   if(bingoCards.length && !confirm('Die bereits vorhandenen Karten werden durch neue ersetzt (gezogene Zahlen bleiben erhalten). Fortfahren?')) return;
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
-  bingoWinLog=[]; bingoJustWon=[]; bingoCardStatus={};
+  bingoWinLog=[]; bingoJustWon=[]; bingoCardStatus={}; bingoMemberWinLog=[]; bingoMemberJustWon=[];
   bingoGeneration++;
   saveBingoState();
   renderBingo();
@@ -1180,14 +1192,15 @@ function renderBingoCardsPreview(){
     const nr=i+1;
     const status=bingoCardStatus[nr]||'';
     const win=!status&&bingoCardHasWin(card);
+    const memberWin=status==='member'&&bingoCardHasWin(card);
     const schnapsIdx=schnaps?bingoSchnapsIndex(card):-1;
     const wrapStyle=status==='out'?'opacity:.45;filter:grayscale(1)':(status==='member'?'opacity:.75;border-color:var(--accent2)':'');
     return `
-    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${nr}" style="${wrapStyle}">
+    <div class="bingo-card-mini${win?' bingo-win':''}${memberWin?' bingo-win-member':''}" id="bingo-card-${nr}" style="${wrapStyle}">
       <div style="display:flex;align-items:center;justify-content:center;gap:4px">
         <div style="text-align:center;font-family:'Fredoka',sans-serif;flex:1">
           ${eventName?`<div style="font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
-          <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${nr}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}${status?` · <span style="color:${status==='out'?'var(--red)':'var(--accent2)'}">${BINGO_CARD_STATUS_LABELS[status]}</span>`:''}</div>
+          <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${nr}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}${memberWin?' · <span style="color:var(--accent2)">👤 Bingo! (zählt nicht)</span>':''}${status?` · <span style="color:${status==='out'?'var(--red)':'var(--accent2)'}">${BINGO_CARD_STATUS_LABELS[status]}</span>`:''}</div>
         </div>
         <select class="status-select" style="font-size:11px;padding:3px 5px;max-width:110px" title="Sonderstatus dieser Karte" onchange="bingoSetCardStatus(${nr},this.value)">
           <option value=""${status===''?' selected':''}>✅ Aktiv</option>
@@ -1230,6 +1243,31 @@ function bingoCheckNewWins(){
     if(!known.has(nr) && bingoCardHasWin(card)){ bingoWinLog.push(nr); fresh.push(nr); }
   });
   return fresh;
+}
+// Gegenstück zu bingoCheckNewWins() nur für "von Mitglied gezogen"-Karten: wird separat geloggt,
+// damit ihr seht, wenn eine solche Karte eigentlich Bingo hätte – zählt aber nicht für Preise/Team.
+function bingoCheckNewMemberWins(){
+  const known=new Set(bingoMemberWinLog);
+  const fresh=[];
+  bingoCards.forEach((card,i)=>{
+    const nr=i+1;
+    if(bingoCardStatus[nr]!=='member') return;
+    if(!known.has(nr) && bingoCardHasWin(card)){ bingoMemberWinLog.push(nr); fresh.push(nr); }
+  });
+  return fresh;
+}
+function bingoRecheckMemberWins(){
+  bingoMemberWinLog=bingoMemberWinLog.filter(nr=>{ if(bingoCardStatus[nr]!=='member') return false; const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
+}
+function renderBingoMemberWinBanner(){
+  const el=document.getElementById('bingoMemberWinBanner'); if(!el) return;
+  if(!bingoMemberWinLog.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='block';
+  const ordered=[...bingoMemberWinLog].reverse();
+  el.innerHTML=`<div style="font-weight:700;margin-bottom:6px;color:var(--accent2)">👤 Von Mitglied gezogene Karte(n) haben ebenfalls eine volle Reihe – zählt nicht für Preise/Team-Duell, aber gut zu wissen. Klicken, um zur Karte zu springen:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${ordered.map(nr=>`<button class="bingo-win-chip member${bingoMemberJustWon.includes(nr)?' new':''}" onclick="bingoJumpToCard(${nr})">👤 Karte ${nr}</button>`).join('')}
+    </div>`;
 }
 // Prüft, ob die eingestellte Preisanzahl erreicht ist, und meldet das einmalig per Alert (meldet
 // sich bei einer nachträglichen Korrektur, die wieder unter die Schwelle fällt, erneut).
@@ -1352,6 +1390,7 @@ function bingoManualDraw(){
   bingoDrawn.add(n); bingoLastDrawn=n;
   inp.value='';
   bingoJustWon=bingoCheckNewWins();
+  bingoMemberJustWon=bingoCheckNewMemberWins();
   saveBingoState();
   renderBingo();
 }
@@ -1362,12 +1401,13 @@ function bingoDrawNumber(){
   const n=remaining[Math.floor(Math.random()*remaining.length)];
   bingoDrawn.add(n); bingoLastDrawn=n;
   bingoJustWon=bingoCheckNewWins();
+  bingoMemberJustWon=bingoCheckNewMemberWins();
   saveBingoState();
   renderBingo();
 }
 function bingoResetDraw(){
   if(bingoDrawn.size && !confirm('Wirklich alle gezogenen Zahlen und die Gewinner-Liste zurücksetzen?')) return;
-  bingoDrawn.clear(); bingoLastDrawn=null; bingoWinLog=[]; bingoJustWon=[];
+  bingoDrawn.clear(); bingoLastDrawn=null; bingoWinLog=[]; bingoJustWon=[]; bingoMemberWinLog=[]; bingoMemberJustWon=[];
   saveBingoState();
   renderBingo();
 }
@@ -1382,9 +1422,12 @@ function bingoRecheckWins(){
 function bingoSetCardStatus(nr,status){
   if(status){ bingoCardStatus[nr]=status; } else { delete bingoCardStatus[nr]; }
   bingoRecheckWins();
+  bingoRecheckMemberWins();
   // Falls gerade reaktiviert und die Reihe schon vorher voll war, muss der Gewinn auch nachträglich
-  // erkannt werden (nicht nur beim nächsten Zug).
+  // erkannt werden (nicht nur beim nächsten Zug). Gilt genauso für den Wechsel auf "von Mitglied
+  // gezogen", falls die Reihe zu diesem Zeitpunkt schon voll ist.
   bingoJustWon=bingoCheckNewWins();
+  bingoMemberJustWon=bingoCheckNewMemberWins();
   saveBingoState();
   renderBingo();
 }
@@ -1395,11 +1438,13 @@ function bingoToggleNumber(n){
     if(!confirm(`Zahl ${n} wieder entfernen?`)) return;
     bingoDrawn.delete(n);
     if(bingoLastDrawn===n) bingoLastDrawn=null;
-    bingoJustWon=[];
+    bingoJustWon=[]; bingoMemberJustWon=[];
     bingoRecheckWins();
+    bingoRecheckMemberWins();
   } else {
     bingoDrawn.add(n); bingoLastDrawn=n;
     bingoJustWon=bingoCheckNewWins();
+    bingoMemberJustWon=bingoCheckNewMemberWins();
   }
   saveBingoState();
   renderBingo();
@@ -1409,6 +1454,7 @@ function renderBingo(){
   renderBingoCardsPreview();
   renderBingoDraw();
   renderBingoWinBanner();
+  renderBingoMemberWinBanner();
   renderBingoTeamScores();
 }
 
