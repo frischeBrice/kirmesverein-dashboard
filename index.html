@@ -296,7 +296,8 @@
       onmouseenter="showInvFlyout(this)" onmouseleave="scheduleHideFlyout()">📦 Inventur ▾</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
     <button data-view="staendchen" onclick="show('staendchen')">🎶 Ständchen</button>
-    <button data-view="rentnerkirmes" onclick="show('rentnerkirmes')">🎱 Rentnerkirmes</button>
+    <button data-view="rentnerkirmes" onclick="show('rentnerkirmes')"
+      onmouseenter="showVeranstFlyout(this)" onmouseleave="scheduleHideFlyout()">🎉 Veranstaltungen ▾</button>
     <button data-view="sonstiges" onclick="show('sonstiges')"
       onmouseenter="showSonstFlyout(this)" onmouseleave="scheduleHideFlyout()">🗂 Sonstiges ▾</button>
     <button data-view="report" onclick="show('report')">🖨 Bericht</button>
@@ -746,6 +747,14 @@
       </div>
     </section>
 
+    <!-- ANSAUFEN - MOTTO (Platzhalter, Inhalt folgt) -->
+    <section class="view" id="ansaufen">
+      <div class="view-head"><h2>🍻 Ansaufen - Motto</h2></div>
+      <div class="panel">
+        <div class="empty">🚧 Kommt noch – hier gibt's bald Infos zum Ansaufen/Motto zu sehen.</div>
+      </div>
+    </section>
+
     <!-- SONSTIGES -->
     <section class="view" id="sonstiges">
       <div class="view-head"><h2>Sonstiges</h2>
@@ -1061,7 +1070,8 @@ function show(v){
   // auch dort aktiv markiert, gleiches Prinzip wie bei Sonstiges' Flyout-Unterpunkten.
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',
     b.dataset.view===v || (b.dataset.view==='inventur' && v==='fundsachen')
-    || (b.dataset.view==='einnahmen' && ['einnahmen','ausgaben','beitraege','sponsoren','kategorien'].includes(v))));
+    || (b.dataset.view==='einnahmen' && ['einnahmen','ausgaben','beitraege','sponsoren','kategorien'].includes(v))
+    || (b.dataset.view==='rentnerkirmes' && v==='ansaufen')));
   try{ localStorage.setItem('kv_activeTab', v); }catch(e){}
 }
 
@@ -3445,6 +3455,30 @@ function showFinanzFlyout(btn){
   el.style.top=Math.round(r.bottom+4)+'px';
 }
 function selectFinanzFlyout(id){
+  const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
+  show(id);
+}
+
+/* ---- Veranstaltungen-Flyout: Oberbegriff für Rentnerkirmes (Bingo) und Ansaufen-Motto,
+   gleiches Prinzip wie Finanzen/Sonstiges/Inventur. ---- */
+const VERANST_ITEMS = [
+  {id:'rentnerkirmes', label:'🎱 Rentnerkirmes'},
+  {id:'ansaufen', label:'🍻 Ansaufen - Motto'},
+];
+function showVeranstFlyout(btn){
+  clearTimeout(flyoutHideTimer);
+  const el=document.getElementById('navFlyout');
+  const activeView=document.querySelector('.view.active')?.id;
+  el.innerHTML=VERANST_ITEMS.map(it=>`<a class="${activeView===it.id?'active':''}" onclick="selectVeranstFlyout('${it.id}')">${it.label}</a>`).join('');
+  el.classList.add('show');
+  const r=btn.getBoundingClientRect();
+  const menuW=el.offsetWidth||210, margin=10;
+  let left=Math.min(r.left, window.innerWidth-menuW-margin);
+  if(left<margin) left=margin;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(r.bottom+4)+'px';
+}
+function selectVeranstFlyout(id){
   const el=document.getElementById('navFlyout'); if(el) el.classList.remove('show');
   show(id);
 }
