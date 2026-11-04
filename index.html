@@ -724,7 +724,7 @@
           <button class="btn ghost sm" onclick="generateBingoCards()">🎲 Karten generieren</button>
           <button class="btn sm" id="bingoPrintBtn" onclick="printBingoCards()" style="display:none">🖨 Drucken</button>
         </div>
-        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten.</div>
+        <div class="submuted" style="margin:-4px 0 12px">Jede Karte: 6×6 Felder (K-I-R-M-E-S) mit 36 zufälligen, einmaligen Zahlen aus 1–50. Karten und gezogene Zahlen bleiben nach dem Neuladen der Seite erhalten. Mit 💀 an einer Karte lässt sich diese als "tot" markieren (z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst gezogen) – sie zählt dann weder bei Bingo noch beim Team-Duell mit.</div>
         <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:12px">
           <input type="checkbox" id="bingoSchnapsEnabled" style="width:auto" onchange="saveBingoState();renderBingoCardsPreview()">
           🥃 Schnaps-Zahl aktivieren (je Karte eine zufällige Zahl hervorgehoben – wird sie gezogen, "Schnaps!" rufen)
@@ -1086,6 +1086,9 @@ function clubLogoDataUri(){
 let bingoCards=[];
 let bingoDrawn=new Set();
 let bingoLastDrawn=null;
+// Kartennummern, die "tot" markiert sind – z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst
+// gezogen. Zählen weder bei der Bingo-Erkennung noch beim Team-Duell mit.
+let bingoDeadCards=new Set();
 // Reihenfolge, in der Karten "Bingo" erreicht haben (persistiert) – dient als Gewinner-Meldung/-Log.
 let bingoWinLog=[];
 // Nur die Karten, die beim letzten Zug NEU gewonnen haben – für den kurzen Aufmerksamkeits-Puls
@@ -1113,7 +1116,8 @@ function saveBingoState(){
       winLog: bingoWinLog,
       prizeCount: val('bingoPrizeCount')||'',
       generation: bingoGeneration,
-      schnaps: bingoSchnapsEnabled()
+      schnaps: bingoSchnapsEnabled(),
+      deadCards: Array.from(bingoDeadCards)
     }));
   }catch(e){}
 }
@@ -1127,6 +1131,7 @@ function loadBingoState(){
     if(st.last!=null) bingoLastDrawn=st.last;
     if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
     if(st.generation!=null) bingoGeneration=st.generation;
+    if(Array.isArray(st.deadCards)) bingoDeadCards=new Set(st.deadCards);
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
@@ -1142,7 +1147,7 @@ function generateBingoCards(){
   if(bingoCards.length && !confirm('Die bereits vorhandenen Karten werden durch neue ersetzt (gezogene Zahlen bleiben erhalten). Fortfahren?')) return;
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
-  bingoWinLog=[]; bingoJustWon=[];
+  bingoWinLog=[]; bingoJustWon=[]; bingoDeadCards=new Set();
   bingoGeneration++;
   saveBingoState();
   renderBingo();
@@ -1165,13 +1170,18 @@ function renderBingoCardsPreview(){
   const eventName=val('bingoEventName')||'';
   const schnaps=bingoSchnapsEnabled();
   el.innerHTML=`<div class="bingo-preview-wrap">${bingoCards.map((card,i)=>{
-    const win=bingoCardHasWin(card);
+    const nr=i+1;
+    const dead=bingoDeadCards.has(nr);
+    const win=!dead&&bingoCardHasWin(card);
     const schnapsIdx=schnaps?bingoSchnapsIndex(card):-1;
     return `
-    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${i+1}">
-      <div style="text-align:center;font-family:'Fredoka',sans-serif">
-        ${eventName?`<div style="font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
-        <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${i+1}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}</div>
+    <div class="bingo-card-mini${win?' bingo-win':''}" id="bingo-card-${nr}" style="${dead?'opacity:.45;filter:grayscale(1)':''}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+        <div style="text-align:center;font-family:'Fredoka',sans-serif;flex:1">
+          ${eventName?`<div style="font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--text)">${esc(eventName)}</div>`:''}
+          <div class="bc-title" style="font-family:'Fredoka',sans-serif;font-weight:600">Karte ${nr}${win?' · <span style="color:var(--green)">🎉 BINGO!</span>':''}${dead?' · <span style="color:var(--red)">🚫 nicht im Umlauf</span>':''}</div>
+        </div>
+        <button class="icon-btn" style="font-size:12px" title="${dead?'Karte wieder aktivieren':'Karte als tot markieren (nicht im Umlauf / vom Kirmesmitglied selbst gezogen)'}" onclick="bingoToggleDeadCard(${nr})">${dead?'↩️':'💀'}</button>
       </div>
       <div class="bingo-card-grid">
         ${BINGO_LETTERS.map((l,c)=>`<div style="background:${BINGO_COLORS[c]};color:#fff;font-size:13px;border:1px solid var(--line)">${l}</div>`).join('')}
@@ -1204,6 +1214,7 @@ function bingoCheckNewWins(){
   const fresh=[];
   bingoCards.forEach((card,i)=>{
     const nr=i+1;
+    if(bingoDeadCards.has(nr)) return; // tot/nicht im Umlauf -> zählt nicht als Gewinner
     if(!known.has(nr) && bingoCardHasWin(card)){ bingoWinLog.push(nr); fresh.push(nr); }
   });
   return fresh;
@@ -1298,7 +1309,8 @@ function renderBingoDraw(){
 function bingoTeamScores(){
   const scores=[0,0,0,0];
   bingoDrawn.forEach(n=>{
-    bingoCards.forEach(card=>{
+    bingoCards.forEach((card,i)=>{
+      if(bingoDeadCards.has(i+1)) return; // tot/nicht im Umlauf -> zählt nicht mit
       const col=bingoCardColumnOf(card,n); if(col===-1) return;
       const t=BINGO_TEAM_LETTERS.indexOf(BINGO_LETTERS[col]);
       if(t>=0) scores[t]++;
@@ -1350,7 +1362,20 @@ function bingoResetDraw(){
 // Entfernt aus dem Gewinner-Log jede Karte, die (nach dem Entfernen einer Zahl) keine volle Reihe
 // mehr hat – falls eine fälschlich eingetragene Zahl eine "Bingo"-Meldung ausgelöst hatte.
 function bingoRecheckWins(){
-  bingoWinLog=bingoWinLog.filter(nr=>{ const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
+  bingoWinLog=bingoWinLog.filter(nr=>{ if(bingoDeadCards.has(nr)) return false; const card=bingoCards[nr-1]; return card && bingoCardHasWin(card); });
+}
+// Markiert/entmarkiert eine Karte als "tot" (nicht im Umlauf oder von einem Kirmesmitglied selbst
+// gezogen) – zählt dann weder bei der Bingo-Erkennung noch beim Team-Duell mit.
+function bingoToggleDeadCard(nr){
+  if(bingoDeadCards.has(nr)){
+    bingoDeadCards.delete(nr);
+  } else {
+    if(!confirm(`Karte ${nr} als "tot" markieren (z. B. nicht im Umlauf oder von einem Kirmesmitglied selbst gezogen)?\n\nSie zählt dann weder bei der Bingo-Erkennung noch beim Team-Duell mit.`)) return;
+    bingoDeadCards.add(nr);
+  }
+  bingoRecheckWins();
+  saveBingoState();
+  renderBingo();
 }
 // Klick auf eine Zahl im Raster: noch nicht gezogen -> einträgt sie; bereits gezogen -> entfernt
 // sie wieder (z. B. falsch eingetragene Zahl rückgängig machen).
