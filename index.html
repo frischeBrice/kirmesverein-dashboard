@@ -730,9 +730,11 @@
         <div class="sectionbar"><h3 style="font-size:15px">👥 Team-Duell (nur intern)</h3>
           <span class="grow"></span>
           <button class="btn ghost sm" id="bingoTeamduellLinkBtn" onclick="bingoToggleTeamduellLink()">🔗 Mit App verknüpfen</button>
+          <button class="btn sm" id="bingoTeamduellSettleBtn" onclick="bingoSettleTeamduell()">🏁 Bingo beenden</button>
         </div>
         <div class="submuted" style="margin:-4px 0 12px" id="bingoTeamLegend"></div>
         <div class="submuted" id="bingoTeamduellLinkStatus" style="margin:-4px 0 12px"></div>
+        <div class="submuted" id="bingoTeamduellSettleStatus" style="margin:-4px 0 12px"></div>
         <div id="bingoTeamScores" style="display:flex;gap:10px;flex-wrap:wrap"></div>
       </div>
       <div class="panel">
@@ -1408,7 +1410,14 @@ let bingoLoaded=false;
 // komplett unabhängige Tabellen, siehe sql/add_bingo_teamduell.sql), und die App zeigt eine
 // Live-Balkenkarte an. Persistiert, damit die Verknüpfung ein Neuladen übersteht.
 let bingoTeamduellLinked=false;
+// Einmalige Abrechnung: wenn der Admin "Bingo beenden" klickt, fließt der aktuelle K/R/M/S-
+// Punktestand (halbiert, 1 Bingo-Punkt = 0,5 echte Teamduell-Punkte) als neue, bereits
+// abgeschlossene Runde ins ECHTE Teamduell-System der App ein (zählt dann in deren
+// Gesamt-Punktestand mit). bingoTeamduellSettled verhindert Doppel-Buchung bei mehrfachem Klick
+// und wird bei jedem "Karten generieren" (= neues Bingo-Spiel) wieder zurückgesetzt.
+let bingoTeamduellSettled=false;
 const BINGO_TEAMDUELL_KEY_MAP={'Rot':'rot','Blau':'blau','Grün':'gruen','Gelb':'gelb'};
+const BINGO_TEAMDUELL_PUNKT_FAKTOR=0.5;
 function saveBingoState(){
   try{
     localStorage.setItem(BINGO_LS_KEY, JSON.stringify({
@@ -1423,7 +1432,8 @@ function saveBingoState(){
       generation: bingoGeneration,
       schnaps: bingoSchnapsEnabled(),
       cardStatus: bingoCardStatus,
-      teamduellLinked: bingoTeamduellLinked
+      teamduellLinked: bingoTeamduellLinked,
+      teamduellSettled: bingoTeamduellSettled
     }));
   }catch(e){}
 }
@@ -1440,6 +1450,7 @@ function loadBingoState(){
     if(st.generation!=null) bingoGeneration=st.generation;
     if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
     bingoTeamduellLinked=!!st.teamduellLinked;
+    bingoTeamduellSettled=!!st.teamduellSettled;
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
@@ -1456,6 +1467,7 @@ function generateBingoCards(){
   const n=Math.max(1,Math.min(200,parseInt(val('bingoAnzahl'),10)||1));
   bingoCards=Array.from({length:n},()=>generateBingoCard());
   bingoWinLog=[]; bingoJustWon=[]; bingoCardStatus={}; bingoMemberWinLog=[]; bingoMemberJustWon=[];
+  bingoTeamduellSettled=false;
   bingoGeneration++;
   saveBingoState();
   renderBingo();
@@ -1670,6 +1682,7 @@ function renderBingoTeamScores(){
       +'. Jede Karte hat ihre Zahlen zufällig in den 6 Spalten verteilt – wird eine Zahl gezogen, bekommt ein Team auf jeder Karte, auf der die Zahl gerade in dessen Spalte steht, einen Punkt.';
   }
   renderBingoTeamduellLinkUI();
+  renderBingoTeamduellSettleUI();
   const el=document.getElementById('bingoTeamScores'); if(!el) return;
   if(!bingoCards.length){ el.innerHTML='<span class="submuted">Noch keine Karten generiert.</span>'; return; }
   const scores=bingoTeamScores();
@@ -1703,6 +1716,43 @@ async function bingoPushTeamduellScores(scores){
     const {error}=await sb.from('bingo_teamduell_punkte').upsert(rows,{onConflict:'team'});
     if(error) console.warn('bingo_teamduell_punkte push:',error.message);
   }catch(e){ console.warn('bingo_teamduell_punkte push failed:',e); }
+}
+function renderBingoTeamduellSettleUI(){
+  const btn=document.getElementById('bingoTeamduellSettleBtn');
+  const statusEl=document.getElementById('bingoTeamduellSettleStatus');
+  if(btn){ btn.disabled=bingoTeamduellSettled || !bingoCards.length; btn.textContent=bingoTeamduellSettled?'🏁 Bereits abgerechnet':'🏁 Bingo beenden'; }
+  if(statusEl) statusEl.textContent=bingoTeamduellSettled?'✅ Punkte wurden bereits ins echte Teamduell übertragen (zählen jetzt im Gesamt-Punktestand der App mit).':`Noch nicht abgerechnet – "Bingo beenden" überträgt den aktuellen Punktestand einmalig (halbiert, 1 Bingo-Punkt = ${BINGO_TEAMDUELL_PUNKT_FAKTOR} Teamduell-Punkt) als abgeschlossene Runde ins echte Teamduell.`;
+}
+// Einmalige Abrechnung am Ende eines Bingo-Spiels: aktuellen K/R/M/S-Punktestand halbiert als
+// neue, bereits abgeschlossene Runde (status 'done') ins echte Teamduell-System einbuchen –
+// landet damit automatisch im normalen Gesamt-Punktestand der App (teamduell_ergebnisse wird
+// dort einfach aufsummiert, unabhängig von Status/Kategorie der Runde). Komplett getrennt von
+// der Live-Anzeige (bingo_teamduell_*-Tabellen), die weiterhin nur zum Mitverfolgen dient.
+async function bingoSettleTeamduell(){
+  if(bingoTeamduellSettled){ alert('Dieses Bingo-Spiel wurde bereits abgerechnet.'); return; }
+  if(!bingoCards.length){ alert('Noch keine Karten generiert.'); return; }
+  const scores=bingoTeamScores();
+  const halbiert=scores.map(s=>Math.round(s*BINGO_TEAMDUELL_PUNKT_FAKTOR));
+  const summary=BINGO_TEAM_NAMES.map((name,i)=>`${name}: ${scores[i]} → ${halbiert[i]}`).join('\n');
+  if(!confirm(`Bingo beenden und Punkte ins echte Teamduell übertragen?\n\n${summary}\n\nDas lässt sich nicht rückgängig machen.`)) return;
+  const btn=document.getElementById('bingoTeamduellSettleBtn');
+  await withBtn(btn, async()=>{
+    const eventName=val('bingoEventName')||'Kirmes-Bingo';
+    const {data:runde,error:rErr}=await sb.from('teamduell_runden').insert({
+      titel:`🎉 ${eventName}`, status:'done', kategorie:'bingo', mit_platzierung:false
+    }).select().single();
+    if(rErr) throw rErr;
+    const rows=BINGO_TEAM_NAMES.map((name,i)=>({runde_id:runde.id,team:BINGO_TEAMDUELL_KEY_MAP[name],punkte:halbiert[i]}));
+    const {error:eErr}=await sb.from('teamduell_ergebnisse').insert(rows);
+    if(eErr) throw eErr;
+    bingoTeamduellSettled=true;
+    await sb.from('bingo_teamduell_status').update({aktiv:false,updated_at:new Date().toISOString()}).eq('id',1);
+    bingoTeamduellLinked=false;
+    saveBingoState();
+    renderBingoTeamduellLinkUI();
+    renderBingoTeamduellSettleUI();
+    alert('🏁 Bingo beendet! Punkte sind jetzt Teil des echten Teamduell-Gesamtstands.');
+  });
 }
 // Primärer Weg: die Zahl, die live aus der echten Bingotrommel gezogen wurde, hier eintragen.
 function bingoManualDraw(){
