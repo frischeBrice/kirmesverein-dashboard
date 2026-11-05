@@ -300,6 +300,7 @@
     <button data-view="inventur" onclick="show('inventur')"
       onmouseenter="showInvFlyout(this)" onmouseleave="scheduleHideFlyout()">📦 Inventur ▾</button>
     <button data-view="dokumente" onclick="show('dokumente')">📄 Dokumente</button>
+    <button data-view="strafenauswertung" onclick="show('strafenauswertung')">📋 Strafenauswertung</button>
     <button data-view="staendchen" onclick="show('staendchen')">🎶 Ständchen</button>
     <button data-view="rentnerkirmes" onclick="show('rentnerkirmes')"
       onmouseenter="showVeranstFlyout(this)" onmouseleave="scheduleHideFlyout()">🎉 Veranstaltungen ▾</button>
@@ -679,6 +680,13 @@
       <div class="panel"><div id="dokumenteTable"></div></div>
     </section>
 
+    <!-- STRAFENAUSWERTUNG: Spiegel des Schreiberforums aus der App + Auswertung, primär zum
+         nachträglichen Korrigieren von Strafen am PC (nur Admin, wie auch sonst bei Strafenbeträgen). -->
+    <section class="view" id="strafenauswertung">
+      <div class="view-head"><h2>📋 Strafenauswertung</h2></div>
+      <div id="strafenauswertungBody"></div>
+    </section>
+
     <!-- STÄNDCHEN -->
     <section class="view" id="staendchen">
       <div class="view-head"><h2>🎶 Ständchen</h2></div>
@@ -837,6 +845,8 @@ let me = null;
 let members = [], transactions = [], events = [];
 let finanzKategorien = [];
 let ansaufenMottos = [];
+let strafenAlle = [];
+let strafenkatalog = [];
 let katTyp = 'einkauf'; // Kategorien-Verwaltung: aktuell ausgewählter Typ-Tab
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
@@ -1002,11 +1012,13 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am] = await Promise.all([
+  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
+    canSeeStrafen() ? sb.from('strafen').select('*').order('created_at',{ascending:false}) : Promise.resolve({data:[],error:null}),
+    canSeeStrafen() ? sb.from('strafenkatalog').select('*').order('gruppe').order('reihenfolge') : Promise.resolve({data:[],error:null}),
     sb.from('posten').select('id,titel,betrag,aktiv,gruppe,braucht_groesse').order('titel'),
     sb.from('posten_buchungen').select('id,posten_id,mitglied_id,betrag,titel,bezahlt,bezahlt_at,bearbeitet_von,bearbeitet_at,groesse,bemerkung'),
     sb.from('inventar').select('*').order('name'),
@@ -1060,6 +1072,10 @@ async function loadAll(){
   if(fk&&fk.error) console.warn('finanz_kategorien:',fk.error.message);
   ansaufenMottos = (am&&am.data)||[];
   if(am&&am.error) console.warn('ansaufen_mottos:',am.error.message);
+  strafenAlle = (sa&&sa.data)||[];
+  if(sa&&sa.error) console.warn('strafen:',sa.error.message);
+  strafenkatalog = (skat&&skat.data)||[];
+  if(skat&&skat.error) console.warn('strafenkatalog:',skat.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1108,7 +1124,7 @@ function show(v){
 }
 
 /* ================= Render ================= */
-function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderAnsaufen(); renderSonstiges(); renderReport(); renderKategorien(); }
+function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderAnsaufen(); renderStrafenauswertung(); renderSonstiges(); renderReport(); renderKategorien(); }
 
 /* ---- Ansaufen - Motto: Motto-Archiv (Supabase, mit der App verknüpft) + Teilnahme-Checkliste ---- */
 // Das als "ist_aktuell" markierte Motto ist das, was die App (z.B. bei der Motto-Bewertung) anzeigt.
@@ -1213,6 +1229,124 @@ function renderAnsaufenChecklist(){
       <label for="ans-${m.id}">${esc(m.display_name||m.username)}</label>
     </div>`;
   }).join('');
+}
+
+/* ---- Strafenauswertung: Spiegel des Schreiberforums + Auswertung, primär zum nachträglichen
+   Korrigieren von Strafen am PC. Nur Admin sichtbar (wie auch sonst bei Strafenbeträgen, siehe
+   canSeeStrafen()). Wer eine Strafe geschrieben hat, wird bewusst NIE angezeigt (auch nicht für
+   Admin) – genau wie im Schreiberforum der App selbst, wo jeder Eintrag ausnahmslos "von Anonym"
+   zeigt, damit geheime Schreiber wirklich anonym bleiben. ---- */
+function katalogName(id){ const k=strafenkatalog.find(x=>x.id===id); return k?k.name:null; }
+function strafeMemberLabel(s){
+  if(s.mitglied_id) return esc(memberName(s.mitglied_id));
+  return s.gast_name ? esc(s.gast_name)+' (Gast)' : '—';
+}
+function strafenauswertungStats(){
+  const byMember={};
+  strafenAlle.forEach(s=>{
+    const key=s.mitglied_id||('gast:'+(s.gast_name||'?'));
+    const label=s.mitglied_id?memberName(s.mitglied_id):((s.gast_name||'Unbekannt')+' (Gast)');
+    const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0,offen:0});
+    e.anzahl++; e.summe+=Number(s.betrag)||0;
+    if(!s.bezahlt) e.offen+=Number(s.betrag)||0;
+  });
+  const perMember=Object.values(byMember).sort((a,b)=>b.summe-a.summe);
+  const byKatalog={};
+  strafenAlle.forEach(s=>{
+    const key=s.katalog_id||'frei';
+    const label=s.katalog_id?(katalogName(s.katalog_id)||'Unbekanntes Vergehen'):(s.notiz||'Freitext');
+    const e=byKatalog[key]||(byKatalog[key]={label,anzahl:0,summe:0});
+    e.anzahl++; e.summe+=Number(s.betrag)||0;
+  });
+  const perKatalog=Object.values(byKatalog).sort((a,b)=>b.anzahl-a.anzahl).slice(0,10);
+  const gesamtSumme=strafenAlle.reduce((a,s)=>a+(Number(s.betrag)||0),0);
+  const gesamtOffen=strafenAlle.reduce((a,s)=>a+(s.bezahlt?0:Number(s.betrag)||0),0);
+  return {perMember,perKatalog,gesamtSumme,gesamtOffen,anzahl:strafenAlle.length};
+}
+function renderStrafenauswertung(){
+  const el=document.getElementById('strafenauswertungBody'); if(!el) return;
+  if(!canSeeStrafen()){ el.innerHTML='<div class="panel"><div class="empty">Nur für Admin sichtbar.</div></div>'; return; }
+  const st=strafenauswertungStats();
+  const q=(val('strafenauswertungSearch')||'').toLowerCase();
+  const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
+  const list=strafenAlle.filter(s=>{
+    if(nurOffen && s.bezahlt) return false;
+    if(!q) return true;
+    const name=(s.mitglied_id?memberName(s.mitglied_id):(s.gast_name||'')).toLowerCase();
+    const verg=(s.katalog_id?(katalogName(s.katalog_id)||''):'').toLowerCase();
+    return name.includes(q) || verg.includes(q) || (s.notiz||'').toLowerCase().includes(q);
+  });
+  el.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Strafen gesamt</div><div class="value">${st.anzahl}</div></div>
+      <div class="card"><div class="label">Summe</div><div class="value">${eur(st.gesamtSumme)}</div></div>
+      <div class="card"><div class="label">davon offen</div><div class="value">${eur(st.gesamtOffen)}</div></div>
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
+      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe','Offen'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.offen>0?`<span class="pill no mini">${eur(e.offen)}</span>`:'<span class="pill ok mini">bezahlt</span>'])):'<div class="empty">Keine Strafen erfasst.</div>'}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">🔥 Häufigste Vergehen</h3></div>
+      ${st.perKatalog.length?tbl(['Vergehen','Anzahl','Summe'],st.perKatalog.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Daten.</div>'}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📋 Alle Strafen (Forum-Spiegel)</h3></div>
+      <div class="submuted" style="margin:-4px 0 12px">Wer eine Strafe eingetragen hat, bleibt bewusst anonym – genau wie im Schreiberforum der App selbst. Hier lassen sich Strafen nachträglich korrigieren oder löschen.</div>
+      <div class="filterbar">
+        <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz…" oninput="renderStrafenauswertung()" style="flex:3;min-width:220px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="strafenauswertungNurOffen" style="width:auto" onchange="renderStrafenauswertung()">Nur offene</label>
+      </div>
+      ${list.length?tbl(['Datum','Mitglied','Vergehen','Betrag','Status','Notiz',''],list.map(s=>[
+        new Date(s.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}),
+        strafeMemberLabel(s),
+        esc(s.katalog_id?(katalogName(s.katalog_id)||'—'):'—'),
+        eur(Number(s.betrag)||0),
+        s.bezahlt?'<span class="pill ok mini">bezahlt</span>':'<span class="pill no mini">offen</span>',
+        `<span class="submuted">${esc(s.notiz||'')}</span>`,
+        `<button class="icon-btn" title="Bearbeiten" onclick="editStrafeModal('${s.id}')">✏️</button><button class="icon-btn" title="Löschen" onclick="delStrafe('${s.id}')">🗑</button>`
+      ])):'<div class="empty">Keine Strafen gefunden.</div>'}
+    </div>`;
+}
+function editStrafeModal(id){
+  const s=strafenAlle.find(x=>x.id===id); if(!s) return;
+  const katOptions=strafenkatalog.map(k=>`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===s.katalog_id?'selected':''}>${esc(k.gruppe?k.gruppe+' – ':'')}${esc(k.name)} (${eur(k.betrag)})</option>`).join('');
+  openModal(`<h3>Strafe bearbeiten</h3>
+    <label class="field"><span>Mitglied</span>
+      <select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(m=>`<option value="${m.id}" ${m.id===s.mitglied_id?'selected':''}>${esc(m.display_name||m.username)}</option>`).join('')}</select>
+    </label>
+    <label class="field"><span>Vergehen</span>
+      <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag) document.getElementById('sa_betrag').value=o.dataset.betrag;">${katOptions}</select>
+    </label>
+    <div class="grid2">
+      <label class="field"><span>Betrag (€)</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
+      <label class="field"><span>Status</span>
+        <select id="sa_bezahlt"><option value="0" ${!s.bezahlt?'selected':''}>Offen</option><option value="1" ${s.bezahlt?'selected':''}>Bezahlt</option></select>
+      </label>
+    </div>
+    <label class="field"><span>Ort</span><input id="sa_ort" value="${esc(s.ort||'')}"></label>
+    <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveStrafeEdit('${id}',this)">Speichern</button></div>`,true);
+}
+function saveStrafeEdit(id,btn){
+  const row={
+    mitglied_id: val('sa_mitglied')||null,
+    katalog_id: val('sa_katalog')||null,
+    betrag: parseFloat(val('sa_betrag'))||0,
+    bezahlt: val('sa_bezahlt')==='1',
+    ort: val('sa_ort')||null,
+    notiz: val('sa_notiz')||null,
+  };
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('strafen').update(row).eq('id',id);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+function delStrafe(id){
+  if(!confirm('Diese Strafe wirklich löschen? Das kann nicht rückgängig gemacht werden.')) return;
+  sb.from('strafen').delete().eq('id',id).then(({error})=>{ if(error) alert('Fehler: '+error.message); else loadAll(); });
 }
 
 /* ---- Rentnerkirmes: Bingo ---- */
