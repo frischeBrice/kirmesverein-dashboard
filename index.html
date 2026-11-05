@@ -756,9 +756,18 @@
     <section class="view" id="ansaufen">
       <div class="view-head"><h2>🍻 Ansaufen - Motto</h2><span class="submuted" id="ansaufenMottoHeading" style="font-size:15px;margin-left:12px"></span></div>
       <div class="panel">
-        <div class="sectionbar"><h3 style="font-size:15px">🎭 Motto</h3></div>
-        <input type="text" id="ansaufenMotto" placeholder="z. B. Zirkus, Mottenkiste, 80er…" style="width:100%;max-width:420px;padding:9px 12px;font-size:16px;font-weight:700" oninput="saveAnsaufenMotto()">
-        <div class="submuted" style="margin-top:6px">Nur auf diesem Gerät gespeichert (wie die Checkliste unten) – hier festhalten, worauf ihr euch geeinigt habt.</div>
+        <div class="sectionbar"><h3 style="font-size:15px">🎭 Motto-Archiv</h3></div>
+        <div class="submuted" style="margin:-4px 0 12px">In der Datenbank gespeichert – das als "aktuell" markierte Motto sehen auch die Mitglieder in der App (z.B. bei der Motto-Bewertung). Ältere/zukünftige Mottos könnt ihr hier auch nachträglich eintragen.</div>
+        <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;flex:2;min-width:200px">Motto
+            <input type="text" id="ansaufenMottoNeu" placeholder="z. B. Zirkus, Mottenkiste, 80er…" style="padding:8px 10px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">Datum (optional)
+            <input type="date" id="ansaufenMottoDatum" style="padding:8px 10px">
+          </label>
+          <button class="btn" onclick="addAnsaufenMotto()">➕ Hinzufügen</button>
+        </div>
+        <div id="ansaufenMottoListe"></div>
       </div>
       <div class="panel">
         <div class="sectionbar"><h3 style="font-size:15px">✅ Teilnahme-Checkliste</h3>
@@ -827,6 +836,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let me = null;
 let members = [], transactions = [], events = [];
 let finanzKategorien = [];
+let ansaufenMottos = [];
 let katTyp = 'einkauf'; // Kategorien-Verwaltung: aktuell ausgewählter Typ-Tab
 let strafenMap = {}, postenMap = {};
 let posten = [], postenBuchungen = [], postenSel = null;
@@ -992,7 +1002,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk] = await Promise.all([
+  const [m,t,e,s,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -1017,6 +1027,7 @@ async function loadAll(){
     sb.from('staendchen').select('*').order('name'),
     sb.from('staendchen_spendendosen').select('*').order('created_at',{ascending:false}),
     sb.from('finanz_kategorien').select('*').order('name'),
+    sb.from('ansaufen_mottos').select('*').order('datum',{ascending:false,nullsFirst:false}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -1047,6 +1058,8 @@ async function loadAll(){
   if(sd&&sd.error) console.warn('staendchen_spendendosen:',sd.error.message);
   finanzKategorien = (fk&&fk.data)||[];
   if(fk&&fk.error) console.warn('finanz_kategorien:',fk.error.message);
+  ansaufenMottos = (am&&am.data)||[];
+  if(am&&am.error) console.warn('ansaufen_mottos:',am.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1097,27 +1110,63 @@ function show(v){
 /* ================= Render ================= */
 function renderAll(){ renderDashboard(); renderMembers(); renderHelfer(); renderFinance(); renderBeitraege(); renderSponsoren(); renderEvents(); renderKalender(); renderInventur(); renderKleiderverleih(); renderFundsachen(); renderDokumente(); renderStaendchen(); renderBingo(); renderAnsaufen(); renderSonstiges(); renderReport(); renderKategorien(); }
 
-/* ---- Ansaufen - Motto: Thema/Motto + Teilnahme-Checkliste aller Mitglieder ---- */
-// Nur lokal gespeichert (wie die Bingo-Liste) – reines Festhalten/Abhaken, keine Vereinsstatistik.
-const ANSAUFEN_MOTTO_LS_KEY='kv_ansaufen_motto_v1';
-let ansaufenMottoLoaded=false;
-function loadAnsaufenMotto(){
-  ansaufenMottoLoaded=true;
-  let m=''; try{ m=localStorage.getItem(ANSAUFEN_MOTTO_LS_KEY)||''; }catch(e){}
-  const el=document.getElementById('ansaufenMotto'); if(el) el.value=m;
-  renderAnsaufenMottoHeading();
-}
-function saveAnsaufenMotto(){
-  try{ localStorage.setItem(ANSAUFEN_MOTTO_LS_KEY, val('ansaufenMotto')||''); }catch(e){}
-  renderAnsaufenMottoHeading();
-}
+/* ---- Ansaufen - Motto: Motto-Archiv (Supabase, mit der App verknüpft) + Teilnahme-Checkliste ---- */
+// Das als "ist_aktuell" markierte Motto ist das, was die App (z.B. bei der Motto-Bewertung) anzeigt.
+// Nur jeweils EIN Eintrag kann aktuell sein (partial unique index in der DB erzwingt das zusätzlich).
+function ansaufenAktuellesMotto(){ return ansaufenMottos.find(m=>m.ist_aktuell) || null; }
 function renderAnsaufenMottoHeading(){
   const el=document.getElementById('ansaufenMottoHeading');
-  const m=val('ansaufenMotto');
-  if(el) el.textContent = m ? `– Motto: ${m}` : '';
+  const cur=ansaufenAktuellesMotto();
+  if(el) el.textContent = cur ? `– Motto: ${cur.motto}` : '';
+}
+async function addAnsaufenMotto(){
+  const motto=(val('ansaufenMottoNeu')||'').trim();
+  if(!motto){ alert('Bitte ein Motto eingeben.'); return; }
+  const datum=val('ansaufenMottoDatum')||null;
+  const {data,error}=await sb.from('ansaufen_mottos').insert({motto,datum,created_by:me.id}).select().single();
+  if(error){ alert('Fehler: '+error.message); return; }
+  ansaufenMottos.push(data);
+  document.getElementById('ansaufenMottoNeu').value='';
+  document.getElementById('ansaufenMottoDatum').value='';
+  renderAnsaufenMottoArchiv();
+}
+async function setAnsaufenMottoAktuell(id){
+  const cur=ansaufenAktuellesMotto();
+  if(cur && cur.id===id) return;
+  if(cur){
+    const {error}=await sb.from('ansaufen_mottos').update({ist_aktuell:false}).eq('id',cur.id);
+    if(error){ alert('Fehler: '+error.message); return; }
+    cur.ist_aktuell=false;
+  }
+  const {error}=await sb.from('ansaufen_mottos').update({ist_aktuell:true}).eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  const m=ansaufenMottos.find(x=>x.id===id); if(m) m.ist_aktuell=true;
+  renderAnsaufenMottoArchiv();
+}
+async function delAnsaufenMotto(id){
+  if(!confirm('Dieses Motto wirklich aus dem Archiv löschen?')) return;
+  const {error}=await sb.from('ansaufen_mottos').delete().eq('id',id);
+  if(error){ alert('Fehler: '+error.message); return; }
+  ansaufenMottos=ansaufenMottos.filter(m=>m.id!==id);
+  renderAnsaufenMottoArchiv();
+}
+function renderAnsaufenMottoArchiv(){
+  renderAnsaufenMottoHeading();
+  const el=document.getElementById('ansaufenMottoListe'); if(!el) return;
+  if(!ansaufenMottos.length){ el.innerHTML='<div class="empty">Noch keine Mottos im Archiv.</div>'; return; }
+  const list=[...ansaufenMottos].sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')||(b.created_at||'').localeCompare(a.created_at||''));
+  el.innerHTML=list.map(m=>`
+    <div class="ans-row${m.ist_aktuell?' checked':''}">
+      <div style="flex:1">
+        <b>${esc(m.motto)}</b>${m.datum?` <span class="submuted">· ${new Date(m.datum).toLocaleDateString('de-DE')}</span>`:''}
+        ${m.ist_aktuell?' <span class="pill ok mini">★ Aktuell</span>':''}
+      </div>
+      ${!m.ist_aktuell?`<button class="btn ghost sm" onclick="setAnsaufenMottoAktuell('${m.id}')">★ Als aktuell markieren</button>`:''}
+      <button class="icon-btn" title="Löschen" onclick="delAnsaufenMotto('${m.id}')">🗑</button>
+    </div>`).join('');
 }
 function renderAnsaufen(){
-  if(!ansaufenMottoLoaded) loadAnsaufenMotto();
+  renderAnsaufenMottoArchiv();
   renderAnsaufenChecklist();
 }
 let ansaufenChecked=new Set();
