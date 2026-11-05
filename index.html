@@ -1687,13 +1687,23 @@ function renderBingoTeamScores(){
   if(!bingoCards.length){ el.innerHTML='<span class="submuted">Noch keine Karten generiert.</span>'; return; }
   const scores=bingoTeamScores();
   el.innerHTML=BINGO_TEAM_LETTERS.map((letter,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;font-weight:700;font-size:13px;background:${BINGO_TEAM_COLORS[i]};color:#fff">${letter} = Team ${BINGO_TEAM_NAMES[i]}: ${scores[i]}</span>`).join('');
-  if(bingoTeamduellLinked) bingoPushTeamduellScores(scores);
+  if(bingoTeamduellLinked) bingoPushTeamduellScores(bingoHalvedTeamScores(scores));
+}
+// Schon hier (nicht erst beim finalen "Bingo beenden") in echte Teamduell-Punkte umrechnen
+// (1 Bingo-Punkt = 0,5), damit die Live-Anzeige in der App exakt den Wert zeigt, der später auch
+// tatsächlich gebucht wird – sonst wirkt es so, als würde am Ende nicht wirklich halbiert (User-
+// Feedback: "sonst kommt es nur zur Verwirrung").
+// Abrunden statt normal runden: bei normalem Runden sieht z.B. 1 Bingo-Punkt (→0,5→1) aus wie
+// GAR NICHT halbiert, weil .5 aufgerundet wird – genau das hatte zur Verwirrung geführt. Abrunden
+// ist bei einem Faktor von 0,5 immer sichtbar kleiner als der Rohwert (außer bei 0).
+function bingoHalvedTeamScores(scores){
+  return (scores||bingoTeamScores()).map(s=>Math.floor(s*BINGO_TEAMDUELL_PUNKT_FAKTOR));
 }
 function renderBingoTeamduellLinkUI(){
   const btn=document.getElementById('bingoTeamduellLinkBtn');
   const statusEl=document.getElementById('bingoTeamduellLinkStatus');
   if(btn) btn.textContent=bingoTeamduellLinked?'🔌 Verknüpfung trennen':'🔗 Mit App verknüpfen';
-  if(statusEl) statusEl.textContent=bingoTeamduellLinked?'📡 Live verknüpft – Mitglieder sehen den Punktestand gerade live in der App (Teamduell-Tab).':'Noch nicht mit der App verknüpft – Punktestand ist nur hier im Dashboard sichtbar.';
+  if(statusEl) statusEl.textContent=bingoTeamduellLinked?`📡 Live verknüpft – Mitglieder sehen in der App bereits die umgerechneten Teamduell-Punkte (1 Bingo-Punkt = ${BINGO_TEAMDUELL_PUNKT_FAKTOR}).`:'Noch nicht mit der App verknüpft – Punktestand ist nur hier im Dashboard sichtbar.';
 }
 async function bingoToggleTeamduellLink(){
   const btn=document.getElementById('bingoTeamduellLinkBtn');
@@ -1702,14 +1712,14 @@ async function bingoToggleTeamduellLink(){
     const {error}=await sb.from('bingo_teamduell_status').update({aktiv:neu,updated_at:new Date().toISOString()}).eq('id',1);
     if(error) throw error;
     bingoTeamduellLinked=neu;
-    if(neu) await bingoPushTeamduellScores(bingoTeamScores());
+    if(neu) await bingoPushTeamduellScores(bingoHalvedTeamScores());
     saveBingoState();
     renderBingoTeamduellLinkUI();
   });
 }
-// Live-Push der aktuellen Punktestände, feuert bei jedem Zug (Zahl ziehen/entfernen,
-// Kartenstatus ändern) mit, solange verknüpft ist – bewusst "fire and forget" (kein await im
-// Aufrufer), damit ein langsames Netzwerk die normale Bedienung nicht blockiert.
+// Live-Push der bereits umgerechneten (halbierten) Punktestände, feuert bei jedem Zug (Zahl
+// ziehen/entfernen, Kartenstatus ändern) mit, solange verknüpft ist – bewusst "fire and forget"
+// (kein await im Aufrufer), damit ein langsames Netzwerk die normale Bedienung nicht blockiert.
 async function bingoPushTeamduellScores(scores){
   try{
     const rows=BINGO_TEAM_NAMES.map((name,i)=>({team:BINGO_TEAMDUELL_KEY_MAP[name],punkte:scores[i],updated_at:new Date().toISOString()}));
@@ -1732,7 +1742,7 @@ async function bingoSettleTeamduell(){
   if(bingoTeamduellSettled){ alert('Dieses Bingo-Spiel wurde bereits abgerechnet.'); return; }
   if(!bingoCards.length){ alert('Noch keine Karten generiert.'); return; }
   const scores=bingoTeamScores();
-  const halbiert=scores.map(s=>Math.round(s*BINGO_TEAMDUELL_PUNKT_FAKTOR));
+  const halbiert=bingoHalvedTeamScores(scores);
   const summary=BINGO_TEAM_NAMES.map((name,i)=>`${name}: ${scores[i]} → ${halbiert[i]}`).join('\n');
   if(!confirm(`Bingo beenden und Punkte ins echte Teamduell übertragen?\n\n${summary}\n\nDas lässt sich nicht rückgängig machen.`)) return;
   const btn=document.getElementById('bingoTeamduellSettleBtn');
