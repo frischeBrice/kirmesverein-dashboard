@@ -727,8 +727,12 @@
         <div id="bingoNumberGrid" style="display:grid;grid-template-columns:repeat(10,1fr);gap:6px;max-width:580px"></div>
       </div>
       <div class="panel">
-        <div class="sectionbar"><h3 style="font-size:15px">👥 Team-Duell (nur intern)</h3></div>
+        <div class="sectionbar"><h3 style="font-size:15px">👥 Team-Duell (nur intern)</h3>
+          <span class="grow"></span>
+          <button class="btn ghost sm" id="bingoTeamduellLinkBtn" onclick="bingoToggleTeamduellLink()">🔗 Mit App verknüpfen</button>
+        </div>
         <div class="submuted" style="margin:-4px 0 12px" id="bingoTeamLegend"></div>
+        <div class="submuted" id="bingoTeamduellLinkStatus" style="margin:-4px 0 12px"></div>
         <div id="bingoTeamScores" style="display:flex;gap:10px;flex-wrap:wrap"></div>
       </div>
       <div class="panel">
@@ -1399,6 +1403,12 @@ let bingoGeneration=0;
 // Seite darf den Kontrolleur nicht zurück auf Null werfen, deshalb Stand im Browser merken.
 const BINGO_LS_KEY='kv_bingo_state_v1';
 let bingoLoaded=false;
+// Verknüpfung mit dem Teamduell-Tab der App: wenn aktiv, wird bei jeder Punkteänderung der
+// aktuelle K/R/M/S-Punktestand live nach Supabase gepusht (eigene, vom echten Teamduell-System
+// komplett unabhängige Tabellen, siehe sql/add_bingo_teamduell.sql), und die App zeigt eine
+// Live-Balkenkarte an. Persistiert, damit die Verknüpfung ein Neuladen übersteht.
+let bingoTeamduellLinked=false;
+const BINGO_TEAMDUELL_KEY_MAP={'Rot':'rot','Blau':'blau','Grün':'gruen','Gelb':'gelb'};
 function saveBingoState(){
   try{
     localStorage.setItem(BINGO_LS_KEY, JSON.stringify({
@@ -1412,7 +1422,8 @@ function saveBingoState(){
       prizeCount: val('bingoPrizeCount')||'',
       generation: bingoGeneration,
       schnaps: bingoSchnapsEnabled(),
-      cardStatus: bingoCardStatus
+      cardStatus: bingoCardStatus,
+      teamduellLinked: bingoTeamduellLinked
     }));
   }catch(e){}
 }
@@ -1428,6 +1439,7 @@ function loadBingoState(){
     if(Array.isArray(st.memberWinLog)) bingoMemberWinLog=st.memberWinLog;
     if(st.generation!=null) bingoGeneration=st.generation;
     if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
+    bingoTeamduellLinked=!!st.teamduellLinked;
     const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
     const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
     const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
@@ -1657,10 +1669,40 @@ function renderBingoTeamScores(){
         return `${l}${t>=0?' = Team '+BINGO_TEAM_NAMES[t]:' = neutral'}`; }).join(', ')
       +'. Jede Karte hat ihre Zahlen zufällig in den 6 Spalten verteilt – wird eine Zahl gezogen, bekommt ein Team auf jeder Karte, auf der die Zahl gerade in dessen Spalte steht, einen Punkt.';
   }
+  renderBingoTeamduellLinkUI();
   const el=document.getElementById('bingoTeamScores'); if(!el) return;
   if(!bingoCards.length){ el.innerHTML='<span class="submuted">Noch keine Karten generiert.</span>'; return; }
   const scores=bingoTeamScores();
   el.innerHTML=BINGO_TEAM_LETTERS.map((letter,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;font-weight:700;font-size:13px;background:${BINGO_TEAM_COLORS[i]};color:#fff">${letter} = Team ${BINGO_TEAM_NAMES[i]}: ${scores[i]}</span>`).join('');
+  if(bingoTeamduellLinked) bingoPushTeamduellScores(scores);
+}
+function renderBingoTeamduellLinkUI(){
+  const btn=document.getElementById('bingoTeamduellLinkBtn');
+  const statusEl=document.getElementById('bingoTeamduellLinkStatus');
+  if(btn) btn.textContent=bingoTeamduellLinked?'🔌 Verknüpfung trennen':'🔗 Mit App verknüpfen';
+  if(statusEl) statusEl.textContent=bingoTeamduellLinked?'📡 Live verknüpft – Mitglieder sehen den Punktestand gerade live in der App (Teamduell-Tab).':'Noch nicht mit der App verknüpft – Punktestand ist nur hier im Dashboard sichtbar.';
+}
+async function bingoToggleTeamduellLink(){
+  const btn=document.getElementById('bingoTeamduellLinkBtn');
+  const neu=!bingoTeamduellLinked;
+  await withBtn(btn, async()=>{
+    const {error}=await sb.from('bingo_teamduell_status').update({aktiv:neu,updated_at:new Date().toISOString()}).eq('id',1);
+    if(error) throw error;
+    bingoTeamduellLinked=neu;
+    if(neu) await bingoPushTeamduellScores(bingoTeamScores());
+    saveBingoState();
+    renderBingoTeamduellLinkUI();
+  });
+}
+// Live-Push der aktuellen Punktestände, feuert bei jedem Zug (Zahl ziehen/entfernen,
+// Kartenstatus ändern) mit, solange verknüpft ist – bewusst "fire and forget" (kein await im
+// Aufrufer), damit ein langsames Netzwerk die normale Bedienung nicht blockiert.
+async function bingoPushTeamduellScores(scores){
+  try{
+    const rows=BINGO_TEAM_NAMES.map((name,i)=>({team:BINGO_TEAMDUELL_KEY_MAP[name],punkte:scores[i],updated_at:new Date().toISOString()}));
+    const {error}=await sb.from('bingo_teamduell_punkte').upsert(rows,{onConflict:'team'});
+    if(error) console.warn('bingo_teamduell_punkte push:',error.message);
+  }catch(e){ console.warn('bingo_teamduell_punkte push failed:',e); }
 }
 // Primärer Weg: die Zahl, die live aus der echten Bingotrommel gezogen wurde, hier eintragen.
 function bingoManualDraw(){
