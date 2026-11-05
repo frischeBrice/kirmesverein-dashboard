@@ -1018,7 +1018,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am] = await Promise.all([
+  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am,bs] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -1046,6 +1046,7 @@ async function loadAll(){
     sb.from('staendchen_spendendosen').select('*').order('created_at',{ascending:false}),
     sb.from('finanz_kategorien').select('*').order('name'),
     sb.from('ansaufen_mottos').select('*').order('datum',{ascending:false,nullsFirst:false}),
+    sb.from('bingo_state').select('state').eq('id',1).maybeSingle(),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -1082,6 +1083,8 @@ async function loadAll(){
   if(sa&&sa.error) console.warn('strafen:',sa.error.message);
   strafenkatalog = (skat&&skat.data)||[];
   if(skat&&skat.error) console.warn('strafenkatalog:',skat.error.message);
+  bingoRemoteState = (bs&&bs.data&&bs.data.state)||null;
+  if(bs&&bs.error) console.warn('bingo_state:',bs.error.message);
   // Offene Beträge aus der App (Strafen + Posten) je Mitglied – defensiv, falls Zugriff fehlt
   strafenMap={}; (s&&s.data||[]).forEach(x=>{ strafenMap[x.mitglied_id]=(strafenMap[x.mitglied_id]||0)+Number(x.betrag); });
   postenMap={}; postenBuchungen.filter(x=>!x.bezahlt).forEach(x=>{ postenMap[x.mitglied_id]=(postenMap[x.mitglied_id]||0)+Number(x.betrag); });
@@ -1402,8 +1405,13 @@ let bingoGameOverNotified=false;
 // Stand abgleichen lässt, falls aus Versehen nochmal neu generiert wurde.
 let bingoGeneration=0;
 // Karten und gezogene Zahlen liegen im echten Spiel auf Papier/in der Trommel – ein Neuladen der
-// Seite darf den Kontrolleur nicht zurück auf Null werfen, deshalb Stand im Browser merken.
-const BINGO_LS_KEY='kv_bingo_state_v1';
+// Seite darf den Kontrolleur nicht zurück auf Null werfen. Stand liegt deshalb geräteübergreifend
+// in Supabase (bingo_state, EINE gemeinsame Zeile, siehe sql/add_bingo_state.sql) statt nur lokal
+// im Browser – sonst zeigt z.B. der Laptop nach dem Neuladen eine andere Generation als der PC.
+// bingoRemoteState wird einmalig beim Seitenaufruf in loadAll() geladen (Promise.all), bevor
+// renderBingo() überhaupt läuft – loadBingoState() kann sich also synchron darauf verlassen.
+let bingoRemoteState=null;
+const BINGO_LS_KEY='kv_bingo_state_v1'; // alter, rein lokaler Stand – nur noch für die einmalige Migration gelesen
 let bingoLoaded=false;
 // Verknüpfung mit dem Teamduell-Tab der App: wenn aktiv, wird bei jeder Punkteänderung der
 // aktuelle K/R/M/S-Punktestand live nach Supabase gepusht (eigene, vom echten Teamduell-System
@@ -1418,44 +1426,61 @@ let bingoTeamduellLinked=false;
 let bingoTeamduellSettled=false;
 const BINGO_TEAMDUELL_KEY_MAP={'Rot':'rot','Blau':'blau','Grün':'gruen','Gelb':'gelb'};
 const BINGO_TEAMDUELL_PUNKT_FAKTOR=0.5;
-function saveBingoState(){
+// Fire-and-forget wie bingoPushTeamduellScores: wird an ~15 Stellen ohne await aufgerufen, damit
+// kein Zug/Klick auf ein langsames Netzwerk warten muss. bingoRemoteState wird sofort lokal
+// aktualisiert, damit ein unmittelbar folgendes Re-Render konsistent bleibt, auch bevor die
+// Supabase-Antwort da ist.
+async function saveBingoState(){
+  const payload={
+    eventName: val('bingoEventName')||'',
+    anzahl: val('bingoAnzahl')||'',
+    cards: bingoCards,
+    drawn: Array.from(bingoDrawn),
+    last: bingoLastDrawn,
+    winLog: bingoWinLog,
+    memberWinLog: bingoMemberWinLog,
+    prizeCount: val('bingoPrizeCount')||'',
+    generation: bingoGeneration,
+    schnaps: bingoSchnapsEnabled(),
+    cardStatus: bingoCardStatus,
+    teamduellLinked: bingoTeamduellLinked,
+    teamduellSettled: bingoTeamduellSettled
+  };
+  bingoRemoteState=payload;
   try{
-    localStorage.setItem(BINGO_LS_KEY, JSON.stringify({
-      eventName: val('bingoEventName')||'',
-      anzahl: val('bingoAnzahl')||'',
-      cards: bingoCards,
-      drawn: Array.from(bingoDrawn),
-      last: bingoLastDrawn,
-      winLog: bingoWinLog,
-      memberWinLog: bingoMemberWinLog,
-      prizeCount: val('bingoPrizeCount')||'',
-      generation: bingoGeneration,
-      schnaps: bingoSchnapsEnabled(),
-      cardStatus: bingoCardStatus,
-      teamduellLinked: bingoTeamduellLinked,
-      teamduellSettled: bingoTeamduellSettled
-    }));
-  }catch(e){}
+    const {error}=await sb.from('bingo_state').upsert({id:1, state:payload, updated_at:new Date().toISOString()});
+    if(error) console.warn('bingo_state speichern:',error.message);
+  }catch(e){ console.warn('bingo_state speichern fehlgeschlagen:',e); }
 }
 function loadBingoState(){
   bingoLoaded=true;
-  try{
-    const raw=localStorage.getItem(BINGO_LS_KEY); if(!raw) return;
-    const st=JSON.parse(raw);
-    if(Array.isArray(st.cards)) bingoCards=st.cards;
-    if(Array.isArray(st.drawn)) bingoDrawn=new Set(st.drawn);
-    if(st.last!=null) bingoLastDrawn=st.last;
-    if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
-    if(Array.isArray(st.memberWinLog)) bingoMemberWinLog=st.memberWinLog;
-    if(st.generation!=null) bingoGeneration=st.generation;
-    if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
-    bingoTeamduellLinked=!!st.teamduellLinked;
-    bingoTeamduellSettled=!!st.teamduellSettled;
-    const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
-    const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
-    const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
-    const schEl=document.getElementById('bingoSchnapsEnabled'); if(schEl) schEl.checked=!!st.schnaps;
-  }catch(e){}
+  let st=bingoRemoteState;
+  let needsMigration=false;
+  if(!st){
+    // Einmalige Migration: falls auf DIESEM Gerät noch ein alter, rein lokaler Stand von vor der
+    // Umstellung existiert (und Supabase noch komplett leer ist), als Startpunkt übernehmen und
+    // am Ende dieser Funktion hochladen – danach ist Supabase für alle Geräte die einzige Quelle.
+    try{
+      const raw=localStorage.getItem(BINGO_LS_KEY);
+      if(raw) st=JSON.parse(raw);
+    }catch(e){}
+    if(st) needsMigration=true;
+  }
+  if(!st) return;
+  if(Array.isArray(st.cards)) bingoCards=st.cards;
+  if(Array.isArray(st.drawn)) bingoDrawn=new Set(st.drawn);
+  if(st.last!=null) bingoLastDrawn=st.last;
+  if(Array.isArray(st.winLog)) bingoWinLog=st.winLog;
+  if(Array.isArray(st.memberWinLog)) bingoMemberWinLog=st.memberWinLog;
+  if(st.generation!=null) bingoGeneration=st.generation;
+  if(st.cardStatus && typeof st.cardStatus==='object') bingoCardStatus=st.cardStatus;
+  bingoTeamduellLinked=!!st.teamduellLinked;
+  bingoTeamduellSettled=!!st.teamduellSettled;
+  const evEl=document.getElementById('bingoEventName'); if(evEl && st.eventName!=null) evEl.value=st.eventName;
+  const anzEl=document.getElementById('bingoAnzahl'); if(anzEl && st.anzahl) anzEl.value=st.anzahl;
+  const pzEl=document.getElementById('bingoPrizeCount'); if(pzEl && st.prizeCount) pzEl.value=st.prizeCount;
+  const schEl=document.getElementById('bingoSchnapsEnabled'); if(schEl) schEl.checked=!!st.schnaps;
+  if(needsMigration) saveBingoState();
 }
 function generateBingoCard(){
   const pool=[]; for(let i=BINGO_MIN;i<=BINGO_MAX;i++) pool.push(i);
