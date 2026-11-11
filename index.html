@@ -1476,16 +1476,16 @@ function renderStrafenauswertung(){
       ${st.perKatalog.length?tbl(['Vergehen','Anzahl','Summe'],st.perKatalog.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Daten.</div>'}
     </div>`;
   } else {
-    const q=(val('strafenauswertungSearch')||'').toLowerCase();
-    const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
-    const parentMap=strafenParentNameMap();
-    const feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
-      if(nurOffen && item.bezahlt) return false;
-      if(!q) return true;
-      const names=[...item.members.map(m=>m.display_name||m.username||''), ...item.gastNamen].join(' ').toLowerCase();
-      const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
-      return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
-    });
+    // Die Filterleiste wird NUR beim Tab-Wechsel neu gebaut; jede Filteränderung ruft danach
+    // nur noch renderForumList() auf, das lediglich #forumCardsList ersetzt – so verliert das
+    // Suchfeld beim Tippen nicht ständig den Fokus (kompletter innerHTML-Ersatz würde das Input
+    // jedes Mal neu erzeugen).
+    const ortOptionsHtml=strafenForumOrtOptions().map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
+    const schreiberOptionsHtml = adminNamenSichtbar ? `
+        <select id="strafenauswertungSchreiber" onchange="renderForumList()" style="min-width:170px">
+          <option value="">👁 Alle Schreiber</option>
+          ${strafenForumWriters().map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}
+        </select>` : '';
     body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📋 Forum (1:1 wie in der App)</h3>
@@ -1495,13 +1495,71 @@ function renderStrafenauswertung(){
       </div>
       <div class="submuted" style="margin:-4px 0 12px">Wer eine Strafe eingetragen hat, bleibt bewusst anonym – genau wie im Schreiberforum der App selbst. Hier lassen sich Strafen nachträglich korrigieren oder löschen.</div>
       <div class="filterbar">
-        <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz…" oninput="renderStrafenauswertung()" style="flex:3;min-width:220px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="strafenauswertungNurOffen" style="width:auto" onchange="renderStrafenauswertung()">Nur offene</label>
+        <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz…" oninput="renderForumList()" style="flex:2;min-width:220px">
+        <select id="strafenauswertungOrt" onchange="renderForumList()" style="min-width:170px">
+          <option value="">📍 Alle Veranstaltungen</option>
+          ${ortOptionsHtml}
+        </select>
+        ${schreiberOptionsHtml}
+        <select id="strafenauswertungSort" onchange="renderForumList()" style="min-width:160px">
+          <option value="desc">⬇️ Neueste zuerst</option>
+          <option value="asc">⬆️ Älteste zuerst</option>
+        </select>
       </div>
-      ${feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>'}
+      <div class="filterbar" style="align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);flex:none">Von
+          <input type="date" id="strafenauswertungVon" onchange="renderForumList()">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);flex:none">Bis
+          <input type="date" id="strafenauswertungBis" onchange="renderForumList()">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding-bottom:9px"><input type="checkbox" id="strafenauswertungNurOffen" style="width:auto" onchange="renderForumList()">Nur offene</label>
+      </div>
+      <div id="forumCardsList"></div>
     </div>`;
   }
   el.innerHTML = nav + body;
+  if(tab==='forum') renderForumList();
+}
+// Distinct "Veranstaltung"-Werte (freies ort-Textfeld beim Eintragen in der App) für den Filter.
+function strafenForumOrtOptions(){
+  const set=new Set();
+  strafenAlle.forEach(s=>{ if(s.ort) set.add(s.ort); });
+  return [...set].sort((a,b)=>a.localeCompare(b,'de'));
+}
+// Nur Mitglieder, die tatsächlich mindestens eine Strafe geschrieben haben (actual_written_by) –
+// nicht alle Mitglieder, damit die Auswahl nicht zusätzliche Infos preisgibt.
+function strafenForumWriters(){
+  const ids=new Set();
+  strafenAlle.forEach(s=>{ if(s.actual_written_by) ids.add(s.actual_written_by); });
+  return [...ids].map(id=>members.find(m=>m.id===id)).filter(Boolean)
+    .sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+}
+// Baut NUR die Kartenliste neu (nicht die Filterleiste selbst) – wird von jeder Filteränderung
+// aufgerufen, damit z.B. das Suchfeld beim Tippen nicht den Fokus verliert.
+function renderForumList(){
+  const container=document.getElementById('forumCardsList'); if(!container) return;
+  const q=(val('strafenauswertungSearch')||'').toLowerCase();
+  const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
+  const ortFilter=val('strafenauswertungOrt')||'';
+  const schreiberFilter=val('strafenauswertungSchreiber')||'';
+  const von=val('strafenauswertungVon')||'';
+  const bis=val('strafenauswertungBis')||'';
+  const sort=val('strafenauswertungSort')||'desc';
+  const parentMap=strafenParentNameMap();
+  let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
+    if(nurOffen && item.bezahlt) return false;
+    if(ortFilter && item.ort!==ortFilter) return false;
+    if(schreiberFilter && item.actual_written_by!==schreiberFilter) return false;
+    if(von && new Date(item.created_at)<new Date(von+'T00:00:00')) return false;
+    if(bis && new Date(item.created_at)>new Date(bis+'T23:59:59')) return false;
+    if(!q) return true;
+    const names=[...item.members.map(m=>m.display_name||m.username||''), ...item.gastNamen].join(' ').toLowerCase();
+    const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
+    return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
+  });
+  feedList.sort((a,b)=> sort==='asc' ? new Date(a.created_at)-new Date(b.created_at) : new Date(b.created_at)-new Date(a.created_at));
+  container.innerHTML = feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
 }
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
 // Personen für denselben Vorfall – wie strafeIds bei GroupedEntry in der App). Vergehen/Betrag/
