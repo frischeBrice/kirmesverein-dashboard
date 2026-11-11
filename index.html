@@ -1417,34 +1417,48 @@ function strafenauswertungStats(){
   const gesamtOffen=strafenAlle.reduce((a,s)=>a+(s.bezahlt?0:Number(s.betrag)||0),0);
   return {perMember,perKatalog,gesamtSumme,gesamtOffen,anzahl:strafenAlle.length};
 }
+// Welcher der drei Unterbereiche gerade offen ist (persistiert nur für die laufende Sitzung,
+// wie die anderen flüchtigen UI-Filter dieser View auch).
+let strafenauswertungTab='forum';
+function setStrafenauswertungTab(tab){ strafenauswertungTab=tab; renderStrafenauswertung(); }
 function renderStrafenauswertung(){
   const el=document.getElementById('strafenauswertungBody'); if(!el) return;
   if(!canSeeStrafen()){ el.innerHTML='<div class="panel"><div class="empty">Nur für Admin sichtbar.</div></div>'; return; }
   const st=strafenauswertungStats();
-  const q=(val('strafenauswertungSearch')||'').toLowerCase();
-  const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
-  const parentMap=strafenParentNameMap();
-  const feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
-    if(nurOffen && item.bezahlt) return false;
-    if(!q) return true;
-    const names=[...item.members.map(m=>m.display_name||m.username||''), ...item.gastNamen].join(' ').toLowerCase();
-    const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
-    return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
-  });
-  el.innerHTML = `
+  const tab=strafenauswertungTab;
+  const tabBtn=(key,label)=>`<button class="btn ghost sm${tab===key?' active':''}" onclick="setStrafenauswertungTab('${key}')">${label}</button>`;
+  const nav=`<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">${tabBtn('forum','📋 Forum')}${tabBtn('auswertung','📊 Auswertung')}${tabBtn('statistik','📈 Statistik')}</div>`;
+
+  let body='';
+  if(tab==='auswertung'){
+    body=`
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
+      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe','Offen'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.offen>0?`<span class="pill no mini">${eur(e.offen)}</span>`:'<span class="pill ok mini">bezahlt</span>'])):'<div class="empty">Keine Strafen erfasst.</div>'}
+    </div>`;
+  } else if(tab==='statistik'){
+    body=`
     <div class="cards">
       <div class="card"><div class="label">Strafen gesamt</div><div class="value">${st.anzahl}</div></div>
       <div class="card"><div class="label">Summe</div><div class="value">${eur(st.gesamtSumme)}</div></div>
       <div class="card"><div class="label">davon offen</div><div class="value">${eur(st.gesamtOffen)}</div></div>
     </div>
     <div class="panel">
-      <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
-      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe','Offen'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.offen>0?`<span class="pill no mini">${eur(e.offen)}</span>`:'<span class="pill ok mini">bezahlt</span>'])):'<div class="empty">Keine Strafen erfasst.</div>'}
-    </div>
-    <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">🔥 Häufigste Vergehen</h3></div>
       ${st.perKatalog.length?tbl(['Vergehen','Anzahl','Summe'],st.perKatalog.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Daten.</div>'}
-    </div>
+    </div>`;
+  } else {
+    const q=(val('strafenauswertungSearch')||'').toLowerCase();
+    const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
+    const parentMap=strafenParentNameMap();
+    const feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
+      if(nurOffen && item.bezahlt) return false;
+      if(!q) return true;
+      const names=[...item.members.map(m=>m.display_name||m.username||''), ...item.gastNamen].join(' ').toLowerCase();
+      const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
+      return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
+    });
+    body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📋 Forum (1:1 wie in der App)</h3></div>
       <div class="submuted" style="margin:-4px 0 12px">Wer eine Strafe eingetragen hat, bleibt bewusst anonym – genau wie im Schreiberforum der App selbst. Hier lassen sich Strafen nachträglich korrigieren oder löschen.</div>
@@ -1454,6 +1468,8 @@ function renderStrafenauswertung(){
       </div>
       ${feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>'}
     </div>`;
+  }
+  el.innerHTML = nav + body;
 }
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
 // Personen für denselben Vorfall – wie strafeIds bei GroupedEntry in der App). Vergehen/Betrag/
