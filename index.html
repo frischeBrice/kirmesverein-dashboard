@@ -1574,7 +1574,7 @@ function renderStrafenauswertung(){
       </div>
       <div class="submuted" style="margin:-4px 0 12px">Wer eine Strafe eingetragen hat, bleibt bewusst anonym – genau wie im Schreiberforum der App selbst. Hier lassen sich Strafen nachträglich korrigieren oder löschen.</div>
       <div class="filterbar">
-        <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz…" oninput="renderForumList()" style="flex:2;min-width:220px">
+        <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz/Veranstaltung…" oninput="renderForumList()" style="flex:2;min-width:220px">
         <select id="strafenauswertungOrt" onchange="renderForumList()" style="min-width:170px">
           <option value="">📍 Alle Veranstaltungen</option>
           ${ortOptionsHtml}
@@ -1634,7 +1634,7 @@ function renderForumList(){
     if(!q) return true;
     const names=[...item.members.map(m=>m.display_name||m.username||''), ...item.gastNamen].join(' ').toLowerCase();
     const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
-    return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
+    return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q) || (item.ort||'').toLowerCase().includes(q);
   });
   feedList.sort((a,b)=>{
     if(sort==='betrag_desc') return b.betrag-a.betrag;
