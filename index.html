@@ -1694,9 +1694,10 @@ function editStrafeModal(idsStr){
   openModal(`<h3>Strafe bearbeiten${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
     ${mitgliedField}
     <label class="field"><span>Vergehen</span>
-      <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag) document.getElementById('sa_betrag').value=o.dataset.betrag;">${katOptions}</select>
+      <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag){ document.getElementById('sa_betrag').value=o.dataset.betrag; updateBetragTotalHint(${rows.length},'sa_betrag','betragTotalHintFull'); }">${katOptions}</select>
     </label>
-    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
+    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}" ${multi?`oninput="updateBetragTotalHint(${rows.length},'sa_betrag','betragTotalHintFull')"`:''}></label>
+    ${multi?`<div class="submuted" id="betragTotalHintFull" style="margin-top:-6px">${rows.length}× ${eur(Number(s.betrag)||0)} = ${eur((Number(s.betrag)||0)*rows.length)} insgesamt</div>`:''}
     <label class="field"><span>Datum &amp; Uhrzeit</span><input id="sa_datum" type="datetime-local" value="${toDatetimeLocalValue(s.created_at)}"></label>
     <label class="field"><span>Ort</span><input id="sa_ort" value="${esc(s.ort||'')}"></label>
     <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
@@ -1728,10 +1729,22 @@ function editBetragModal(idsStr){
   if(!rows.length) return;
   const s=rows[0];
   const multi=rows.length>1;
+  // Bei mehreren Personen gilt der Betrag PRO PERSON (wie auch die "Nx"-Anzeige auf der Karte) -
+  // der Gesamt-Hinweis macht den Multiplikator beim Ändern sofort sichtbar, statt dass man ihn
+  // übersieht und nur den Einzelbetrag ändert, ohne die Auswirkung aufs Ganze zu merken.
   openModal(`<h3>Betrag ändern${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
-    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag_only" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
+    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag_only" type="number" step="0.01" value="${Number(s.betrag)||0}" ${multi?`oninput="updateBetragTotalHint(${rows.length},'sa_betrag_only','betragTotalHint')"`:''}></label>
+    ${multi?`<div class="submuted" id="betragTotalHint" style="margin-top:-6px">${rows.length}× ${eur(Number(s.betrag)||0)} = ${eur((Number(s.betrag)||0)*rows.length)} insgesamt</div>`:''}
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveBetragOnly('${ids.join(',')}',this)">Speichern</button></div>`,true);
+}
+// Macht den Multiplikator bei Gruppen-Strafen (mehrere Personen) sofort sichtbar, egal in
+// welchem der beiden Betrag-Dialoge (voller Bearbeiten-Dialog oder schnelles Betrag-ändern-Modal)
+// getippt wird - sonst übersieht man leicht, dass der Betrag PRO PERSON gilt.
+function updateBetragTotalHint(count,inputId,hintId){
+  const v=parseFloat(val(inputId))||0;
+  const hint=document.getElementById(hintId);
+  if(hint) hint.textContent=`${count}× ${eur(v)} = ${eur(v*count)} insgesamt`;
 }
 function saveBetragOnly(idsStr,btn){
   const ids=idsStr.split(',');
