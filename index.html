@@ -126,18 +126,19 @@
   .forumDayDate{font-size:16px;font-weight:800;color:var(--text)}
   .forumDayEvent{font-size:13.5px;font-weight:700;color:var(--accent2)}
   .timelineRow{display:flex;gap:14px;margin-bottom:16px}
-  .timelineTime{flex:none;width:52px;text-align:right;padding-top:22px;margin-top:2px;color:var(--muted);font-size:13px;font-weight:700;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start}
+  .timelineTime{flex:none;width:64px;text-align:center;padding-top:20px;margin-top:2px;color:var(--muted);font-size:18px;font-weight:800;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start}
   .feedcard-main{display:flex;gap:16px}
   .feedcard-avatars{display:flex;flex:none;align-items:flex-start}
   .feedcard-avatars .pav{border:3px solid var(--panel);margin-left:-16px;background:#94a3b8}
   .feedcard-avatars .pav:first-child{margin-left:0}
   .feedcard-names{font-size:17px;font-weight:700}
-  /* Nummer und Vergehenstext sollen farblich gleich bleiben (keine eigene Akzentfarbe mehr für
-     den Paragraphen) – die Hervorhebung kommt nur noch über das fette Schriftgewicht. */
-  .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;color:var(--text);font-size:15.5px;font-weight:800;margin-top:5px;margin-bottom:2px;margin-left:-4px;padding:2px 4px;border-radius:6px;cursor:pointer;width:fit-content}
-  .feedcard-paragraph:hover{background:rgba(149,163,178,.14)}
-  .feedcard-paragraph.missing{color:var(--muted);font-style:italic}
-  .feedcard-vergehen{font-size:15.5px;color:var(--text);margin-top:4px;line-height:1.45}
+  /* Paragraph-Nummer und Vergehenstext in einer Zeile; Nummer als blaue Badge (die Farbe kam
+     gut an) zur Hervorhebung, der Text direkt daneben statt in einer eigenen Zeile darunter. */
+  .feedcard-vergehenline{display:flex;align-items:baseline;flex-wrap:wrap;gap:9px;margin-top:5px}
+  .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;background:rgba(58,134,232,.15);color:var(--accent2);font-size:13.5px;font-weight:800;padding:3px 11px;border-radius:7px;cursor:pointer;flex:none}
+  .feedcard-paragraph:hover{filter:brightness(1.2)}
+  .feedcard-paragraph.missing{background:rgba(149,163,178,.12);color:var(--muted);font-style:italic}
+  .feedcard-vergehen{font-size:15.5px;color:var(--text);line-height:1.45}
   .feedcard-notiz{background:rgba(149,163,178,.1);border-radius:9px;padding:11px 14px;margin-top:11px;font-size:14px;color:var(--text);line-height:1.45}
   .feedcard-img{max-width:100%;max-height:360px;border-radius:12px;margin-top:12px;display:block;object-fit:cover}
   .feedcard-zeichnung{margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--line);width:100%;max-width:440px}
@@ -1404,8 +1405,10 @@ function renderStrafeFeedCard(item,parentMap){
         <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
         <div style="flex:1;min-width:0">
           <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
-          <div class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></div>
-          <div class="feedcard-vergehen">${vergehenText}</div>
+          <div class="feedcard-vergehenline">
+            <span class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></span>
+            <span class="feedcard-vergehen">${vergehenText}</span>
+          </div>
         </div>
       </div>
       ${zusatzNotiz?`<div class="feedcard-notiz">💬 ${esc(item.notiz)}</div>`:''}
