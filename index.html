@@ -127,7 +127,9 @@
   .feedcard-avatars .pav{border:3px solid var(--panel);margin-left:-16px;background:#94a3b8}
   .feedcard-avatars .pav:first-child{margin-left:0}
   .feedcard-names{font-size:17px;font-weight:700}
-  .feedcard-paragraph{color:var(--accent2);font-size:12.5px;font-weight:700;margin-top:2px}
+  .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;background:rgba(58,134,232,.15);color:var(--accent2);font-size:13.5px;font-weight:800;padding:3px 11px;border-radius:7px;margin-top:5px;margin-bottom:3px;cursor:pointer;width:fit-content}
+  .feedcard-paragraph:hover{filter:brightness(1.2)}
+  .feedcard-paragraph.missing{background:rgba(149,163,178,.12);color:var(--muted);font-style:italic}
   .feedcard-vergehen{font-size:15.5px;color:var(--text);margin-top:4px;line-height:1.45}
   .feedcard-notiz{background:rgba(149,163,178,.1);border-radius:9px;padding:11px 14px;margin-top:11px;font-size:14px;color:var(--text);line-height:1.45}
   .feedcard-img{max-width:100%;max-height:360px;border-radius:12px;margin-top:12px;display:block;object-fit:cover}
@@ -1394,7 +1396,7 @@ function renderStrafeFeedCard(item,parentMap){
       <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
       <div style="flex:1;min-width:0">
         <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
-        ${paragraphRef?`<div class="feedcard-paragraph">${esc(paragraphRef)}</div>`:''}
+        <div class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></div>
         <div class="feedcard-vergehen">${vergehenText}</div>
       </div>
     </div>
@@ -1568,7 +1570,11 @@ function editStrafeModal(idsStr){
   if(!rows.length) return;
   const s=rows[0];
   const multi=rows.length>1;
-  const katOptions=strafenkatalog.map(k=>`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===s.katalog_id?'selected':''}>${esc(k.gruppe?k.gruppe+' – ':'')}${esc(k.name)} (${eur(k.betrag)})</option>`).join('');
+  // Platzhalter-Option: ohne sie würde der Browser bei einer Freitext-Strafe (katalog_id null)
+  // einfach den ersten Katalog-Eintrag optisch vorauswählen, der beim Speichern ohne Anfassen
+  // des Feldes dann versehentlich übernommen würde.
+  const katOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– Freitext / kein Vergehen –</option>'
+    +strafenkatalog.map(k=>`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===s.katalog_id?'selected':''}>${esc(k.gruppe?k.gruppe+' – ':'')}${esc(k.name)} (${eur(k.betrag)})</option>`).join('');
   const mitgliedField = multi
     ? `<label class="field"><span>Mitglieder</span><div class="submuted" style="margin-top:2px">${rows.map(r=>strafeMemberLabel(r)).join(', ')} — bei mehreren Personen hier nicht einzeln änderbar</div></label>`
     : `<label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(m=>`<option value="${m.id}" ${m.id===s.mitglied_id?'selected':''}>${esc(m.display_name||m.username)}</option>`).join('')}</select></label>`;
@@ -1577,12 +1583,7 @@ function editStrafeModal(idsStr){
     <label class="field"><span>Vergehen</span>
       <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag) document.getElementById('sa_betrag').value=o.dataset.betrag;">${katOptions}</select>
     </label>
-    <div class="grid2">
-      <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
-      <label class="field"><span>Status</span>
-        <select id="sa_bezahlt"><option value="0" ${!s.bezahlt?'selected':''}>Offen</option><option value="1" ${s.bezahlt?'selected':''}>Bezahlt</option></select>
-      </label>
-    </div>
+    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
     <label class="field"><span>Ort</span><input id="sa_ort" value="${esc(s.ort||'')}"></label>
     <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
@@ -1593,7 +1594,6 @@ function saveStrafeEdit(idsStr,btn){
   const row={
     katalog_id: val('sa_katalog')||null,
     betrag: parseFloat(val('sa_betrag'))||0,
-    bezahlt: val('sa_bezahlt')==='1',
     ort: val('sa_ort')||null,
     notiz: val('sa_notiz')||null,
   };
