@@ -118,7 +118,17 @@
   /* Strafenauswertung: 1:1-Spiegel der Forum-Feed-Karten aus der App (StrafenCard in FeedScreen.tsx) */
   /* Desktop-Lesegrößen statt 1:1-Handy-Maße – größere Schrift, mehr Luft, da auf dem PC
      ganz anders gelesen wird als auf dem Handydisplay in der App. */
-  .feedcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px;flex:1;min-width:0}
+  .feedcard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px;flex:1;min-width:0}
+  /* Drei-Spalten-Reihe (Uhrzeit | Karte | Betrag); Bearbeiten/Löschen stecken hinterm ⋮-Menü
+     oben rechts auf der Karte statt als zwei Buttons in der Fußzeile. */
+  .feedcard-menu-btn{position:absolute;top:10px;right:10px;background:none;border:none;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:4px 10px;border-radius:8px}
+  .feedcard-menu-btn:hover{background:#232b34;color:var(--text)}
+  .feedcard-menu{position:absolute;top:40px;right:10px;display:none;z-index:30;min-width:150px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.4);padding:6px}
+  .feedcard-menu.show{display:block}
+  .feedcard-menu button{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:var(--text);font-size:13.5px;padding:8px 10px;border-radius:7px;cursor:pointer;text-align:left}
+  .feedcard-menu button:hover{background:#2a333d}
+  .feedcard-menu button.danger{color:#f87171}
+  .timelineBetrag{flex:none;width:110px;align-self:flex-start;margin-top:20px;text-align:right}
   /* Kalender-Tagesansicht: eine Überschrift pro Tag+Veranstaltung, darunter die Strafen als
      Zeitstrahl-Zeilen mit der Uhrzeit leicht abgesetzt ganz links (siehe groupForumByDayEvent). */
   .forumDayGroup{margin-bottom:28px}
@@ -1397,9 +1407,15 @@ function renderStrafeFeedCard(item,parentMap){
   const authorHtml = revealed
     ? `<span class="feedcard-author" style="color:#f59e0b">von 👁 ${esc(revealed.display_name||revealed.username)}</span>`
     : `<span class="feedcard-author">von Anonym</span>`;
+  const menuKey=item.strafeIds.join('_'); // reine DOM-id, Kommas sind dort nicht erlaubt
   return `<div class="timelineRow">
     <div class="timelineTime">${timeLabel}</div>
     <div class="feedcard">
+      <button class="feedcard-menu-btn" title="Bearbeiten/Löschen" onclick="toggleCardMenu('${menuKey}',event)">⋮</button>
+      <div class="feedcard-menu" id="cardmenu_${menuKey}">
+        <button onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️ Bearbeiten</button>
+        <button class="danger" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑 Löschen</button>
+      </div>
       ${pending?`<div style="margin-bottom:10px"><span class="pill warn">⏳ noch nicht veröffentlicht</span></div>`:''}
       <div class="feedcard-main">
         <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
@@ -1416,14 +1432,19 @@ function renderStrafeFeedCard(item,parentMap){
       ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
       <div class="feedcard-footer">
         ${authorHtml}
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="feedcard-betrag">${betragDisplay}</span>
-          <button class="icon-btn" title="Bearbeiten" onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️</button>
-          <button class="icon-btn" title="Löschen" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑</button>
-        </div>
       </div>
     </div>
+    <div class="timelineBetrag"><span class="feedcard-betrag">${betragDisplay}</span></div>
   </div>`;
+}
+// Drei-Spalten-Layout (Uhrzeit | Karte | Betrag): schließt jedes offene Karten-Menü, wenn woanders
+// hingeklickt wird – wie ein normales Kontextmenü.
+document.addEventListener('click', ()=>{ document.querySelectorAll('.feedcard-menu.show').forEach(el=>el.classList.remove('show')); });
+function toggleCardMenu(key,ev){
+  ev.stopPropagation();
+  const id='cardmenu_'+key;
+  document.querySelectorAll('.feedcard-menu.show').forEach(el=>{ if(el.id!==id) el.classList.remove('show'); });
+  document.getElementById(id)?.classList.toggle('show');
 }
 // Gruppiert nach Tag + Veranstaltung(ort) – wie eine Kalender-Tagesansicht: eine Überschriftzeile
 // mit Datum+Veranstaltung, darunter chronologisch die dazugehörigen Strafen. Die Gruppen selbst
