@@ -1647,9 +1647,16 @@ function renderForumList(){
   const dayGroups=groupForumByDayEvent(feedList,sort);
   container.innerHTML = dayGroups.length?dayGroups.map(g=>renderForumDayGroup(g,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
 }
+// Lokale (nicht UTC-)Darstellung für <input type="datetime-local">, passend zur Anzeige überall
+// sonst im Dashboard (toLocaleString ohne Zeitzonen-Optionen = Browser-Zeitzone).
+function toDatetimeLocalValue(iso){
+  const d=new Date(iso);
+  const pad=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
 // Personen für denselben Vorfall – wie strafeIds bei GroupedEntry in der App). Vergehen/Betrag/
-// Status/Ort/Notiz gelten dann für die ganze Gruppe; das Mitglied ist nur bei genau 1 id änderbar.
+// Datum/Ort/Notiz gelten dann für die ganze Gruppe; das Mitglied ist nur bei genau 1 id änderbar.
 function editStrafeModal(idsStr){
   const ids=idsStr.split(',');
   const rows=ids.map(id=>strafenAlle.find(x=>x.id===id)).filter(Boolean);
@@ -1670,6 +1677,7 @@ function editStrafeModal(idsStr){
       <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag) document.getElementById('sa_betrag').value=o.dataset.betrag;">${katOptions}</select>
     </label>
     <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
+    <label class="field"><span>Datum &amp; Uhrzeit</span><input id="sa_datum" type="datetime-local" value="${toDatetimeLocalValue(s.created_at)}"></label>
     <label class="field"><span>Ort</span><input id="sa_ort" value="${esc(s.ort||'')}"></label>
     <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
@@ -1680,6 +1688,7 @@ function saveStrafeEdit(idsStr,btn){
   const row={
     katalog_id: val('sa_katalog')||null,
     betrag: parseFloat(val('sa_betrag'))||0,
+    created_at: new Date(val('sa_datum')).toISOString(),
     ort: val('sa_ort')||null,
     notiz: val('sa_notiz')||null,
   };
