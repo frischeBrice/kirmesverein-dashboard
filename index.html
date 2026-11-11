@@ -153,6 +153,9 @@
   /* Paragraph-Nummer und Vergehenstext in einer Zeile; Nummer als blaue Badge (die Farbe kam
      gut an) zur Hervorhebung, der Text direkt daneben statt in einer eigenen Zeile darunter. */
   .feedcard-vergehenline{display:flex;align-items:baseline;flex-wrap:wrap;gap:9px;margin-top:5px}
+  /* Ohne zugeordneten Paragraph lieber untereinander statt in einer Zeile mit dem Vergehenstext –
+     "Kein Paragraph vorhanden" ist länger und wirkt nebeneinander gequetscht. */
+  .feedcard-vergehenline.stacked{flex-direction:column;align-items:flex-start;gap:3px}
   .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;background:rgba(58,134,232,.15);color:var(--accent2);font-size:13.5px;font-weight:800;padding:3px 11px;border-radius:7px;cursor:pointer;flex:none}
   .feedcard-paragraph:hover{filter:brightness(1.2)}
   .feedcard-paragraph.missing{background:rgba(149,163,178,.12);color:var(--muted);font-style:italic}
@@ -1429,7 +1432,7 @@ function renderStrafeFeedCard(item,parentMap){
           <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
           <div style="flex:1;min-width:0">
             <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
-            <div class="feedcard-vergehenline">
+            <div class="feedcard-vergehenline${paragraphRef?'':' stacked'}">
               <span class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></span>
               <span class="feedcard-vergehen">${vergehenText}</span>
             </div>
