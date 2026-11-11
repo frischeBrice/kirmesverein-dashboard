@@ -1348,7 +1348,6 @@ function groupStrafenForFeed(list){
       notiz: first.notiz||null,
       zeichnungen: Array.isArray(first.zeichnungen)?first.zeichnungen:null,
       bild_url: first.bild_url||null,
-      bezahlt: arr.every(s=>!!s.bezahlt),
       created_at: first.created_at,
       visible_at: first.visible_at,
       ort: first.ort||null,
@@ -1405,7 +1404,6 @@ function renderStrafeFeedCard(item,parentMap){
     <div class="feedcard-footer">
       ${authorHtml}
       <div style="display:flex;align-items:center;gap:10px">
-        ${item.bezahlt?'<span class="pill ok">bezahlt</span>':'<span class="pill no">offen</span>'}
         <span class="feedcard-betrag">${betragDisplay}</span>
         <button class="icon-btn" title="Bearbeiten" onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️</button>
         <button class="icon-btn" title="Löschen" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑</button>
@@ -1418,9 +1416,8 @@ function strafenauswertungStats(){
   strafenAlle.forEach(s=>{
     const key=s.mitglied_id||('gast:'+(s.gast_name||'?'));
     const label=s.mitglied_id?memberName(s.mitglied_id):((s.gast_name||'Unbekannt')+' (Gast)');
-    const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0,offen:0});
+    const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0});
     e.anzahl++; e.summe+=Number(s.betrag)||0;
-    if(!s.bezahlt) e.offen+=Number(s.betrag)||0;
   });
   const perMember=Object.values(byMember).sort((a,b)=>b.summe-a.summe);
   const byKatalog={};
@@ -1432,8 +1429,7 @@ function strafenauswertungStats(){
   });
   const perKatalog=Object.values(byKatalog).sort((a,b)=>b.anzahl-a.anzahl).slice(0,10);
   const gesamtSumme=strafenAlle.reduce((a,s)=>a+(Number(s.betrag)||0),0);
-  const gesamtOffen=strafenAlle.reduce((a,s)=>a+(s.bezahlt?0:Number(s.betrag)||0),0);
-  return {perMember,perKatalog,gesamtSumme,gesamtOffen,anzahl:strafenAlle.length};
+  return {perMember,perKatalog,gesamtSumme,anzahl:strafenAlle.length};
 }
 // Welcher der drei Unterbereiche gerade offen ist (persistiert nur für die laufende Sitzung,
 // wie die anderen flüchtigen UI-Filter dieser View auch).
@@ -1462,14 +1458,13 @@ function renderStrafenauswertung(){
     body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
-      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe','Offen'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.offen>0?`<span class="pill no mini">${eur(e.offen)}</span>`:'<span class="pill ok mini">bezahlt</span>'])):'<div class="empty">Keine Strafen erfasst.</div>'}
+      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Strafen erfasst.</div>'}
     </div>`;
   } else if(tab==='statistik'){
     body=`
     <div class="cards">
       <div class="card"><div class="label">Strafen gesamt</div><div class="value">${st.anzahl}</div></div>
       <div class="card"><div class="label">Summe</div><div class="value">${eur(st.gesamtSumme)}</div></div>
-      <div class="card"><div class="label">davon offen</div><div class="value">${eur(st.gesamtOffen)}</div></div>
     </div>
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">🔥 Häufigste Vergehen</h3></div>
@@ -1504,6 +1499,8 @@ function renderStrafenauswertung(){
         <select id="strafenauswertungSort" onchange="renderForumList()" style="min-width:160px">
           <option value="desc">⬇️ Neueste zuerst</option>
           <option value="asc">⬆️ Älteste zuerst</option>
+          <option value="betrag_desc">💰 Höchster Betrag zuerst</option>
+          <option value="betrag_asc">💶 Niedrigster Betrag zuerst</option>
         </select>
       </div>
       <div class="filterbar" style="align-items:flex-end">
@@ -1513,7 +1510,6 @@ function renderStrafenauswertung(){
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);flex:none">Bis
           <input type="date" id="strafenauswertungBis" onchange="renderForumList()">
         </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding-bottom:9px"><input type="checkbox" id="strafenauswertungNurOffen" style="width:auto" onchange="renderForumList()">Nur offene</label>
       </div>
       <div id="forumCardsList"></div>
     </div>`;
@@ -1540,7 +1536,6 @@ function strafenForumWriters(){
 function renderForumList(){
   const container=document.getElementById('forumCardsList'); if(!container) return;
   const q=(val('strafenauswertungSearch')||'').toLowerCase();
-  const nurOffen=document.getElementById('strafenauswertungNurOffen')?.checked;
   const ortFilter=val('strafenauswertungOrt')||'';
   const schreiberFilter=val('strafenauswertungSchreiber')||'';
   const von=val('strafenauswertungVon')||'';
@@ -1548,7 +1543,6 @@ function renderForumList(){
   const sort=val('strafenauswertungSort')||'desc';
   const parentMap=strafenParentNameMap();
   let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
-    if(nurOffen && item.bezahlt) return false;
     if(ortFilter && item.ort!==ortFilter) return false;
     if(schreiberFilter && item.actual_written_by!==schreiberFilter) return false;
     if(von && new Date(item.created_at)<new Date(von+'T00:00:00')) return false;
@@ -1558,7 +1552,11 @@ function renderForumList(){
     const verg=strafeVergehenText(item.katalog,item.notiz,parentMap).toLowerCase();
     return names.includes(q) || verg.includes(q) || (item.notiz||'').toLowerCase().includes(q);
   });
-  feedList.sort((a,b)=> sort==='asc' ? new Date(a.created_at)-new Date(b.created_at) : new Date(b.created_at)-new Date(a.created_at));
+  feedList.sort((a,b)=>{
+    if(sort==='betrag_desc') return b.betrag-a.betrag;
+    if(sort==='betrag_asc') return a.betrag-b.betrag;
+    return sort==='asc' ? new Date(a.created_at)-new Date(b.created_at) : new Date(b.created_at)-new Date(a.created_at);
+  });
   container.innerHTML = feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
 }
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
