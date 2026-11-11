@@ -1405,10 +1405,13 @@ function renderStrafeFeedCard(item,parentMap){
     ...item.gastNamen.slice(0,Math.max(0,3-item.members.length)).map(n=>`<span class="pav" style="width:${AV}px;height:${AV}px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:17px">${esc((n||'?').charAt(0).toUpperCase())}</span>`),
   ].join('');
   const overflowBadge = totalNames>3 ? `<span class="pav" style="width:${AV}px;height:${AV}px;background:var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">+${totalNames-3}</span>` : '';
-  const vergehenText=esc(strafeVergehenText(item.katalog,item.notiz,parentMap));
+  // Ohne zugeordnetes Vergehen ist der Notiztext reiner Freitext des Schreibers – der soll genauso
+  // aussehen wie ein Notiztext NEBEN einem zugeordneten Vergehen (gedimmter 💬-Kasten), nicht wie
+  // ein "offizieller" blauer Vergehenname. Die blaue Vergehenzeile gibt es darum nur mit Katalog.
+  const vergehenText = item.katalog ? esc(strafeVergehenText(item.katalog,item.notiz,parentMap)) : '';
   const paragraphRef=strafeParagraphRef(item.katalog);
   const timeLabel=new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-  const zusatzNotiz = item.katalog && item.notiz; // separate Notizbox nur zusätzlich zum Katalog-Vergehen (wie in der App)
+  const zusatzNotiz = !!item.notiz; // immer als eigener 💬-Kasten, mit oder ohne zugeordnetes Vergehen
   const pending = new Date(item.visible_at).getTime() > Date.now();
   const betragDisplay = totalNames>1 ? `${totalNames}×<br>${eur(item.betrag)}` : eur(item.betrag);
   // Nur wenn der Admin-Schalter an ist, decken wir den echten Schreiber für den Admin auf
@@ -1434,7 +1437,7 @@ function renderStrafeFeedCard(item,parentMap){
             <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
             <div class="feedcard-vergehenline${paragraphRef?'':' stacked'}">
               <span class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></span>
-              <span class="feedcard-vergehen">${vergehenText}</span>
+              ${vergehenText?`<span class="feedcard-vergehen">${vergehenText}</span>`:''}
             </div>
           </div>
         </div>
