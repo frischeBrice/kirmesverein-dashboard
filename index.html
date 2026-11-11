@@ -1729,14 +1729,62 @@ function editBetragModal(idsStr){
   if(!rows.length) return;
   const s=rows[0];
   const multi=rows.length>1;
+  // Aufschläge (z.B. "+ Mutwillig / absichtlich") – dieselben "+ "-Kind-Katalogeinträge, die auch
+  // beim Eintragen in der App als Checkboxen zur Auswahl stehen (siehe verfuegbareAufschlaege in
+  // EintragenScreen.tsx). Vorangehakt ist, was laut Notiz-Feld schon mit eingerechnet ist.
+  const kat = s.katalog_id ? strafenkatalog.find(k=>k.id===s.katalog_id) : null;
+  const aufschlaege = strafeAufschlaege(kat);
+  const appliedNames = new Set(parseAppliedAufschlagNames(s.notiz));
+  const aufschlagHtml = aufschlaege.length ? `
+    <label class="field"><span>Aufschläge</span>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:4px">
+        ${aufschlaege.map(a=>{
+          const name=a.name.replace(/^\+\s*/,'');
+          const checked=appliedNames.has(name);
+          return `<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;cursor:pointer">
+            <input type="checkbox" data-aufschlag-betrag="${Number(a.betrag)||0}" data-aufschlag-name="${esc(name)}" ${checked?'checked':''} onchange="toggleAufschlagBetrag(this,${rows.length})" style="width:auto">
+            ${esc(name)} (+${eur(a.betrag)})
+          </label>`;
+        }).join('')}
+      </div>
+    </label>` : '';
   // Bei mehreren Personen gilt der Betrag PRO PERSON (wie auch die "Nx"-Anzeige auf der Karte) -
   // der Gesamt-Hinweis macht den Multiplikator beim Ändern sofort sichtbar, statt dass man ihn
   // übersieht und nur den Einzelbetrag ändert, ohne die Auswirkung aufs Ganze zu merken.
   openModal(`<h3>Betrag ändern${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
     <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag_only" type="number" step="0.01" value="${Number(s.betrag)||0}" ${multi?`oninput="updateBetragTotalHint(${rows.length},'sa_betrag_only','betragTotalHint')"`:''}></label>
     ${multi?`<div class="submuted" id="betragTotalHint" style="margin-top:-6px">${rows.length}× ${eur(Number(s.betrag)||0)} = ${eur((Number(s.betrag)||0)*rows.length)} insgesamt</div>`:''}
+    ${aufschlagHtml}
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveBetragOnly('${ids.join(',')}',this)">Speichern</button></div>`,true);
+}
+// Verfügbare "+ "-Aufschläge zu einem Katalog-Eintrag (gleiche Eltern-Gruppe, dezimale
+// Reihenfolge mit demselben ganzzahligen Vorgänger, Name beginnt mit "+ ") – 1:1 die Logik aus
+// EintragenScreen.tsx der App.
+function strafeAufschlaege(kat){
+  if(!kat || !kat.gruppe || kat.reihenfolge==null) return [];
+  const parentNr = Number.isInteger(kat.reihenfolge) ? kat.reihenfolge : Math.floor(kat.reihenfolge);
+  return strafenkatalog.filter(c=>
+    c.gruppe===kat.gruppe && c.reihenfolge!=null && !Number.isInteger(c.reihenfolge) &&
+    Math.floor(c.reihenfolge)===parentNr && c.name.startsWith('+ '),
+  ).sort((a,b)=>(a.reihenfolge??0)-(b.reihenfolge??0));
+}
+// Liest die aktuell im Notiz-Feld vermerkten Aufschlag-Namen ("+ Name1, Name2"-Segment) aus –
+// passend zum combinedNotiz-Aufbau in EintragenScreen.tsx.
+function parseAppliedAufschlagNames(notiz){
+  if(!notiz) return [];
+  const seg=notiz.split(' | ').find(p=>p.startsWith('+ '));
+  if(!seg) return [];
+  return seg.slice(2).split(',').map(x=>x.trim()).filter(Boolean);
+}
+// Checkbox an/aus addiert/subtrahiert direkt den Aufschlag-Betrag vom Betragsfeld – unabhängig
+// davon, was sonst noch manuell eingetippt wurde.
+function toggleAufschlagBetrag(cb,count){
+  const delta=Number(cb.dataset.aufschlagBetrag)||0;
+  const input=document.getElementById('sa_betrag_only');
+  const cur=parseFloat(input.value)||0;
+  input.value=(cb.checked?cur+delta:cur-delta).toFixed(2);
+  if(count>1) updateBetragTotalHint(count,'sa_betrag_only','betragTotalHint');
 }
 // Macht den Multiplikator bei Gruppen-Strafen (mehrere Personen) sofort sichtbar, egal in
 // welchem der beiden Betrag-Dialoge (voller Bearbeiten-Dialog oder schnelles Betrag-ändern-Modal)
@@ -1749,8 +1797,19 @@ function updateBetragTotalHint(count,inputId,hintId){
 function saveBetragOnly(idsStr,btn){
   const ids=idsStr.split(',');
   const betrag=parseFloat(val('sa_betrag_only'))||0;
+  const aufschlagBoxes=[...document.querySelectorAll('[data-aufschlag-name]')];
   withBtn(btn, async()=>{
-    const {error}=await sb.from('strafen').update({betrag}).in('id',ids);
+    const row={betrag};
+    if(aufschlagBoxes.length){
+      // Nur das "+ ..."-Segment in der Notiz ersetzen, alles andere (Freitext, "×N"-Multiplikator)
+      // bleibt unangetastet.
+      const s=strafenAlle.find(x=>x.id===ids[0]);
+      const checked=aufschlagBoxes.filter(cb=>cb.checked).map(cb=>cb.dataset.aufschlagName);
+      const parts=(s?.notiz||'').split(' | ').filter(p=>p && !p.startsWith('+ '));
+      if(checked.length) parts.push('+ '+checked.join(', '));
+      row.notiz = parts.length ? parts.join(' | ') : null;
+    }
+    const {error}=await sb.from('strafen').update(row).in('id',ids);
     if(error) throw error;
     closeModal(); await loadAll();
   });
