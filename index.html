@@ -870,6 +870,10 @@ let members = [], transactions = [], events = [];
 let finanzKategorien = [];
 let ansaufenMottos = [];
 let strafenAlle = [];
+// thron_config-Key 'admin_schreiber_sichtbar' – dieselbe Einstellung wie im Admin-Tab der App
+// (SaisonTab): deckt NUR für den Admin die echten Schreiber-Namen im Forum auf, rein eine
+// Ansichts-Einstellung, ändert nichts an den Daten und nichts daran, was Mitglieder sehen.
+let adminNamenSichtbar = false;
 let strafenkatalog = [];
 let katTyp = 'einkauf'; // Kategorien-Verwaltung: aktuell ausgewählter Typ-Tab
 let strafenMap = {}, postenMap = {};
@@ -1036,7 +1040,7 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am,bs] = await Promise.all([
+  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am,bs,tc] = await Promise.all([
     sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
@@ -1065,6 +1069,7 @@ async function loadAll(){
     sb.from('finanz_kategorien').select('*').order('name'),
     sb.from('ansaufen_mottos').select('*').order('datum',{ascending:false,nullsFirst:false}),
     sb.from('bingo_state').select('state').eq('id',1).maybeSingle(),
+    canSeeStrafen() ? sb.from('thron_config').select('value').eq('key','admin_schreiber_sichtbar').maybeSingle() : Promise.resolve({data:null,error:null}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -1099,6 +1104,8 @@ async function loadAll(){
   if(am&&am.error) console.warn('ansaufen_mottos:',am.error.message);
   strafenAlle = (sa&&sa.data)||[];
   if(sa&&sa.error) console.warn('strafen:',sa.error.message);
+  adminNamenSichtbar = !!(tc&&tc.data&&tc.data.value==='true');
+  if(tc&&tc.error) console.warn('thron_config:',tc.error.message);
   strafenkatalog = (skat&&skat.data)||[];
   if(skat&&skat.error) console.warn('strafenkatalog:',skat.error.message);
   bingoRemoteState = (bs&&bs.data&&bs.data.state)||null;
@@ -1342,6 +1349,7 @@ function groupStrafenForFeed(list){
       created_at: first.created_at,
       visible_at: first.visible_at,
       ort: first.ort||null,
+      actual_written_by: first.actual_written_by||null,
     });
   });
   return items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -1368,6 +1376,12 @@ function renderStrafeFeedCard(item,parentMap){
   const zusatzNotiz = item.katalog && item.notiz; // separate Notizbox nur zusätzlich zum Katalog-Vergehen (wie in der App)
   const pending = new Date(item.visible_at).getTime() > Date.now();
   const betragDisplay = totalNames>1 ? `${totalNames} × ${eur(item.betrag)}` : eur(item.betrag);
+  // Nur wenn der Admin-Schalter an ist, decken wir den echten Schreiber für den Admin auf
+  // (siehe adminNamenSichtbar/thron_config) – sonst wie immer "von Anonym".
+  const revealed = adminNamenSichtbar && item.actual_written_by ? members.find(m=>m.id===item.actual_written_by) : null;
+  const authorHtml = revealed
+    ? `<span class="feedcard-author" style="color:#f59e0b">von 👁 ${esc(revealed.display_name||revealed.username)}</span>`
+    : `<span class="feedcard-author">von Anonym</span>`;
   return `<div class="feedcard">
     <div class="feedcard-top">
       <span class="feedcard-ort">${item.ort?'📍 '+esc(item.ort):''}</span>
@@ -1385,7 +1399,7 @@ function renderStrafeFeedCard(item,parentMap){
     ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}">`:''}
     ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
     <div class="feedcard-footer">
-      <span class="feedcard-author">von Anonym</span>
+      ${authorHtml}
       <div style="display:flex;align-items:center;gap:8px">
         ${item.bezahlt?'<span class="pill ok mini">bezahlt</span>':'<span class="pill no mini">offen</span>'}
         <span class="feedcard-betrag">${betragDisplay}</span>
@@ -1421,6 +1435,16 @@ function strafenauswertungStats(){
 // wie die anderen flüchtigen UI-Filter dieser View auch).
 let strafenauswertungTab='forum';
 function setStrafenauswertungTab(tab){ strafenauswertungTab=tab; renderStrafenauswertung(); }
+// Dieselbe Einstellung wie im Admin-Tab der App (SaisonTab) – gemeinsamer thron_config-Key,
+// deckt NUR für den Admin die echten Schreiber-Namen auf (App + Dashboard), ändert nichts an
+// den Daten und nichts daran, was normale Mitglieder in der App sehen (immer "Anonym").
+async function toggleAdminNamenSichtbar(){
+  const neu=!adminNamenSichtbar;
+  const {error}=await sb.from('thron_config').upsert({key:'admin_schreiber_sichtbar',value:neu?'true':'false'},{onConflict:'key'});
+  if(error){ alert('Fehler: '+error.message); return; }
+  adminNamenSichtbar=neu;
+  renderStrafenauswertung();
+}
 function renderStrafenauswertung(){
   const el=document.getElementById('strafenauswertungBody'); if(!el) return;
   if(!canSeeStrafen()){ el.innerHTML='<div class="panel"><div class="empty">Nur für Admin sichtbar.</div></div>'; return; }
@@ -1460,7 +1484,11 @@ function renderStrafenauswertung(){
     });
     body=`
     <div class="panel">
-      <div class="sectionbar"><h3 style="font-size:15px">📋 Forum (1:1 wie in der App)</h3></div>
+      <div class="sectionbar"><h3 style="font-size:15px">📋 Forum (1:1 wie in der App)</h3>
+        <div class="actions">
+          <button class="btn ghost sm${adminNamenSichtbar?' active':''}" onclick="toggleAdminNamenSichtbar()" title="Deckt nur für dich als Admin die echten Schreiber-Namen auf – Mitglieder sehen weiterhin Anonym">👁️ Schreiber-Namen für mich: ${adminNamenSichtbar?'AN':'aus'}</button>
+        </div>
+      </div>
       <div class="submuted" style="margin:-4px 0 12px">Wer eine Strafe eingetragen hat, bleibt bewusst anonym – genau wie im Schreiberforum der App selbst. Hier lassen sich Strafen nachträglich korrigieren oder löschen.</div>
       <div class="filterbar">
         <input id="strafenauswertungSearch" placeholder="🔍 Suche nach Mitglied/Vergehen/Notiz…" oninput="renderStrafenauswertung()" style="flex:3;min-width:220px">
