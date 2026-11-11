@@ -1410,7 +1410,7 @@ function renderStrafeFeedCard(item,parentMap){
   const timeLabel=new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
   const zusatzNotiz = item.katalog && item.notiz; // separate Notizbox nur zusätzlich zum Katalog-Vergehen (wie in der App)
   const pending = new Date(item.visible_at).getTime() > Date.now();
-  const betragDisplay = totalNames>1 ? `${totalNames} × ${eur(item.betrag)}` : eur(item.betrag);
+  const betragDisplay = totalNames>1 ? `${totalNames}×<br>${eur(item.betrag)}` : eur(item.betrag);
   // Nur wenn der Admin-Schalter an ist, decken wir den echten Schreiber für den Admin auf
   // (siehe adminNamenSichtbar/thron_config) – sonst wie immer "von Anonym".
   const revealed = adminNamenSichtbar && item.actual_written_by ? members.find(m=>m.id===item.actual_written_by) : null;
