@@ -1538,6 +1538,14 @@ async function toggleAdminNamenSichtbar(){
 function renderStrafenauswertung(){
   const el=document.getElementById('strafenauswertungBody'); if(!el) return;
   if(!canSeeStrafen()){ el.innerHTML='<div class="panel"><div class="empty">Nur für Admin sichtbar.</div></div>'; return; }
+  // Aktuelle Forum-Filterwerte vorm Neuaufbau retten – sonst würde z.B. das Speichern einer
+  // Bearbeitung (loadAll() → renderAll() → hier wieder rein) Suche/Filter unsichtbar zurücksetzen,
+  // weil die Filterleiste gleich komplett neu aus dem Nichts gebaut wird.
+  const forumFilterState = {
+    q: val('strafenauswertungSearch'), ort: val('strafenauswertungOrt'),
+    schreiber: val('strafenauswertungSchreiber'), von: val('strafenauswertungVon'),
+    bis: val('strafenauswertungBis'), sort: val('strafenauswertungSort'),
+  };
   const st=strafenauswertungStats();
   const tab=strafenauswertungTab;
   const tabBtn=(key,label)=>`<button class="btn ghost sm${tab===key?' active':''}" onclick="setStrafenauswertungTab('${key}')">${label}</button>`;
@@ -1605,7 +1613,16 @@ function renderStrafenauswertung(){
     </div>`;
   }
   el.innerHTML = nav + body;
-  if(tab==='forum') renderForumList();
+  if(tab==='forum'){
+    const restore=(id,v)=>{ const e=document.getElementById(id); if(e && v) e.value=v; };
+    restore('strafenauswertungSearch', forumFilterState.q);
+    restore('strafenauswertungOrt', forumFilterState.ort);
+    restore('strafenauswertungSchreiber', forumFilterState.schreiber);
+    restore('strafenauswertungVon', forumFilterState.von);
+    restore('strafenauswertungBis', forumFilterState.bis);
+    restore('strafenauswertungSort', forumFilterState.sort);
+    renderForumList();
+  }
 }
 // Distinct "Veranstaltung"-Werte (freies ort-Textfeld beim Eintragen in der App) für den Filter.
 function strafenForumOrtOptions(){
