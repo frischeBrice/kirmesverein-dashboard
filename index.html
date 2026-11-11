@@ -127,7 +127,9 @@
   .feedcard-betragcol{
     flex:none;width:96px;display:flex;align-items:center;justify-content:center;text-align:center;
     background:var(--accent);color:#1a1206;font-size:16.5px;font-weight:800;line-height:1.3;padding:10px 8px;
+    cursor:pointer;
   }
+  .feedcard-betragcol:hover{filter:brightness(1.08)}
   /* Bearbeiten/Löschen stecken hinterm ⋮-Menü oben rechts auf der Karte statt als zwei Buttons
      in der Fußzeile. */
   .feedcard-menu-btn{position:absolute;top:10px;right:10px;background:none;border:none;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:4px 10px;border-radius:8px}
@@ -158,7 +160,7 @@
   .feedcard-vergehenline.stacked{flex-direction:column;align-items:flex-start;gap:3px}
   .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;background:rgba(58,134,232,.15);color:var(--accent2);font-size:13.5px;font-weight:800;padding:3px 11px;border-radius:7px;cursor:pointer;flex:none}
   .feedcard-paragraph:hover{filter:brightness(1.2)}
-  .feedcard-paragraph.missing{background:rgba(149,163,178,.12);color:var(--muted);font-style:italic}
+  .feedcard-paragraph.missing{font-style:italic}
   .feedcard-vergehen{font-size:15.5px;color:var(--accent2);line-height:1.45}
   .feedcard-notiz{background:rgba(149,163,178,.1);border-radius:9px;padding:11px 14px;margin-top:11px;font-size:14px;color:var(--text);line-height:1.45}
   .feedcard-img{max-width:100%;max-height:360px;border-radius:12px;margin-top:12px;display:block;object-fit:cover}
@@ -1448,7 +1450,7 @@ function renderStrafeFeedCard(item,parentMap){
           ${authorHtml}
         </div>
       </div>
-      <div class="feedcard-betragcol">${betragDisplay}</div>
+      <div class="feedcard-betragcol" title="Betrag unabhängig vom Vergehen ändern" onclick="editBetragModal('${item.strafeIds.join(',')}')">${betragDisplay}</div>
     </div>
   </div>`;
 }
@@ -1695,6 +1697,29 @@ function saveStrafeEdit(idsStr,btn){
   if(ids.length===1) row.mitglied_id = val('sa_mitglied')||null;
   withBtn(btn, async()=>{
     const {error}=await sb.from('strafen').update(row).in('id',ids);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+// Schnelles Ändern NUR des Betrags (Klick auf die orange Betrag-Spalte im Forum) – unabhängig
+// vom Katalog-Vergehen: anders als im großen Bearbeiten-Dialog füllt ein Vergehenwechsel hier
+// nichts automatisch vor, der Betrag bleibt also ein manueller Wert, bis er erneut geändert wird.
+function editBetragModal(idsStr){
+  const ids=idsStr.split(',');
+  const rows=ids.map(id=>strafenAlle.find(x=>x.id===id)).filter(Boolean);
+  if(!rows.length) return;
+  const s=rows[0];
+  const multi=rows.length>1;
+  openModal(`<h3>Betrag ändern${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
+    <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag_only" type="number" step="0.01" value="${Number(s.betrag)||0}"></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveBetragOnly('${ids.join(',')}',this)">Speichern</button></div>`,true);
+}
+function saveBetragOnly(idsStr,btn){
+  const ids=idsStr.split(',');
+  const betrag=parseFloat(val('sa_betrag_only'))||0;
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('strafen').update({betrag}).in('id',ids);
     if(error) throw error;
     closeModal(); await loadAll();
   });
