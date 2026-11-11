@@ -118,18 +118,25 @@
   /* Strafenauswertung: 1:1-Spiegel der Forum-Feed-Karten aus der App (StrafenCard in FeedScreen.tsx) */
   /* Desktop-Lesegrößen statt 1:1-Handy-Maße – größere Schrift, mehr Luft, da auf dem PC
      ganz anders gelesen wird als auf dem Handydisplay in der App. */
-  .feedcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px}
-  .feedcard-top{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:12px}
-  .feedcard-ort{color:var(--muted);font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .feedcard-time{color:var(--muted);font-size:13.5px;white-space:nowrap;flex:none}
+  .feedcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px;flex:1;min-width:0}
+  /* Kalender-Tagesansicht: eine Überschrift pro Tag+Veranstaltung, darunter die Strafen als
+     Zeitstrahl-Zeilen mit der Uhrzeit leicht abgesetzt ganz links (siehe groupForumByDayEvent). */
+  .forumDayGroup{margin-bottom:28px}
+  .forumDayHeader{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:8px 2px 10px;margin-bottom:14px;border-bottom:2px solid var(--line)}
+  .forumDayDate{font-size:16px;font-weight:800;color:var(--text)}
+  .forumDayEvent{font-size:13.5px;font-weight:700;color:var(--accent2)}
+  .timelineRow{display:flex;gap:14px;margin-bottom:16px}
+  .timelineTime{flex:none;width:52px;text-align:right;padding-top:22px;margin-top:2px;color:var(--muted);font-size:13px;font-weight:700;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start}
   .feedcard-main{display:flex;gap:16px}
   .feedcard-avatars{display:flex;flex:none;align-items:flex-start}
   .feedcard-avatars .pav{border:3px solid var(--panel);margin-left:-16px;background:#94a3b8}
   .feedcard-avatars .pav:first-child{margin-left:0}
   .feedcard-names{font-size:17px;font-weight:700}
-  .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;background:rgba(58,134,232,.15);color:var(--accent2);font-size:13.5px;font-weight:800;padding:3px 11px;border-radius:7px;margin-top:5px;margin-bottom:3px;cursor:pointer;width:fit-content}
-  .feedcard-paragraph:hover{filter:brightness(1.2)}
-  .feedcard-paragraph.missing{background:rgba(149,163,178,.12);color:var(--muted);font-style:italic}
+  /* Nummer und Vergehenstext sollen farblich gleich bleiben (keine eigene Akzentfarbe mehr für
+     den Paragraphen) – die Hervorhebung kommt nur noch über das fette Schriftgewicht. */
+  .feedcard-paragraph{display:inline-flex;align-items:center;gap:5px;color:var(--text);font-size:15.5px;font-weight:800;margin-top:5px;margin-bottom:2px;margin-left:-4px;padding:2px 4px;border-radius:6px;cursor:pointer;width:fit-content}
+  .feedcard-paragraph:hover{background:rgba(149,163,178,.14)}
+  .feedcard-paragraph.missing{color:var(--muted);font-style:italic}
   .feedcard-vergehen{font-size:15.5px;color:var(--text);margin-top:4px;line-height:1.45}
   .feedcard-notiz{background:rgba(149,163,178,.1);border-radius:9px;padding:11px 14px;margin-top:11px;font-size:14px;color:var(--text);line-height:1.45}
   .feedcard-img{max-width:100%;max-height:360px;border-radius:12px;margin-top:12px;display:block;object-fit:cover}
@@ -1367,6 +1374,8 @@ function feedMemberNamesDisplay(membersArr,gastNamen){
 }
 // Eine Karte exakt wie StrafenCard in FeedScreen.tsx – wer geschrieben hat bleibt IMMER anonym
 // (auch für Admin, siehe Kommentar oben), nur die Beträge/Bezahlt-Status sind Admin-exklusiv sichtbar.
+// Datum + Veranstaltung stehen schon in der Tages-Gruppenüberschrift (renderForumDayGroup), darum
+// zeigt die Karte selbst nur noch die Uhrzeit, ganz links abgesetzt wie bei einem Kalender-Termin.
 function renderStrafeFeedCard(item,parentMap){
   const totalNames=item.members.length+item.gastNamen.length;
   const AV=44; // Desktop-Avatargröße – größer als das App-Maß (32px), damit es im Browser nicht winzig wirkt
@@ -1377,7 +1386,7 @@ function renderStrafeFeedCard(item,parentMap){
   const overflowBadge = totalNames>3 ? `<span class="pav" style="width:${AV}px;height:${AV}px;background:var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">+${totalNames-3}</span>` : '';
   const vergehenText=esc(strafeVergehenText(item.katalog,item.notiz,parentMap));
   const paragraphRef=strafeParagraphRef(item.katalog);
-  const dt=new Date(item.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const timeLabel=new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
   const zusatzNotiz = item.katalog && item.notiz; // separate Notizbox nur zusätzlich zum Katalog-Vergehen (wie in der App)
   const pending = new Date(item.visible_at).getTime() > Date.now();
   const betragDisplay = totalNames>1 ? `${totalNames} × ${eur(item.betrag)}` : eur(item.betrag);
@@ -1387,30 +1396,67 @@ function renderStrafeFeedCard(item,parentMap){
   const authorHtml = revealed
     ? `<span class="feedcard-author" style="color:#f59e0b">von 👁 ${esc(revealed.display_name||revealed.username)}</span>`
     : `<span class="feedcard-author">von Anonym</span>`;
-  return `<div class="feedcard">
-    <div class="feedcard-top">
-      <span class="feedcard-ort">${item.ort?'📍 '+esc(item.ort):''}</span>
-      <span class="feedcard-time">${dt}${pending?' <span class="pill warn">⏳ noch nicht veröffentlicht</span>':''}</span>
-    </div>
-    <div class="feedcard-main">
-      <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
-      <div style="flex:1;min-width:0">
-        <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
-        <div class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></div>
-        <div class="feedcard-vergehen">${vergehenText}</div>
+  return `<div class="timelineRow">
+    <div class="timelineTime">${timeLabel}</div>
+    <div class="feedcard">
+      ${pending?`<div style="margin-bottom:10px"><span class="pill warn">⏳ noch nicht veröffentlicht</span></div>`:''}
+      <div class="feedcard-main">
+        <div class="feedcard-avatars">${avatars}${overflowBadge}</div>
+        <div style="flex:1;min-width:0">
+          <div class="feedcard-names">${esc(feedMemberNamesDisplay(item.members,item.gastNamen))}</div>
+          <div class="feedcard-paragraph${paragraphRef?'':' missing'}" title="Vergehen/Paragraph nachträglich zuordnen" onclick="editStrafeModal('${item.strafeIds.join(',')}')">${paragraphRef?esc(paragraphRef):'Kein Paragraph vorhanden'} <span style="opacity:.6">✏️</span></div>
+          <div class="feedcard-vergehen">${vergehenText}</div>
+        </div>
+      </div>
+      ${zusatzNotiz?`<div class="feedcard-notiz">💬 ${esc(item.notiz)}</div>`:''}
+      ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}">`:''}
+      ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
+      <div class="feedcard-footer">
+        ${authorHtml}
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="feedcard-betrag">${betragDisplay}</span>
+          <button class="icon-btn" title="Bearbeiten" onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️</button>
+          <button class="icon-btn" title="Löschen" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑</button>
+        </div>
       </div>
     </div>
-    ${zusatzNotiz?`<div class="feedcard-notiz">💬 ${esc(item.notiz)}</div>`:''}
-    ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}">`:''}
-    ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
-    <div class="feedcard-footer">
-      ${authorHtml}
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="feedcard-betrag">${betragDisplay}</span>
-        <button class="icon-btn" title="Bearbeiten" onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️</button>
-        <button class="icon-btn" title="Löschen" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑</button>
-      </div>
+  </div>`;
+}
+// Gruppiert nach Tag + Veranstaltung(ort) – wie eine Kalender-Tagesansicht: eine Überschriftzeile
+// mit Datum+Veranstaltung, darunter chronologisch die dazugehörigen Strafen. Die Gruppen selbst
+// bleiben immer chronologisch (Grundidee "Kalender"); nur die Reihenfolge INNERHALB einer Gruppe
+// folgt der gewählten Sortierung (Datum oder Betrag).
+function groupForumByDayEvent(list,sort){
+  const groups=new Map();
+  list.forEach(item=>{
+    const d=new Date(item.created_at);
+    const dateKey=d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const ort=item.ort||'';
+    const key=dateKey+'|'+ort;
+    let g=groups.get(key);
+    if(!g){
+      g={
+        dateObj:new Date(d.getFullYear(),d.getMonth(),d.getDate()),
+        dateLabel:d.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),
+        ort,
+        items:[],
+      };
+      groups.set(key,g);
+    }
+    g.items.push(item);
+  });
+  const arr=[...groups.values()];
+  arr.sort((a,b)=> sort==='asc' ? a.dateObj-b.dateObj : b.dateObj-a.dateObj);
+  return arr;
+}
+function renderForumDayGroup(g,parentMap){
+  const eventLabel = g.ort ? `📍 ${esc(g.ort)}` : '— ohne Veranstaltungsangabe —';
+  return `<div class="forumDayGroup">
+    <div class="forumDayHeader">
+      <span class="forumDayDate">${esc(g.dateLabel)}</span>
+      <span class="forumDayEvent">${eventLabel}</span>
     </div>
+    ${g.items.map(item=>renderStrafeFeedCard(item,parentMap)).join('')}
   </div>`;
 }
 function strafenauswertungStats(){
@@ -1559,7 +1605,8 @@ function renderForumList(){
     if(sort==='betrag_asc') return a.betrag-b.betrag;
     return sort==='asc' ? new Date(a.created_at)-new Date(b.created_at) : new Date(b.created_at)-new Date(a.created_at);
   });
-  container.innerHTML = feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
+  const dayGroups=groupForumByDayEvent(feedList,sort);
+  container.innerHTML = dayGroups.length?dayGroups.map(g=>renderForumDayGroup(g,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
 }
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
 // Personen für denselben Vorfall – wie strafeIds bei GroupedEntry in der App). Vergehen/Betrag/
