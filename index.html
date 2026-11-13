@@ -168,9 +168,14 @@
   .feedcard-vergehen{font-size:15.5px;color:var(--accent2);line-height:1.45}
   .feedcard-notiz{background:rgba(149,163,178,.1);border-radius:9px;padding:11px 14px;margin-top:11px;font-size:14px;color:var(--text);line-height:1.45}
   .feedcard-img{max-width:100%;max-height:360px;border-radius:12px;margin-top:12px;display:block;object-fit:cover}
+  /* Fallback statt kaputtem Bild-Symbol – z.B. HEIC-Fotos (iPhone), die kein Browser anzeigen kann. */
+  .feedcard-img-fallback{margin-top:12px;padding:16px;border-radius:12px;background:rgba(149,163,178,.1);border:1px dashed var(--line);text-align:center;color:var(--muted);font-size:12.5px}
+  .feedcard-img-fallback a{display:inline-block;margin-top:6px;color:var(--accent2);font-weight:700;text-decoration:none}
+  .feedcard-img-fallback a:hover{text-decoration:underline}
   .feedcard-zeichnung{margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--line);width:100%;max-width:440px}
   .feedcard-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
   .feedcard-author{color:var(--muted);font-size:13.5px;font-weight:600}
+  .feedcard-date{color:var(--muted);font-size:11.5px}
   .feedcard-footer .icon-btn{font-size:17px;padding:6px 8px}
   .member-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px}
   .member-card{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:15px 8px 12px;text-align:center;cursor:pointer;transition:border-color .15s,transform .15s}
@@ -1361,6 +1366,19 @@ function strafeZeichnungSvg(data){
   const paths=(data.strokes||[]).map((pts,i)=>`<path d="${strafeStrokeToPath(pts)}" stroke="${(data.colors&&data.colors[i])||'#1e293b'}" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
   return `<div class="feedcard-zeichnung" style="aspect-ratio:${data.w}/${data.h};background:${data.bg||'#ffffff'}"><svg width="100%" height="100%" viewBox="0 0 ${data.w} ${data.h}">${paths}</svg></div>`;
 }
+// Fängt Fotos ab, die der Browser nicht anzeigen kann (z.B. HEIC von iPhones, ab 2026-11-13
+// lädt die App neue Fotos nur noch als JPEG hoch – das hier fängt nur noch ältere Altfotos ab)
+// und zeigt statt des kaputten Bild-Symbols einen Hinweis mit Link zum Originalbild.
+function handleFeedImgError(img){
+  const url=img.dataset.url||img.src;
+  const div=document.createElement('div');
+  div.className='feedcard-img-fallback';
+  div.innerHTML='<span style="font-size:24px">📷</span><div>Foto kann im Browser nicht angezeigt werden (z.B. HEIC-Format)</div>';
+  const a=document.createElement('a');
+  a.href=url; a.target='_blank'; a.rel='noopener'; a.textContent='Original öffnen ↗';
+  div.appendChild(a);
+  img.replaceWith(div);
+}
 // Fasst rohe strafen-Zeilen anhand group_id zu Karten zusammen – exakt wie groupStrafen() in
 // feedUtils.ts der App, nur ohne Supabase-Joins (Mitglied/Katalog werden lokal nachgeschlagen).
 function groupStrafenForFeed(list){
@@ -1419,6 +1437,7 @@ function renderStrafeFeedCard(item,parentMap){
   const vergehenText = item.katalog ? esc(strafeVergehenText(item.katalog,item.notiz,parentMap)) : '';
   const paragraphRef=strafeParagraphRef(item.katalog);
   const timeLabel = item.zeit_unbekannt ? 'unbekannt' : new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  const dateLabel = new Date(item.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
   const zusatzNotiz = !!item.notiz; // immer als eigener 💬-Kasten, mit oder ohne zugeordnetes Vergehen
   const pending = new Date(item.visible_at).getTime() > Date.now();
   const betragDisplay = totalNames>1 ? `${totalNames}×<br>${eur(item.betrag)}` : eur(item.betrag);
@@ -1450,10 +1469,11 @@ function renderStrafeFeedCard(item,parentMap){
           </div>
         </div>
         ${zusatzNotiz?`<div class="feedcard-notiz">💬 ${esc(item.notiz)}</div>`:''}
-        ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}">`:''}
+        ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}" data-url="${esc(item.bild_url)}" onerror="handleFeedImgError(this)">`:''}
         ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
         <div class="feedcard-footer">
           ${authorHtml}
+          <span class="feedcard-date">${dateLabel}</span>
         </div>
       </div>
       <div class="feedcard-betragcol" title="Betrag unabhängig vom Vergehen ändern" onclick="editBetragModal('${item.strafeIds.join(',')}')">${betragDisplay}</div>
