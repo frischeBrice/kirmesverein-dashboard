@@ -1500,7 +1500,7 @@ function renderForumDayGroup(g,parentMap){
   // Veranstaltungsname ist direkt anklickbar zum Umbenennen – genau wie Uhrzeit/Betrag auf den
   // Karten, keine separate Suchen-dann-umbenennen-Umwegfunktion über die Filterleiste mehr.
   const eventLabel = g.ort
-    ? `<span class="forumDayEvent" data-ort="${esc(g.ort)}" title="Veranstaltung umbenennen" onclick="renameVeranstaltungModal(this.dataset.ort)">📍 ${esc(g.ort)}</span>`
+    ? `<span class="forumDayEvent" data-ort="${esc(g.ort)}" data-day="${g.dateObj.getTime()}" title="Veranstaltung umbenennen (nur an diesem Tag)" onclick="renameVeranstaltungModal(this.dataset.ort,Number(this.dataset.day))">📍 ${esc(g.ort)}</span>`
     : '<span class="forumDayEvent muted">— ohne Veranstaltungsangabe —</span>';
   return `<div class="forumDayGroup">
     <div class="forumDayHeader">
@@ -1642,12 +1642,18 @@ function strafenForumOrtOptions(){
 // Veranstaltung gesammelt umbenennen: Klick auf den Veranstaltungsnamen in der Tagesüberschrift
 // (siehe renderForumDayGroup) übergibt direkt den aktuellen Namen – kein Auswahl-Umweg über die
 // Filterleiste nötig, genau wie bei Uhrzeit/Betrag auf den Karten selbst.
-function renameVeranstaltungModal(ort){
-  if(!ort) return;
-  const count=strafenAlle.filter(s=>s.ort===ort).length;
+// Datum + Veranstaltung werden als Einheit behandelt (wie schon bei der Tages-Gruppierung
+// selbst) – Umbenennen wirkt darum NUR auf den angeklickten Tag, nicht auf jede Strafe mit
+// demselben Veranstaltungsnamen an irgendeinem anderen Tag.
+function renameVeranstaltungModal(ort,dayMs){
+  if(!ort || !dayMs) return;
+  const dayStart=new Date(dayMs), dayEnd=new Date(dayMs+86400000);
+  const inDay=s=>s.ort===ort && new Date(s.created_at)>=dayStart && new Date(s.created_at)<dayEnd;
+  const count=strafenAlle.filter(inDay).length;
   openModal(`<h3>Veranstaltung umbenennen</h3>
-    <div class="submuted" style="margin-bottom:10px">Ändert den Namen gesammelt bei allen ${count} Strafen mit dieser Veranstaltung.</div>
+    <div class="submuted" style="margin-bottom:10px">Ändert den Namen gesammelt bei allen ${count} Strafen an diesem Tag mit dieser Veranstaltung – andere Tage mit demselben Namen bleiben unverändert.</div>
     <input type="hidden" id="ren_ort_alt" value="${esc(ort)}">
+    <input type="hidden" id="ren_ort_day" value="${dayMs}">
     <label class="field"><span>Name</span><input id="ren_ort_neu" value="${esc(ort)}"></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveVeranstaltungRename(this)">Umbenennen</button></div>`,true);
@@ -1655,10 +1661,12 @@ function renameVeranstaltungModal(ort){
 function saveVeranstaltungRename(btn){
   const alt=val('ren_ort_alt');
   const neu=val('ren_ort_neu');
+  const dayMs=Number(val('ren_ort_day'));
   if(!alt||!neu){ alert('Bitte einen neuen Namen eingeben.'); return; }
   if(alt===neu){ closeModal(); return; }
+  const dayStart=new Date(dayMs).toISOString(), dayEnd=new Date(dayMs+86400000).toISOString();
   withBtn(btn, async()=>{
-    const {error}=await sb.from('strafen').update({ort:neu}).eq('ort',alt);
+    const {error}=await sb.from('strafen').update({ort:neu}).eq('ort',alt).gte('created_at',dayStart).lt('created_at',dayEnd);
     if(error) throw error;
     closeModal(); await loadAll();
   });
