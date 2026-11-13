@@ -902,6 +902,8 @@
 <datalist id="memberNames"></datalist>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Dekodiert HEIC (iPhone-Fotos) im Browser zu JPEG, damit alte Strafen-Fotos konvertiert/angezeigt werden können -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <script>
 /* ================= Konfiguration ================= */
 const SUPABASE_URL = 'https://cojfcepqdaooycjivmmv.supabase.co';
@@ -1371,13 +1373,51 @@ function strafeZeichnungSvg(data){
 // und zeigt statt des kaputten Bild-Symbols einen Hinweis mit Link zum Originalbild.
 function handleFeedImgError(img){
   const url=img.dataset.url||img.src;
+  const ids=img.dataset.ids||'';
   const div=document.createElement('div');
   div.className='feedcard-img-fallback';
-  div.innerHTML='<span style="font-size:24px">📷</span><div>Foto kann im Browser nicht angezeigt werden (z.B. HEIC-Format)</div>';
+  div.innerHTML='<span style="font-size:24px">📷</span><div>Foto kann im Browser nicht angezeigt werden (z.B. HEIC-Format)</div><div class="heic-status" style="margin-top:6px"></div>';
+  const linkRow=document.createElement('div');
+  linkRow.style.cssText='display:flex;gap:14px;justify-content:center;margin-top:6px;flex-wrap:wrap';
   const a=document.createElement('a');
   a.href=url; a.target='_blank'; a.rel='noopener'; a.textContent='Original öffnen ↗';
-  div.appendChild(a);
+  linkRow.appendChild(a);
+  if(ids && window.heic2any){
+    const convertBtn=document.createElement('a');
+    convertBtn.href='#'; convertBtn.textContent='🔄 Konvertieren & dauerhaft speichern';
+    convertBtn.onclick=(ev)=>{ ev.preventDefault(); convertHeicFoto(div,url,ids); };
+    linkRow.appendChild(convertBtn);
+  }
+  div.appendChild(linkRow);
   img.replaceWith(div);
+}
+// Dekodiert ein HEIC-Foto per heic2any im Browser zu JPEG, lädt es als neue Datei in
+// strafen-bilder hoch und biegt bild_url bei allen betroffenen Strafen (Gruppe) dauerhaft um –
+// ab dann ist es ein ganz normales, überall anzeigbares JPEG.
+async function convertHeicFoto(container,url,idsStr){
+  const statusEl=container.querySelector('.heic-status');
+  statusEl.textContent='Konvertiere …';
+  try{
+    const resp=await fetch(url);
+    if(!resp.ok) throw new Error('Download fehlgeschlagen ('+resp.status+')');
+    const blob=await resp.blob();
+    const converted=await heic2any({ blob, toType:'image/jpeg', quality:0.85 });
+    const jpegBlob=Array.isArray(converted)?converted[0]:converted;
+    const fileName=`strafen/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+    const { error:upErr }=await sb.storage.from('strafen-bilder').upload(fileName,jpegBlob,{ contentType:'image/jpeg', upsert:true });
+    if(upErr) throw upErr;
+    const { data }=sb.storage.from('strafen-bilder').getPublicUrl(fileName);
+    const ids=idsStr.split(',');
+    const { error:dbErr }=await sb.from('strafen').update({ bild_url:data.publicUrl }).in('id',ids);
+    if(dbErr) throw dbErr;
+    const img=document.createElement('img');
+    img.className='feedcard-img';
+    img.src=data.publicUrl;
+    container.replaceWith(img);
+    await loadAll();
+  }catch(e){
+    statusEl.textContent='Konvertierung fehlgeschlagen: '+(e&&e.message||e);
+  }
 }
 // Fasst rohe strafen-Zeilen anhand group_id zu Karten zusammen – exakt wie groupStrafen() in
 // feedUtils.ts der App, nur ohne Supabase-Joins (Mitglied/Katalog werden lokal nachgeschlagen).
@@ -1469,7 +1509,7 @@ function renderStrafeFeedCard(item,parentMap){
           </div>
         </div>
         ${zusatzNotiz?`<div class="feedcard-notiz">💬 ${esc(item.notiz)}</div>`:''}
-        ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}" data-url="${esc(item.bild_url)}" onerror="handleFeedImgError(this)">`:''}
+        ${item.bild_url?`<img class="feedcard-img" src="${esc(item.bild_url)}" data-url="${esc(item.bild_url)}" data-ids="${item.strafeIds.join(',')}" onerror="handleFeedImgError(this)">`:''}
         ${(item.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('')}
         <div class="feedcard-footer">
           ${authorHtml}
