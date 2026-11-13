@@ -895,6 +895,8 @@
     <div class="only-print" id="essenPrintArea"></div>
     <!-- Druckfläche für die Sponsoren-Übersicht (nur beim Drucken sichtbar) -->
     <div class="only-print" id="sponsorenPrintArea"></div>
+    <!-- Druckfläche für die Strafakte (nur beim Drucken sichtbar) -->
+    <div class="only-print" id="strafaktePrintArea"></div>
   </main>
 </div>
 
@@ -920,6 +922,9 @@ let strafenAlle = [];
 // (SaisonTab): deckt NUR für den Admin die echten Schreiber-Namen im Forum auf, rein eine
 // Ansichts-Einstellung, ändert nichts an den Daten und nichts daran, was Mitglieder sehen.
 let adminNamenSichtbar = false;
+// thron_config-Key 'veranstaltung_kategorien' – JSON-Objekt {Veranstaltungsname: 'intern'|'extern'},
+// im Konfiguration-Tab der Strafenauswertung gepflegt.
+let veranstaltungKategorien = {};
 let strafenkatalog = [];
 let katTyp = 'einkauf'; // Kategorien-Verwaltung: aktuell ausgewählter Typ-Tab
 let strafenMap = {}, postenMap = {};
@@ -1086,8 +1091,8 @@ async function logout(){ await sb.auth.signOut(); me=null; location.reload(); }
 /* ================= Daten laden ================= */
 async function loadAll(){
   const nowISO=new Date().toISOString();
-  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am,bs,tc] = await Promise.all([
-    sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert').order('display_name'),
+  const [m,t,e,s,sa,skat,pd,pb,inv,sp,kv,kvt,kl,klv,fs,fsv,dk,hf,er,em,eb,ers,erg,st,sd,fk,am,bs,tc,vk] = await Promise.all([
+    sb.from('profiles').select('id,display_name,username,role,email,avatar_color,avatar_url,geschlecht,pausiert,geburtsdatum').order('display_name'),
     sb.from('finanzbuchungen').select('*').order('datum',{ascending:false}),
     sb.from('veranstaltungen').select('*').order('datum',{ascending:false}),
     canSeeStrafen() ? sb.from('strafen').select('mitglied_id,betrag').eq('bezahlt',false).lte('visible_at',nowISO) : Promise.resolve({data:[],error:null}),
@@ -1116,6 +1121,7 @@ async function loadAll(){
     sb.from('ansaufen_mottos').select('*').order('datum',{ascending:false,nullsFirst:false}),
     sb.from('bingo_state').select('state').eq('id',1).maybeSingle(),
     canSeeStrafen() ? sb.from('thron_config').select('value').eq('key','admin_schreiber_sichtbar').maybeSingle() : Promise.resolve({data:null,error:null}),
+    canSeeStrafen() ? sb.from('thron_config').select('value').eq('key','veranstaltung_kategorien').maybeSingle() : Promise.resolve({data:null,error:null}),
   ]);
   [m,t,e].forEach(r=>{ if(r.error) console.warn(r.error.message); });
   members = m.data||[]; transactions = t.data||[]; events = e.data||[];
@@ -1152,6 +1158,8 @@ async function loadAll(){
   if(sa&&sa.error) console.warn('strafen:',sa.error.message);
   adminNamenSichtbar = !!(tc&&tc.data&&tc.data.value==='true');
   if(tc&&tc.error) console.warn('thron_config:',tc.error.message);
+  try{ veranstaltungKategorien = (vk&&vk.data&&vk.data.value)?JSON.parse(vk.data.value):{}; }catch(e){ veranstaltungKategorien={}; }
+  if(vk&&vk.error) console.warn('thron_config veranstaltung_kategorien:',vk.error.message);
   strafenkatalog = (skat&&skat.data)||[];
   if(skat&&skat.error) console.warn('strafenkatalog:',skat.error.message);
   bingoRemoteState = (bs&&bs.data&&bs.data.state)||null;
@@ -1608,10 +1616,11 @@ function strafenauswertungStats(){
   strafenAlle.forEach(s=>{
     const key=s.mitglied_id||('gast:'+(s.gast_name||'?'));
     const label=s.mitglied_id?memberName(s.mitglied_id):((s.gast_name||'Unbekannt')+' (Gast)');
-    const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0});
+    const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0,id:s.mitglied_id||null});
     e.anzahl++; e.summe+=Number(s.betrag)||0;
   });
-  const perMember=Object.values(byMember).sort((a,b)=>b.summe-a.summe);
+  const perMemberWithId=Object.values(byMember).sort((a,b)=>b.summe-a.summe);
+  const perMember=perMemberWithId;
   const perMemberByCount=[...perMember].sort((a,b)=>b.anzahl-a.anzahl).slice(0,8);
   const byKatalog={};
   strafenAlle.forEach(s=>{
@@ -1645,11 +1654,161 @@ function strafenauswertungStats(){
   const gesamtSumme=strafenAlle.reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const anzahl=strafenAlle.length;
   return {
-    perMember,perMemberByCount,perKatalog,perKatalogBySumme,perOrt,byMonth,byWeekday,jahr,
+    perMember,perMemberWithId,perMemberByCount,perKatalog,perKatalogBySumme,perOrt,byMonth,byWeekday,jahr,
     topEinzelstrafen,gesamtSumme,anzahl,
     betroffeneMitglieder:perMember.length,
     schnitt:anzahl?gesamtSumme/anzahl:0,
   };
+}
+
+/* ---- Strafakte: 1:1-Stilkopie der PDF aus strafaktePdf.ts der App (generateStrafakte), aber
+   direkt im Dashboard ansehbar + über window.print() als PDF speicherbar statt per Share-Sheet.
+   "Aktenzeichen" ist bewusst erfunden/augenzwinkernd (kein echtes Rechtsdokument), kombiniert
+   Geburtsdatum (falls hinterlegt) mit dem laufenden Kirmesjahr + einer stabilen laufenden Nummer. */
+function strafakteBetroffeneMitglieder(){
+  // Stabile Reihenfolge (alphabetisch) für die laufende Nummer, damit dieselbe Person bei jedem
+  // erneuten Ansehen/Drucken immer dieselbe Nummer bekommt, nicht nur innerhalb einer Sitzung.
+  const ids=new Set(strafenAlle.filter(s=>s.mitglied_id).map(s=>s.mitglied_id));
+  return members.filter(m=>ids.has(m.id)).sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+}
+function strafakteAktenzeichen(memberId){
+  const betroffene=strafakteBetroffeneMitglieder();
+  const idx=betroffene.findIndex(m=>m.id===memberId);
+  const lfd=String(idx+1).padStart(3,'0');
+  const jahr=new Date().getFullYear();
+  const m=members.find(x=>x.id===memberId);
+  if(m&&m.geburtsdatum){
+    const bd=new Date(m.geburtsdatum);
+    const tag=String(bd.getDate()).padStart(2,'0'), monat=String(bd.getMonth()+1).padStart(2,'0');
+    return `AJK-${tag}${monat}/${jahr}-${lfd}`;
+  }
+  return `AJK-${jahr}-${lfd}`;
+}
+function strafakteParagraph(kat){
+  if(!kat||!kat.gruppe) return '';
+  const m=kat.gruppe.match(/§(\d+)/);
+  if(!m) return '';
+  return kat.reihenfolge!=null ? `§${m[1]} / ${Math.floor(kat.reihenfolge)}` : `§${m[1]}`;
+}
+function strafakteBeschreibung(s){
+  const parts=(s.notiz||'').split('|').map(p=>p.trim());
+  const text0=parts[0]||'';
+  const aufschlaege=parts.slice(1).filter(p=>p.startsWith('+'));
+  if(text0) return {text:text0, sub:aufschlaege.join(', ')};
+  const kat=s.katalog_id?strafenkatalog.find(k=>k.id===s.katalog_id):null;
+  if(!kat) return {text:'',sub:''};
+  if(kat.reihenfolge!=null && !Number.isInteger(kat.reihenfolge)){
+    const parent=strafenkatalog.find(k=>k.gruppe===kat.gruppe && k.reihenfolge===Math.floor(kat.reihenfolge));
+    return {text:parent?parent.name:'', sub:kat.name};
+  }
+  return {text:kat.name, sub:''};
+}
+// Baut NUR den Inhalt (kein <html>/<head>/<body>) - einsetzbar sowohl in der Vorschau (Modal)
+// als auch in der Druckfläche, beide bekommen exakt dasselbe Dokument zu sehen.
+function strafakteDoc(memberId){
+  const m=members.find(x=>x.id===memberId);
+  if(!m) return {html:'<div class="empty">Mitglied nicht gefunden.</div>',count:0};
+  const rows=strafenAlle.filter(s=>s.mitglied_id===memberId).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const aktenNr=strafakteAktenzeichen(memberId);
+  const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
+  const groups=[]; const groupMap=new Map();
+  rows.forEach(s=>{
+    const d=new Date(s.created_at);
+    const dateStr=d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const key=dateStr+'_'+(s.ort||'');
+    let g=groupMap.get(key);
+    if(!g){ g={date:dateStr, ort:s.ort||'', ortTyp:s.ort_typ||null, items:[]}; groupMap.set(key,g); groups.push(g); }
+    if(!g.ortTyp && s.ort_typ) g.ortTyp=s.ort_typ;
+    g.items.push(s);
+  });
+  let tableRows='';
+  groups.forEach(g=>{
+    const cb=(on)=>on?'&#9745;':'&#9744;';
+    const checkboxes=`<span class="ak-cbgroup"><span class="ak-cb">${cb(g.ortTyp==='optional')}</span> Optional `
+      +`<span class="ak-cb">${cb(g.ortTyp==='pflicht')}</span> Pflicht `
+      +`<span class="ak-cb">${cb(g.ortTyp==='offiziell')}</span> Offiziell</span>`;
+    const ortPart=g.ort?` &mdash; ${esc(g.ort)}`:'';
+    tableRows+=`<tr class="ak-eventhead"><td colspan="4"><strong>${g.date}</strong>${ortPart} ${checkboxes}</td></tr>`;
+    g.items.forEach(s=>{
+      const {text,sub}=strafakteBeschreibung(s);
+      const paragraph=strafakteParagraph(s.katalog_id?strafenkatalog.find(k=>k.id===s.katalog_id):null);
+      const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+      const schreiber=s.written_by?members.find(x=>x.id===s.written_by):null;
+      const metaLine=schreiber?`<br/><span class="ak-meta">Schreiber: ${esc(schreiber.display_name||schreiber.username)}</span>`:'';
+      tableRows+=`<tr>
+        <td class="ak-col-zeit">${esc(zeit)}</td>
+        <td class="ak-col-para">${esc(paragraph)}</td>
+        <td class="ak-col-straf">${esc(text)}${sub?`<br/><span class="ak-sub">${esc(sub)}</span>`:''}${metaLine}</td>
+        <td class="ak-col-preis">${eur(Number(s.betrag)||0)}</td>
+      </tr>`;
+    });
+  });
+  const photoHtml=m.avatar_url
+    ? `<div class="ak-photo"><img src="${esc(m.avatar_url)}"></div>`
+    : `<div class="ak-photo ak-photo-placeholder"></div>`;
+  const html=`<style>
+    .ak-doc{font-family:'Times New Roman',Times,serif;color:#000;background:#fff;padding:14mm;max-width:800px;margin:0 auto}
+    .ak-title{text-align:center;font-size:18pt;font-weight:bold;letter-spacing:.5pt;margin-bottom:6pt}
+    .ak-topline{border:none;border-top:2.5px solid #000;margin:10pt 0 20pt}
+    .ak-header{display:flex;gap:24pt;margin-bottom:20pt;align-items:flex-start}
+    .ak-photo{width:100pt;height:130pt;border:2.5px solid #1a1a2e;overflow:hidden;background:#e8e8e8;flex-shrink:0}
+    .ak-photo img{width:100%;height:100%;object-fit:cover}
+    .ak-photo-placeholder{background:#ddd}
+    .ak-info{flex:1;padding-top:2pt}
+    .ak-info .ak-label{font-size:20pt;font-weight:bold;letter-spacing:1pt;color:#1a1a2e}
+    .ak-info .ak-nr{font-size:26pt;font-weight:bold;color:#1a1a2e;margin-bottom:8pt}
+    .ak-info .ak-plabel{font-size:12pt;color:#444;margin-bottom:3pt}
+    .ak-info .ak-pname{font-size:17pt;font-weight:bold}
+    .ak-info .ak-saison{font-size:10pt;color:#888;margin-top:8pt}
+    .ak-midline{border:none;border-top:1.5px solid #1a1a2e;margin:0 0 14pt}
+    .ak-doc table{width:100%;border-collapse:collapse}
+    .ak-doc thead th{background:#1a1a2e;color:#fff;font-size:9pt;font-weight:bold;padding:5pt 8pt;text-align:left;border:1px solid #333}
+    .ak-doc thead th:last-child{text-align:right}
+    .ak-doc thead th.ak-th-para{text-align:center}
+    .ak-doc tbody td{padding:4pt 8pt;border:1px solid #ddd;font-size:10pt;vertical-align:top;line-height:1.3}
+    .ak-col-zeit{width:14%} .ak-col-para{width:14%;text-align:center} .ak-col-straf{width:50%} .ak-col-preis{width:22%;text-align:right}
+    .ak-eventhead td{background:#eaeaea;font-size:10pt;padding:5pt 8pt;border:1px solid #ccc}
+    .ak-cbgroup{float:right;font-size:8pt;color:#444} .ak-cb{font-size:12pt;vertical-align:-1pt;margin-left:2pt}
+    .ak-sub{color:#777;font-size:8pt;font-style:italic} .ak-meta{color:#555;font-size:7pt}
+    .ak-total{border-top:2.5px solid #1a1a2e;padding-top:10pt;margin-top:14pt;display:flex;justify-content:space-between;font-size:15pt;font-weight:bold}
+    .ak-stamp{text-align:center;margin-top:28pt;font-size:8pt;color:#999;letter-spacing:.3pt}
+    @media print{ .ak-doc{padding:0;max-width:none} }
+  </style>
+  <div class="ak-doc">
+    <div class="ak-title">Apfelstädter Jugendkirmesgesellschaft e.V.</div>
+    <hr class="ak-topline">
+    <div class="ak-header">
+      ${photoHtml}
+      <div class="ak-info">
+        <div class="ak-label">STRAFAKTE</div>
+        <div class="ak-nr">${esc(aktenNr)}</div>
+        <div class="ak-plabel">Beschuldigte Person:</div>
+        <div class="ak-pname">${esc(m.display_name||m.username)}</div>
+        <div class="ak-saison">Kirmessaison ${new Date().getFullYear()}</div>
+      </div>
+    </div>
+    <hr class="ak-midline">
+    <table>
+      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-th-para ak-col-para">§ / Abs.</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
+      <tbody>${tableRows||`<tr><td colspan="4" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
+    </table>
+    <div class="ak-total"><span>Strafenbeitrag gesamt</span><span>${eur(gesamt)}</span></div>
+    <div class="ak-stamp">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} · Kirmes-Strafenbuch Dashboard</div>
+  </div>`;
+  return {html,count:rows.length,memberName:m.display_name||m.username,aktenNr};
+}
+function viewStrafakteModal(memberId){
+  const doc=strafakteDoc(memberId);
+  openModal(`<h3>📁 Strafakte${doc.memberName?` – ${esc(doc.memberName)}`:''}</h3>
+    <div style="max-height:60vh;overflow:auto;border-radius:10px;margin-bottom:14px">${doc.html}</div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Schließen</button>
+      <button class="btn" onclick="printStrafakte('${memberId}')">🖨 Als PDF drucken</button></div>`,true);
+}
+function printStrafakte(memberId){
+  const doc=strafakteDoc(memberId);
+  document.getElementById('strafaktePrintArea').innerHTML=doc.html;
+  document.getElementById('strafaktePrintArea').classList.add('show');
+  printDoc('Strafakte '+(doc.memberName||''));
 }
 // Welcher der drei Unterbereiche gerade offen ist (persistiert nur für die laufende Sitzung,
 // wie die anderen flüchtigen UI-Filter dieser View auch).
@@ -1664,6 +1823,15 @@ async function toggleAdminNamenSichtbar(){
   if(error){ alert('Fehler: '+error.message); return; }
   adminNamenSichtbar=neu;
   renderStrafenauswertung();
+}
+// Speichert die Intern/Extern-Zuordnung einer Veranstaltung gesammelt als EIN JSON-Objekt unter
+// einem einzigen thron_config-Schlüssel (kein neues SQL/keine neue Tabelle nötig).
+async function setVeranstaltungKategorie(ort,kategorie){
+  const next={...veranstaltungKategorien};
+  if(kategorie) next[ort]=kategorie; else delete next[ort];
+  const {error}=await sb.from('thron_config').upsert({key:'veranstaltung_kategorien',value:JSON.stringify(next)},{onConflict:'key'});
+  if(error){ alert('Fehler: '+error.message); return; }
+  veranstaltungKategorien=next;
 }
 function renderStrafenauswertung(){
   const el=document.getElementById('strafenauswertungBody'); if(!el) return;
@@ -1680,14 +1848,14 @@ function renderStrafenauswertung(){
   const st=strafenauswertungStats();
   const tab=strafenauswertungTab;
   const tabBtn=(key,label)=>`<button class="btn ghost sm${tab===key?' active':''}" onclick="setStrafenauswertungTab('${key}')">${label}</button>`;
-  const nav=`<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">${tabBtn('forum','📋 Forum')}${tabBtn('auswertung','📊 Auswertung')}${tabBtn('statistik','📈 Statistik')}</div>`;
+  const nav=`<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">${tabBtn('forum','📋 Forum')}${tabBtn('auswertung','📊 Auswertung')}${tabBtn('statistik','📈 Statistik')}${tabBtn('konfiguration','⚙️ Konfiguration')}</div>`;
 
   let body='';
   if(tab==='auswertung'){
     body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
-      ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Strafen erfasst.</div>'}
+      ${st.perMemberWithId.length?tbl(['Mitglied','Anzahl','Summe',''],st.perMemberWithId.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.id?`<button class="btn ghost sm" onclick="viewStrafakteModal('${e.id}')">📁 Akte</button>`:''])):'<div class="empty">Keine Strafen erfasst.</div>'}
     </div>`;
   } else if(tab==='statistik'){
     const ortEntries=st.perOrt.map(([label,anzahl])=>({label,anzahl}));
@@ -1727,12 +1895,30 @@ function renderStrafenauswertung(){
       <div class="sectionbar"><h3 style="font-size:15px">💸 Teuerste Einzelstrafen</h3></div>
       ${st.topEinzelstrafen.length?tbl(['Mitglied','Vergehen','Datum','Betrag'],st.topEinzelstrafen.map(e=>[e.member,esc(e.vergehen),e.datum,eur(e.betrag)])):'<div class="empty">Keine Daten.</div>'}
     </div>`;
+  } else if(tab==='konfiguration'){
+    const orte=strafenForumOrtOptions();
+    body=`
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📍 Veranstaltungen: Intern/Extern</h3></div>
+      <div class="submuted" style="margin:-4px 0 12px">Ordnet jede Veranstaltung einmalig Intern oder Extern zu – wird überall im Forum/der Statistik mitgeführt.</div>
+      ${orte.length?orte.map(o=>{
+        const kat=veranstaltungKategorien[o]||'';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)">
+          <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o)}">${esc(o)}</div>
+          <select data-ort="${esc(o)}" onchange="setVeranstaltungKategorie(this.dataset.ort,this.value)" style="width:auto;min-width:130px">
+            <option value="" ${kat?'':'selected'}>– nicht gesetzt –</option>
+            <option value="intern" ${kat==='intern'?'selected':''}>🏠 Intern</option>
+            <option value="extern" ${kat==='extern'?'selected':''}>🌐 Extern</option>
+          </select>
+        </div>`;
+      }).join(''):'<div class="empty">Noch keine Veranstaltungen vorhanden.</div>'}
+    </div>`;
   } else {
     // Die Filterleiste wird NUR beim Tab-Wechsel neu gebaut; jede Filteränderung ruft danach
     // nur noch renderForumList() auf, das lediglich #forumCardsList ersetzt – so verliert das
     // Suchfeld beim Tippen nicht ständig den Fokus (kompletter innerHTML-Ersatz würde das Input
     // jedes Mal neu erzeugen).
-    const ortOptionsHtml=strafenForumOrtOptions().map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
+    const ortOptionsHtml=strafenForumOrtDateOptions().map(o=>`<option value="${o.dayMs}|${esc(o.ort)}">${o.dateLabel} – ${esc(o.ort)}</option>`).join('');
     const schreiberOptionsHtml = adminNamenSichtbar ? `
         <select id="strafenauswertungSchreiber" onchange="renderForumList()" style="min-width:170px">
           <option value="">👁 Alle Schreiber</option>
@@ -1792,6 +1978,21 @@ function strafenForumOrtOptions(){
   strafenAlle.forEach(s=>{ if(s.ort) set.add(s.ort); });
   return [...set].sort((a,b)=>a.localeCompare(b,'de'));
 }
+// Für den Veranstaltungs-Filter im Forum: jede Tag+Veranstaltung-Kombination (Datum+Name werden
+// als Einheit behandelt, wie schon beim Umbenennen) als eigene Option, chronologisch alt->neu -
+// so sieht man im Dropdown sofort, wann eine Veranstaltung stattfand, auch wenn derselbe Name
+// mehrfach an unterschiedlichen Tagen vorkommt.
+function strafenForumOrtDateOptions(){
+  const map=new Map();
+  strafenAlle.forEach(s=>{
+    if(!s.ort) return;
+    const d=new Date(s.created_at);
+    const dayMs=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+    const key=dayMs+'|'+s.ort;
+    if(!map.has(key)) map.set(key,{dayMs,ort:s.ort,dateLabel:d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})});
+  });
+  return [...map.values()].sort((a,b)=>a.dayMs-b.dayMs);
+}
 // Veranstaltung gesammelt umbenennen: Klick auf den Veranstaltungsnamen in der Tagesüberschrift
 // (siehe renderForumDayGroup) übergibt direkt den aktuellen Namen – kein Auswahl-Umweg über die
 // Filterleiste nötig, genau wie bei Uhrzeit/Betrag auf den Karten selbst.
@@ -1837,7 +2038,10 @@ function strafenForumWriters(){
 function renderForumList(){
   const container=document.getElementById('forumCardsList'); if(!container) return;
   const q=(val('strafenauswertungSearch')||'').toLowerCase();
-  const ortFilter=val('strafenauswertungOrt')||'';
+  const ortFilterRaw=val('strafenauswertungOrt')||'';
+  const ortFilterSep=ortFilterRaw.indexOf('|');
+  const ortFilterDay=ortFilterRaw?Number(ortFilterRaw.slice(0,ortFilterSep)):null;
+  const ortFilterName=ortFilterRaw?ortFilterRaw.slice(ortFilterSep+1):null;
   const schreiberFilter=val('strafenauswertungSchreiber')||'';
   const von=val('strafenauswertungVon')||'';
   const bis=val('strafenauswertungBis')||'';
@@ -1846,7 +2050,11 @@ function renderForumList(){
   const parentMap=strafenParentNameMap();
   let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
     if(nurFoto && !item.bild_url) return false;
-    if(ortFilter && item.ort!==ortFilter) return false;
+    if(ortFilterRaw){
+      const d=new Date(item.created_at);
+      const dayMs=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+      if(dayMs!==ortFilterDay || item.ort!==ortFilterName) return false;
+    }
     if(schreiberFilter && item.actual_written_by!==schreiberFilter) return false;
     if(von && new Date(item.created_at)<new Date(von+'T00:00:00')) return false;
     if(bis && new Date(item.created_at)>new Date(bis+'T23:59:59')) return false;
@@ -5582,7 +5790,8 @@ window.addEventListener('afterprint',()=>{ document.title=__origTitle;
   const el3=document.getElementById('anwPrintArea'); if(el3) el3.classList.remove('show');
   const el4=document.getElementById('postenPrintArea'); if(el4) el4.classList.remove('show');
   const el5=document.getElementById('essenPrintArea'); if(el5) el5.classList.remove('show');
-  const el6=document.getElementById('sponsorenPrintArea'); if(el6) el6.classList.remove('show'); });
+  const el6=document.getElementById('sponsorenPrintArea'); if(el6) el6.classList.remove('show');
+  const el7=document.getElementById('strafaktePrintArea'); if(el7) el7.classList.remove('show'); });
 // Layout angelehnt an die vereinseigene Papier-Vorlage "Anwesenheit" (Kopf mit Vereinsname/Titel/Datum,
 // Tabelle Nr./Vorname/Nachname/Unterschrift, Fußzeile Optional/Pflicht/Offiziell).
 function splitVorNachname(full){
