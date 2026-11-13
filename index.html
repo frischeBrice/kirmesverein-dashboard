@@ -1793,6 +1793,47 @@ function toDatetimeLocalValue(iso){
 // idsStr: eine einzelne id, oder mehrere mit Komma verbunden (eine group_id-Gruppe, mehrere
 // Personen für denselben Vorfall – wie strafeIds bei GroupedEntry in der App). Vergehen/Betrag/
 // Datum/Ort/Notiz gelten dann für die ganze Gruppe; das Mitglied ist nur bei genau 1 id änderbar.
+// Baut die Vergehen-Auswahl hierarchisch: erst der Hauptparagraph, direkt gefolgt von all
+// seinen Unterpunkten (per <optgroup> eingerückt, wie die Baumstruktur in KatalogScreen.tsx der
+// App). "+ "-Aufschläge gehören nicht hierher, die stehen separat im Betrag-ändern-Dialog.
+function buildKatalogOptionsHtml(selectedId){
+  const byGruppe=new Map();
+  strafenkatalog.forEach(k=>{
+    if(k.name.startsWith('+ ')) return;
+    if(k.name===k.gruppe && k.eintragbar===false && Number(k.betrag)===0) return; // Struktur-Platzhalter
+    const key=k.gruppe||'';
+    const list=byGruppe.get(key)||[];
+    list.push(k);
+    byGruppe.set(key,list);
+  });
+  let html='';
+  [...byGruppe.keys()].sort((a,b)=>a.localeCompare(b,'de')).forEach(gruppe=>{
+    const entries=byGruppe.get(gruppe);
+    // Einträge ganz ohne Reihenfolge haben keine natürliche Gruppierung - je ein eigener Eintrag.
+    entries.filter(k=>k.reihenfolge==null).forEach(k=>{
+      html+=`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===selectedId?'selected':''}>${esc(gruppe?gruppe+' – ':'')}${esc(k.name)} – ${eur(k.betrag)}</option>`;
+    });
+    const withOrder=entries.filter(k=>k.reihenfolge!=null);
+    const parentNrs=[...new Set(withOrder.map(k=>Number.isInteger(k.reihenfolge)?k.reihenfolge:Math.floor(k.reihenfolge)))].sort((a,b)=>a-b);
+    parentNrs.forEach(nr=>{
+      // Der Haupteintrag kann fehlen, wenn er nur ein reiner Struktur-Platzhalter war (oben
+      // rausgefiltert) - die Unterpunkte sollen dann trotzdem nicht spurlos verschwinden.
+      const parent=withOrder.find(k=>k.reihenfolge===nr);
+      const children=withOrder.filter(k=>!Number.isInteger(k.reihenfolge) && Math.floor(k.reihenfolge)===nr)
+        .sort((a,b)=>a.reihenfolge-b.reihenfolge);
+      const label=`${gruppe?gruppe+' – ':''}${parent?parent.name:nr}`;
+      html+=`<optgroup label="${esc(label)}">`;
+      if(parent){
+        html+=`<option value="${parent.id}" data-betrag="${parent.betrag}" ${parent.id===selectedId?'selected':''}>${esc(parent.name)}${children.length?' (gesamt)':''} – ${eur(parent.betrag)}</option>`;
+      }
+      children.forEach(child=>{
+        html+=`<option value="${child.id}" data-betrag="${child.betrag}" ${child.id===selectedId?'selected':''}>↳ ${esc(child.name)} – ${eur(child.betrag)}</option>`;
+      });
+      html+='</optgroup>';
+    });
+  });
+  return html;
+}
 function editStrafeModal(idsStr){
   const ids=idsStr.split(',');
   const rows=ids.map(id=>strafenAlle.find(x=>x.id===id)).filter(Boolean);
@@ -1803,7 +1844,7 @@ function editStrafeModal(idsStr){
   // einfach den ersten Katalog-Eintrag optisch vorauswählen, der beim Speichern ohne Anfassen
   // des Feldes dann versehentlich übernommen würde.
   const katOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– Freitext / kein Vergehen –</option>'
-    +strafenkatalog.map(k=>`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===s.katalog_id?'selected':''}>${esc(k.gruppe?k.gruppe+' – ':'')}${esc(k.name)} (${eur(k.betrag)})</option>`).join('');
+    +buildKatalogOptionsHtml(s.katalog_id);
   const mitgliedField = multi
     ? `<label class="field"><span>Mitglieder</span><div class="submuted" style="margin-top:2px">${rows.map(r=>strafeMemberLabel(r)).join(', ')} — bei mehreren Personen hier nicht einzeln änderbar</div></label>`
     : `<label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(m=>`<option value="${m.id}" ${m.id===s.mitglied_id?'selected':''}>${esc(m.display_name||m.username)}</option>`).join('')}</select></label>`;
