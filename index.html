@@ -1596,6 +1596,7 @@ function renderStrafenauswertung(){
           <option value="">📍 Alle Veranstaltungen</option>
           ${ortOptionsHtml}
         </select>
+        <button class="btn ghost sm" onclick="renameVeranstaltungModal()" title="Veranstaltung umbenennen – ändert den Namen gesammelt bei allen dort hinterlegten Strafen">✏️ Umbenennen</button>
         ${schreiberOptionsHtml}
         <select id="strafenauswertungSort" onchange="renderForumList()" style="min-width:160px">
           <option value="desc">⬇️ Neueste zuerst</option>
@@ -1632,6 +1633,36 @@ function strafenForumOrtOptions(){
   const set=new Set();
   strafenAlle.forEach(s=>{ if(s.ort) set.add(s.ort); });
   return [...set].sort((a,b)=>a.localeCompare(b,'de'));
+}
+// Veranstaltung gesammelt umbenennen: ändert das freie ort-Textfeld bei ALLEN Strafen, die
+// genau diesen Namen tragen, in einem Rutsch (z.B. "11.11 Ständchen Sonntag" → "Sonntag Ständchen").
+function renameVeranstaltungModal(){
+  const options=strafenForumOrtOptions();
+  if(!options.length){ alert('Keine Veranstaltungen vorhanden.'); return; }
+  const preselect=val('strafenauswertungOrt')||options[0];
+  const countFor=name=>strafenAlle.filter(s=>s.ort===name).length;
+  openModal(`<h3>Veranstaltung umbenennen</h3>
+    <div class="submuted" style="margin-bottom:10px">Ändert den Namen gesammelt bei allen Strafen, die dort hinterlegt sind.</div>
+    <label class="field"><span>Veranstaltung</span>
+      <select id="ren_ort_alt" onchange="document.getElementById('ren_ort_neu').value=this.value; document.getElementById('ren_ort_count').textContent=strafenAlle.filter(s=>s.ort===this.value).length+' Strafen betroffen';">
+        ${options.map(o=>`<option value="${esc(o)}" ${o===preselect?'selected':''}>${esc(o)}</option>`).join('')}
+      </select>
+    </label>
+    <div class="submuted" id="ren_ort_count" style="margin-top:-6px">${countFor(preselect)} Strafen betroffen</div>
+    <label class="field"><span>Neuer Name</span><input id="ren_ort_neu" value="${esc(preselect)}"></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveVeranstaltungRename(this)">Umbenennen</button></div>`,true);
+}
+function saveVeranstaltungRename(btn){
+  const alt=val('ren_ort_alt');
+  const neu=val('ren_ort_neu');
+  if(!alt||!neu){ alert('Bitte einen neuen Namen eingeben.'); return; }
+  if(alt===neu){ closeModal(); return; }
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('strafen').update({ort:neu}).eq('ort',alt);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
 }
 // Nur Mitglieder, die tatsächlich mindestens eine Strafe geschrieben haben (actual_written_by) –
 // nicht alle Mitglieder, damit die Auswahl nicht zusätzliche Infos preisgibt.
