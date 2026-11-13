@@ -1579,6 +1579,30 @@ function renderForumDayGroup(g,parentMap){
     ${g.items.map(item=>renderStrafeFeedCard(item,parentMap)).join('')}
   </div>`;
 }
+const STAT_WOCHENTAGE=['Mo','Di','Mi','Do','Fr','Sa','So'];
+// Horizontaler Balken-Chart im selben .catbar-Stil wie chartCats() bei den Finanzen – kein
+// externes Chart-Framework nötig, nur CSS-Breite proportional zum Maximalwert.
+function statCatbar(entries,valueFn,displayFn){
+  if(!entries.length) return '<div class="empty">Keine Daten.</div>';
+  const max=Math.max(1,...entries.map(valueFn));
+  return entries.map(e=>`<div class="catbar"><div class="catbar-label" title="${esc(e.label)}">${esc(e.label)}</div>
+    <div class="catbar-track"><div class="catbar-fill" style="width:${(valueFn(e)/max*100).toFixed(1)}%"></div></div>
+    <div class="catbar-val">${displayFn(e)}</div></div>`).join('');
+}
+// Monatsverlauf (Strafen-Anzahl pro Monat im laufenden Jahr) als einfacher SVG-Balkenchart,
+// gleiches Prinzip wie chartMonthly() bei den Finanzen.
+function statMonthlyChart(byMonth,jahr){
+  const max=Math.max(1,...byMonth);
+  const W=680,H=180,pad=20,bottom=22,bw=(W-2*pad)/12;
+  let bars='';
+  for(let m=0;m<12;m++){
+    const h=(byMonth[m]/max)*(H-pad-bottom);
+    const x=pad+m*bw;
+    bars+=`<rect x="${(x+bw*0.2).toFixed(1)}" y="${(H-bottom-h).toFixed(1)}" width="${(bw*0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2" style="fill:var(--accent)"><title>${MONTHS_SHORT[m]} ${jahr}: ${byMonth[m]} Strafen</title></rect>`;
+    bars+=`<text x="${(x+bw*0.5).toFixed(1)}" y="${H-bottom+14}" text-anchor="middle" style="fill:var(--muted)" font-size="10">${MONTHS_SHORT[m]}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">${bars}</svg>`;
+}
 function strafenauswertungStats(){
   const byMember={};
   strafenAlle.forEach(s=>{
@@ -1588,6 +1612,7 @@ function strafenauswertungStats(){
     e.anzahl++; e.summe+=Number(s.betrag)||0;
   });
   const perMember=Object.values(byMember).sort((a,b)=>b.summe-a.summe);
+  const perMemberByCount=[...perMember].sort((a,b)=>b.anzahl-a.anzahl).slice(0,8);
   const byKatalog={};
   strafenAlle.forEach(s=>{
     const key=s.katalog_id||'frei';
@@ -1596,8 +1621,35 @@ function strafenauswertungStats(){
     e.anzahl++; e.summe+=Number(s.betrag)||0;
   });
   const perKatalog=Object.values(byKatalog).sort((a,b)=>b.anzahl-a.anzahl).slice(0,10);
+  const perKatalogBySumme=Object.values(byKatalog).sort((a,b)=>b.summe-a.summe).slice(0,10);
+  const byOrt={};
+  strafenAlle.forEach(s=>{
+    const key=s.ort||'— ohne Veranstaltung —';
+    byOrt[key]=(byOrt[key]||0)+1;
+  });
+  const perOrt=Object.entries(byOrt).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const now=new Date(), jahr=now.getFullYear();
+  const byMonth=Array(12).fill(0);
+  const byWeekday=Array(7).fill(0);
+  strafenAlle.forEach(s=>{
+    const d=new Date(s.created_at);
+    if(d.getFullYear()===jahr) byMonth[d.getMonth()]++;
+    byWeekday[(d.getDay()+6)%7]++;
+  });
+  const topEinzelstrafen=[...strafenAlle].sort((a,b)=>(Number(b.betrag)||0)-(Number(a.betrag)||0)).slice(0,5).map(s=>({
+    betrag:Number(s.betrag)||0,
+    member:strafeMemberLabel(s),
+    vergehen:s.katalog_id?(katalogName(s.katalog_id)||'—'):(s.notiz||'Freitext'),
+    datum:new Date(s.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}),
+  }));
   const gesamtSumme=strafenAlle.reduce((a,s)=>a+(Number(s.betrag)||0),0);
-  return {perMember,perKatalog,gesamtSumme,anzahl:strafenAlle.length};
+  const anzahl=strafenAlle.length;
+  return {
+    perMember,perMemberByCount,perKatalog,perKatalogBySumme,perOrt,byMonth,byWeekday,jahr,
+    topEinzelstrafen,gesamtSumme,anzahl,
+    betroffeneMitglieder:perMember.length,
+    schnitt:anzahl?gesamtSumme/anzahl:0,
+  };
 }
 // Welcher der drei Unterbereiche gerade offen ist (persistiert nur für die laufende Sitzung,
 // wie die anderen flüchtigen UI-Filter dieser View auch).
@@ -1638,14 +1690,42 @@ function renderStrafenauswertung(){
       ${st.perMember.length?tbl(['Mitglied','Anzahl','Summe'],st.perMember.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Strafen erfasst.</div>'}
     </div>`;
   } else if(tab==='statistik'){
+    const ortEntries=st.perOrt.map(([label,anzahl])=>({label,anzahl}));
+    const weekdayEntries=STAT_WOCHENTAGE.map((label,i)=>({label,anzahl:st.byWeekday[i]}));
     body=`
     <div class="cards">
       <div class="card"><div class="label">Strafen gesamt</div><div class="value">${st.anzahl}</div></div>
       <div class="card"><div class="label">Summe</div><div class="value">${eur(st.gesamtSumme)}</div></div>
+      <div class="card"><div class="label">Ø pro Strafe</div><div class="value">${eur(st.schnitt)}</div></div>
+      <div class="card"><div class="label">Betroffene Personen</div><div class="value">${st.betroffeneMitglieder}</div></div>
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📈 Verlauf ${st.jahr}</h3></div>
+      ${st.anzahl?statMonthlyChart(st.byMonth,st.jahr):'<div class="empty">Keine Daten.</div>'}
     </div>
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">🔥 Häufigste Vergehen</h3></div>
-      ${st.perKatalog.length?tbl(['Vergehen','Anzahl','Summe'],st.perKatalog.map(e=>[esc(e.label),e.anzahl,eur(e.summe)])):'<div class="empty">Keine Daten.</div>'}
+      ${statCatbar(st.perKatalog,e=>e.anzahl,e=>e.anzahl+'×')}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">💰 Teuerste Vergehen (nach Gesamtsumme)</h3></div>
+      ${statCatbar(st.perKatalogBySumme,e=>e.summe,e=>eur(e.summe))}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">👑 Mitglieder mit den meisten Strafen</h3></div>
+      ${statCatbar(st.perMemberByCount,e=>e.anzahl,e=>e.anzahl+'×')}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📍 Strafen nach Veranstaltung</h3></div>
+      ${statCatbar(ortEntries,e=>e.anzahl,e=>e.anzahl+'×')}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">📆 Nach Wochentag</h3></div>
+      ${statCatbar(weekdayEntries,e=>e.anzahl,e=>e.anzahl+'×')}
+    </div>
+    <div class="panel">
+      <div class="sectionbar"><h3 style="font-size:15px">💸 Teuerste Einzelstrafen</h3></div>
+      ${st.topEinzelstrafen.length?tbl(['Mitglied','Vergehen','Datum','Betrag'],st.topEinzelstrafen.map(e=>[e.member,esc(e.vergehen),e.datum,eur(e.betrag)])):'<div class="empty">Keine Daten.</div>'}
     </div>`;
   } else {
     // Die Filterleiste wird NUR beim Tab-Wechsel neu gebaut; jede Filteränderung ruft danach
