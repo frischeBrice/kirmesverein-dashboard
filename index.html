@@ -1416,7 +1416,16 @@ async function convertHeicFoto(container,url,idsStr){
     container.replaceWith(img);
     await loadAll();
   }catch(e){
-    statusEl.textContent='Konvertierung fehlgeschlagen: '+(e&&e.message||e);
+    const msg=(e&&e.message)||String(e);
+    // Bekannte Lücke in der von heic2any mitgelieferten libheif-Version: manche neueren
+    // iPhone-Fotos (iOS 18+) nutzen eine Kodierung, die (noch) nicht entschlüsselt werden kann -
+    // kein Bug hier, sondern eine Grenze der Browser-Bibliothek (siehe heic2any Issue #61 /
+    // libheif Issue #1190). Dafür gibt es aktuell keinen verlässlichen Browser-Fix.
+    if(/libheif|format not supported/i.test(msg)){
+      statusEl.innerHTML='Dieses Foto nutzt ein HEIC-Format, das der Browser-Decoder (noch) nicht lesen kann (bekannte Lücke bei neueren iPhone-Fotos). Nutze "Original öffnen" zum Herunterladen – auf dem Handy/Mac lässt es sich normal ansehen.';
+    } else {
+      statusEl.textContent='Konvertierung fehlgeschlagen: '+msg;
+    }
   }
 }
 // Fasst rohe strafen-Zeilen anhand group_id zu Karten zusammen – exakt wie groupStrafen() in
