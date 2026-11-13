@@ -146,7 +146,9 @@
   .forumDayDate{font-size:21px;font-weight:800;color:var(--text)}
   .forumDayEvent{font-size:15.5px;font-weight:800;color:var(--accent2);background:rgba(58,134,232,.14);padding:4px 12px;border-radius:8px}
   .timelineRow{display:flex;gap:14px;margin-bottom:16px}
-  .timelineTime{flex:none;width:64px;text-align:center;padding-top:20px;margin-top:2px;color:var(--muted);font-size:18px;font-weight:800;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start}
+  .timelineTime{flex:none;width:64px;text-align:center;padding-top:20px;margin-top:2px;color:var(--muted);font-size:18px;font-weight:800;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start;cursor:pointer;border-radius:8px}
+  .timelineTime:hover{color:var(--text);background:rgba(149,163,178,.1)}
+  .timelineTime.unbekannt{font-size:12.5px;font-style:italic;font-weight:700}
   .feedcard-main{display:flex;gap:16px}
   .feedcard-avatars{display:flex;flex:none;align-items:flex-start}
   .feedcard-avatars .pav{border:3px solid var(--panel);margin-left:-16px;background:#94a3b8}
@@ -1384,6 +1386,7 @@ function groupStrafenForFeed(list){
       visible_at: first.visible_at,
       ort: first.ort||null,
       actual_written_by: first.actual_written_by||null,
+      zeit_unbekannt: !!first.zeit_unbekannt,
     });
   });
   return items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -1413,7 +1416,7 @@ function renderStrafeFeedCard(item,parentMap){
   // ein "offizieller" blauer Vergehenname. Die blaue Vergehenzeile gibt es darum nur mit Katalog.
   const vergehenText = item.katalog ? esc(strafeVergehenText(item.katalog,item.notiz,parentMap)) : '';
   const paragraphRef=strafeParagraphRef(item.katalog);
-  const timeLabel=new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  const timeLabel = item.zeit_unbekannt ? 'unbekannt' : new Date(item.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
   const zusatzNotiz = !!item.notiz; // immer als eigener 💬-Kasten, mit oder ohne zugeordnetes Vergehen
   const pending = new Date(item.visible_at).getTime() > Date.now();
   const betragDisplay = totalNames>1 ? `${totalNames}×<br>${eur(item.betrag)}` : eur(item.betrag);
@@ -1425,7 +1428,7 @@ function renderStrafeFeedCard(item,parentMap){
     : `<span class="feedcard-author">von Anonym</span>`;
   const menuKey=item.strafeIds.join('_'); // reine DOM-id, Kommas sind dort nicht erlaubt
   return `<div class="timelineRow">
-    <div class="timelineTime">${timeLabel}</div>
+    <div class="timelineTime${item.zeit_unbekannt?' unbekannt':''}" title="Uhrzeit ändern oder auf unbekannt stellen" onclick="editZeitModal('${item.strafeIds.join(',')}')">${timeLabel}</div>
     <div class="feedcard">
       <div class="feedcard-content">
         <button class="feedcard-menu-btn" title="Bearbeiten/Löschen" onclick="toggleCardMenu('${menuKey}',event)">⋮</button>
@@ -1810,6 +1813,47 @@ function saveBetragOnly(idsStr,btn){
       row.notiz = parts.length ? parts.join(' | ') : null;
     }
     const {error}=await sb.from('strafen').update(row).in('id',ids);
+    if(error) throw error;
+    closeModal(); await loadAll();
+  });
+}
+// Klick auf die Uhrzeit im Forum: nur die Uhrzeit ändern (Datum bleibt, das steckt schon in der
+// Tages-Gruppenüberschrift) oder ganz auf "unbekannt" stellen (zeit_unbekannt-Spalte, siehe
+// sql/add_strafen_zeit_unbekannt.sql).
+function editZeitModal(idsStr){
+  const ids=idsStr.split(',');
+  const rows=ids.map(id=>strafenAlle.find(x=>x.id===id)).filter(Boolean);
+  if(!rows.length) return;
+  const s=rows[0];
+  const multi=rows.length>1;
+  const d=new Date(s.created_at);
+  const pad=n=>String(n).padStart(2,'0');
+  const unbekannt=!!s.zeit_unbekannt;
+  const timeVal=unbekannt?'':pad(d.getHours())+':'+pad(d.getMinutes());
+  openModal(`<h3>Uhrzeit ändern${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
+    <label class="field"><span>Uhrzeit</span><input id="sa_zeit_only" type="time" value="${timeVal}" ${unbekannt?'disabled':''}></label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px;cursor:pointer">
+      <input type="checkbox" id="sa_zeit_unbekannt" style="width:auto" ${unbekannt?'checked':''} onchange="document.getElementById('sa_zeit_only').disabled=this.checked">
+      Uhrzeit unbekannt
+    </label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveZeitOnly('${ids.join(',')}',this)">Speichern</button></div>`,true);
+}
+function saveZeitOnly(idsStr,btn){
+  const ids=idsStr.split(',');
+  const unbekannt=document.getElementById('sa_zeit_unbekannt').checked;
+  const s=strafenAlle.find(x=>x.id===ids[0]);
+  const base=new Date(s.created_at);
+  let newIso=s.created_at;
+  if(!unbekannt){
+    const t=val('sa_zeit_only');
+    if(t){
+      const [h,m]=t.split(':').map(Number);
+      newIso=new Date(base.getFullYear(),base.getMonth(),base.getDate(),h,m,base.getSeconds()).toISOString();
+    }
+  }
+  withBtn(btn, async()=>{
+    const {error}=await sb.from('strafen').update({ created_at:newIso, zeit_unbekannt:unbekannt }).in('id',ids);
     if(error) throw error;
     closeModal(); await loadAll();
   });
