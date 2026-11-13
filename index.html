@@ -1614,6 +1614,7 @@ function renderStrafenauswertung(){
     q: val('strafenauswertungSearch'), ort: val('strafenauswertungOrt'),
     schreiber: val('strafenauswertungSchreiber'), von: val('strafenauswertungVon'),
     bis: val('strafenauswertungBis'), sort: val('strafenauswertungSort'),
+    nurFoto: document.getElementById('strafenauswertungNurFoto')?.checked,
   };
   const st=strafenauswertungStats();
   const tab=strafenauswertungTab;
@@ -1677,6 +1678,7 @@ function renderStrafenauswertung(){
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);flex:none">Bis
           <input type="date" id="strafenauswertungBis" onchange="renderForumList()">
         </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding-bottom:9px"><input type="checkbox" id="strafenauswertungNurFoto" style="width:auto" onchange="renderForumList()">📷 Nur mit Foto</label>
       </div>
       <div id="forumCardsList"></div>
     </div>`;
@@ -1690,6 +1692,8 @@ function renderStrafenauswertung(){
     restore('strafenauswertungVon', forumFilterState.von);
     restore('strafenauswertungBis', forumFilterState.bis);
     restore('strafenauswertungSort', forumFilterState.sort);
+    const nurFotoEl=document.getElementById('strafenauswertungNurFoto');
+    if(nurFotoEl) nurFotoEl.checked=!!forumFilterState.nurFoto;
     renderForumList();
   }
 }
@@ -1748,9 +1752,11 @@ function renderForumList(){
   const schreiberFilter=val('strafenauswertungSchreiber')||'';
   const von=val('strafenauswertungVon')||'';
   const bis=val('strafenauswertungBis')||'';
+  const nurFoto=document.getElementById('strafenauswertungNurFoto')?.checked;
   const sort=val('strafenauswertungSort')||'desc';
   const parentMap=strafenParentNameMap();
   let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
+    if(nurFoto && !item.bild_url) return false;
     if(ortFilter && item.ort!==ortFilter) return false;
     if(schreiberFilter && item.actual_written_by!==schreiberFilter) return false;
     if(von && new Date(item.created_at)<new Date(von+'T00:00:00')) return false;
