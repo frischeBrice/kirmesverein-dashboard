@@ -144,7 +144,9 @@
   .forumDayGroup{margin-bottom:28px}
   .forumDayHeader{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:10px 4px 14px;margin-bottom:18px;border-bottom:3px solid var(--accent2)}
   .forumDayDate{font-size:21px;font-weight:800;color:var(--text)}
-  .forumDayEvent{font-size:15.5px;font-weight:800;color:var(--accent2);background:rgba(58,134,232,.14);padding:4px 12px;border-radius:8px}
+  .forumDayEvent{font-size:15.5px;font-weight:800;color:var(--accent2);background:rgba(58,134,232,.14);padding:4px 12px;border-radius:8px;cursor:pointer}
+  .forumDayEvent:hover{filter:brightness(1.2)}
+  .forumDayEvent.muted{color:var(--muted);background:none;font-weight:700;font-style:italic;cursor:default;padding:4px 0}
   .timelineRow{display:flex;gap:14px;margin-bottom:16px}
   .timelineTime{flex:none;width:64px;text-align:center;padding-top:20px;margin-top:2px;color:var(--muted);font-size:18px;font-weight:800;border-right:2px solid var(--line);padding-right:14px;align-self:flex-start;cursor:pointer;border-radius:8px}
   .timelineTime:hover{color:var(--text);background:rgba(149,163,178,.1)}
@@ -1495,11 +1497,15 @@ function groupForumByDayEvent(list,sort){
   return arr;
 }
 function renderForumDayGroup(g,parentMap){
-  const eventLabel = g.ort ? `📍 ${esc(g.ort)}` : '— ohne Veranstaltungsangabe —';
+  // Veranstaltungsname ist direkt anklickbar zum Umbenennen – genau wie Uhrzeit/Betrag auf den
+  // Karten, keine separate Suchen-dann-umbenennen-Umwegfunktion über die Filterleiste mehr.
+  const eventLabel = g.ort
+    ? `<span class="forumDayEvent" data-ort="${esc(g.ort)}" title="Veranstaltung umbenennen" onclick="renameVeranstaltungModal(this.dataset.ort)">📍 ${esc(g.ort)}</span>`
+    : '<span class="forumDayEvent muted">— ohne Veranstaltungsangabe —</span>';
   return `<div class="forumDayGroup">
     <div class="forumDayHeader">
       <span class="forumDayDate">${esc(g.dateLabel)}</span>
-      <span class="forumDayEvent">${eventLabel}</span>
+      ${eventLabel}
     </div>
     ${g.items.map(item=>renderStrafeFeedCard(item,parentMap)).join('')}
   </div>`;
@@ -1596,7 +1602,6 @@ function renderStrafenauswertung(){
           <option value="">📍 Alle Veranstaltungen</option>
           ${ortOptionsHtml}
         </select>
-        <button class="btn ghost sm" onclick="renameVeranstaltungModal()" title="Veranstaltung umbenennen – ändert den Namen gesammelt bei allen dort hinterlegten Strafen">✏️ Umbenennen</button>
         ${schreiberOptionsHtml}
         <select id="strafenauswertungSort" onchange="renderForumList()" style="min-width:160px">
           <option value="desc">⬇️ Neueste zuerst</option>
@@ -1634,22 +1639,16 @@ function strafenForumOrtOptions(){
   strafenAlle.forEach(s=>{ if(s.ort) set.add(s.ort); });
   return [...set].sort((a,b)=>a.localeCompare(b,'de'));
 }
-// Veranstaltung gesammelt umbenennen: ändert das freie ort-Textfeld bei ALLEN Strafen, die
-// genau diesen Namen tragen, in einem Rutsch (z.B. "11.11 Ständchen Sonntag" → "Sonntag Ständchen").
-function renameVeranstaltungModal(){
-  const options=strafenForumOrtOptions();
-  if(!options.length){ alert('Keine Veranstaltungen vorhanden.'); return; }
-  const preselect=val('strafenauswertungOrt')||options[0];
-  const countFor=name=>strafenAlle.filter(s=>s.ort===name).length;
+// Veranstaltung gesammelt umbenennen: Klick auf den Veranstaltungsnamen in der Tagesüberschrift
+// (siehe renderForumDayGroup) übergibt direkt den aktuellen Namen – kein Auswahl-Umweg über die
+// Filterleiste nötig, genau wie bei Uhrzeit/Betrag auf den Karten selbst.
+function renameVeranstaltungModal(ort){
+  if(!ort) return;
+  const count=strafenAlle.filter(s=>s.ort===ort).length;
   openModal(`<h3>Veranstaltung umbenennen</h3>
-    <div class="submuted" style="margin-bottom:10px">Ändert den Namen gesammelt bei allen Strafen, die dort hinterlegt sind.</div>
-    <label class="field"><span>Veranstaltung</span>
-      <select id="ren_ort_alt" onchange="document.getElementById('ren_ort_neu').value=this.value; document.getElementById('ren_ort_count').textContent=strafenAlle.filter(s=>s.ort===this.value).length+' Strafen betroffen';">
-        ${options.map(o=>`<option value="${esc(o)}" ${o===preselect?'selected':''}>${esc(o)}</option>`).join('')}
-      </select>
-    </label>
-    <div class="submuted" id="ren_ort_count" style="margin-top:-6px">${countFor(preselect)} Strafen betroffen</div>
-    <label class="field"><span>Neuer Name</span><input id="ren_ort_neu" value="${esc(preselect)}"></label>
+    <div class="submuted" style="margin-bottom:10px">Ändert den Namen gesammelt bei allen ${count} Strafen mit dieser Veranstaltung.</div>
+    <input type="hidden" id="ren_ort_alt" value="${esc(ort)}">
+    <label class="field"><span>Name</span><input id="ren_ort_neu" value="${esc(ort)}"></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveVeranstaltungRename(this)">Umbenennen</button></div>`,true);
 }
