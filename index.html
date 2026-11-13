@@ -2084,43 +2084,78 @@ function toDatetimeLocalValue(iso){
 // Baut die Vergehen-Auswahl hierarchisch: erst der Hauptparagraph, direkt gefolgt von all
 // seinen Unterpunkten (per <optgroup> eingerückt, wie die Baumstruktur in KatalogScreen.tsx der
 // App). "+ "-Aufschläge gehören nicht hierher, die stehen separat im Betrag-ändern-Dialog.
-function buildKatalogOptionsHtml(selectedId){
+// Baut den Katalog als Baum: ein Knoten pro Hauptparagraph, jeweils mit seinen Absätzen
+// (normale Unterpunkte UND "+"-Zusatzabsätze, beide bleiben hier drin, nur klar beschriftet).
+// Grundlage für die zweistufige Paragraph->Absatz-Auswahl im Bearbeiten-Dialog - erst den
+// Paragraphen wählen, dann nur noch aus dessen (meist kurzer) Absatz-Liste.
+function computeKatalogTree(){
   const byGruppe=new Map();
   strafenkatalog.forEach(k=>{
-    if(k.name.startsWith('+ ')) return;
-    if(k.name===k.gruppe && k.eintragbar===false && Number(k.betrag)===0) return; // Struktur-Platzhalter
     const key=k.gruppe||'';
     const list=byGruppe.get(key)||[];
     list.push(k);
     byGruppe.set(key,list);
   });
-  let html='';
+  const tree=[];
   [...byGruppe.keys()].sort((a,b)=>a.localeCompare(b,'de')).forEach(gruppe=>{
     const entries=byGruppe.get(gruppe);
-    // Einträge ganz ohne Reihenfolge haben keine natürliche Gruppierung - je ein eigener Eintrag.
+    // Einträge ganz ohne Reihenfolge haben keine natürliche Gruppierung - je ein eigener
+    // "Paragraph" ohne eigene Absätze.
     entries.filter(k=>k.reihenfolge==null).forEach(k=>{
-      html+=`<option value="${k.id}" data-betrag="${k.betrag}" ${k.id===selectedId?'selected':''}>${esc(gruppe?gruppe+' – ':'')}${esc(k.name)} – ${eur(k.betrag)}</option>`;
+      tree.push({key:'p_'+k.id, label:`${gruppe?gruppe+' – ':''}${k.name}`, parent:k, children:[]});
     });
     const withOrder=entries.filter(k=>k.reihenfolge!=null);
-    const parentNrs=[...new Set(withOrder.map(k=>Number.isInteger(k.reihenfolge)?k.reihenfolge:Math.floor(k.reihenfolge)))].sort((a,b)=>a-b);
-    parentNrs.forEach(nr=>{
-      // Der Haupteintrag kann fehlen, wenn er nur ein reiner Struktur-Platzhalter war (oben
-      // rausgefiltert) - die Unterpunkte sollen dann trotzdem nicht spurlos verschwinden.
-      const parent=withOrder.find(k=>k.reihenfolge===nr);
+    const nrs=[...new Set(withOrder.map(k=>Number.isInteger(k.reihenfolge)?k.reihenfolge:Math.floor(k.reihenfolge)))].sort((a,b)=>a-b);
+    nrs.forEach(nr=>{
+      const parentRaw=withOrder.find(k=>k.reihenfolge===nr);
+      // Reiner Struktur-Platzhalter (Name===Gruppe, nicht eintragbar, 0€) ist selbst nicht
+      // auswählbar, bleibt aber Anker für seine Absätze, die sonst spurlos verschwänden.
+      const isPlaceholder=parentRaw && parentRaw.name===parentRaw.gruppe && parentRaw.eintragbar===false && Number(parentRaw.betrag)===0;
+      const parent=(parentRaw && !isPlaceholder) ? parentRaw : null;
       const children=withOrder.filter(k=>!Number.isInteger(k.reihenfolge) && Math.floor(k.reihenfolge)===nr)
-        .sort((a,b)=>a.reihenfolge-b.reihenfolge);
+        .sort((a,b)=>a.reihenfolge-b.reihenfolge)
+        .map(k=>({id:k.id, name:k.name.replace(/^\+\s*/,''), betrag:k.betrag, isZusatz:k.name.startsWith('+ ')}));
       const label=`${gruppe?gruppe+' – ':''}${parent?parent.name:nr}`;
-      html+=`<optgroup label="${esc(label)}">`;
-      if(parent){
-        html+=`<option value="${parent.id}" data-betrag="${parent.betrag}" ${parent.id===selectedId?'selected':''}>${esc(parent.name)}${children.length?' (gesamt)':''} – ${eur(parent.betrag)}</option>`;
-      }
-      children.forEach(child=>{
-        html+=`<option value="${child.id}" data-betrag="${child.betrag}" ${child.id===selectedId?'selected':''}>↳ ${esc(child.name)} – ${eur(child.betrag)}</option>`;
-      });
-      html+='</optgroup>';
+      tree.push({key:'g_'+gruppe+'_'+nr, label, parent, children});
     });
   });
-  return html;
+  return tree;
+}
+function katalogTreeFindParagraph(tree,katalogId){
+  if(!katalogId) return null;
+  return tree.find(p=>(p.parent&&p.parent.id===katalogId)||p.children.some(c=>c.id===katalogId))||null;
+}
+function buildParagraphSelectHtml(tree,selectedKey){
+  return tree.map(p=>`<option value="${p.key}" ${p.key===selectedKey?'selected':''}>${esc(p.label)}</option>`).join('');
+}
+function buildAbsatzSelectHtml(node,selectedId){
+  if(!node) return '<option value="">–</option>';
+  let html='';
+  if(node.parent){
+    const name=node.children.length?'Allgemein (gesamt)':node.parent.name;
+    html+=`<option value="${node.parent.id}" data-betrag="${node.parent.betrag}" ${node.parent.id===selectedId?'selected':''}>${esc(name)} – ${eur(node.parent.betrag)}</option>`;
+  }
+  node.children.forEach(c=>{
+    const prefix=c.isZusatz?'Zusatzabsatz: ':'Abs.: ';
+    html+=`<option value="${c.id}" data-betrag="${c.betrag}" ${c.id===selectedId?'selected':''}>${prefix}${esc(c.name)} – ${eur(c.betrag)}</option>`;
+  });
+  return html||'<option value="">– keine Absätze –</option>';
+}
+// Paragraph gewechselt: Absatz-Auswahl für den neu gewählten Paragraphen neu aufbauen (noch
+// nichts vorausgewählt - erster Absatz wird automatisch übernommen) und Betrag entsprechend
+// mitziehen, genau wie beim direkten Wechsel des Absatzes selbst.
+function onParagraphChange(key,rowsLength){
+  const wrap=document.getElementById('sa_absatz_wrap');
+  if(!key){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const node=computeKatalogTree().find(p=>p.key===key);
+  const sel=document.getElementById('sa_absatz');
+  sel.innerHTML=buildAbsatzSelectHtml(node,null);
+  const first=sel.selectedOptions[0];
+  if(first&&first.dataset.betrag){
+    document.getElementById('sa_betrag').value=first.dataset.betrag;
+    if(rowsLength>1) updateBetragTotalHint(rowsLength,'sa_betrag','betragTotalHintFull');
+  }
 }
 function editStrafeModal(idsStr){
   const ids=idsStr.split(',');
@@ -2128,18 +2163,23 @@ function editStrafeModal(idsStr){
   if(!rows.length) return;
   const s=rows[0];
   const multi=rows.length>1;
-  // Platzhalter-Option: ohne sie würde der Browser bei einer Freitext-Strafe (katalog_id null)
-  // einfach den ersten Katalog-Eintrag optisch vorauswählen, der beim Speichern ohne Anfassen
-  // des Feldes dann versehentlich übernommen würde.
-  const katOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– Freitext / kein Vergehen –</option>'
-    +buildKatalogOptionsHtml(s.katalog_id);
+  // Zweistufig statt einer langen Liste: erst den Paragraphen wählen, dann nur noch aus dessen
+  // (meist kurzer) Absatz-Liste - inkl. "+"-Zusatzabsätzen, die vorher ganz ausgeblendet waren.
+  const katTree=computeKatalogTree();
+  const curParagraph=katalogTreeFindParagraph(katTree,s.katalog_id);
+  const paragraphOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– Freitext / kein Vergehen –</option>'
+    +buildParagraphSelectHtml(katTree,curParagraph?curParagraph.key:'');
+  const absatzOptionsHtml=buildAbsatzSelectHtml(curParagraph,s.katalog_id);
   const mitgliedField = multi
     ? `<label class="field"><span>Mitglieder</span><div class="submuted" style="margin-top:2px">${rows.map(r=>strafeMemberLabel(r)).join(', ')} — bei mehreren Personen hier nicht einzeln änderbar</div></label>`
     : `<label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(m=>`<option value="${m.id}" ${m.id===s.mitglied_id?'selected':''}>${esc(m.display_name||m.username)}</option>`).join('')}</select></label>`;
   openModal(`<h3>Strafe bearbeiten${multi?` (Gruppe, ${rows.length} Personen)`:''}</h3>
     ${mitgliedField}
-    <label class="field"><span>Vergehen</span>
-      <select id="sa_katalog" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag){ document.getElementById('sa_betrag').value=o.dataset.betrag; updateBetragTotalHint(${rows.length},'sa_betrag','betragTotalHintFull'); }">${katOptions}</select>
+    <label class="field"><span>Paragraph</span>
+      <select id="sa_paragraph" onchange="onParagraphChange(this.value,${rows.length})">${paragraphOptions}</select>
+    </label>
+    <label class="field" id="sa_absatz_wrap" style="${curParagraph?'':'display:none'}"><span>Absatz</span>
+      <select id="sa_absatz" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag){ document.getElementById('sa_betrag').value=o.dataset.betrag; updateBetragTotalHint(${rows.length},'sa_betrag','betragTotalHintFull'); }">${absatzOptionsHtml}</select>
     </label>
     <label class="field"><span>Betrag (€)${multi?' pro Person':''}</span><input id="sa_betrag" type="number" step="0.01" value="${Number(s.betrag)||0}" ${multi?`oninput="updateBetragTotalHint(${rows.length},'sa_betrag','betragTotalHintFull')"`:''}></label>
     ${multi?`<div class="submuted" id="betragTotalHintFull" style="margin-top:-6px">${rows.length}× ${eur(Number(s.betrag)||0)} = ${eur((Number(s.betrag)||0)*rows.length)} insgesamt</div>`:''}
@@ -2152,7 +2192,7 @@ function editStrafeModal(idsStr){
 function saveStrafeEdit(idsStr,btn){
   const ids=idsStr.split(',');
   const row={
-    katalog_id: val('sa_katalog')||null,
+    katalog_id: val('sa_paragraph') ? (val('sa_absatz')||null) : null,
     betrag: parseFloat(val('sa_betrag'))||0,
     created_at: new Date(val('sa_datum')).toISOString(),
     ort: val('sa_ort')||null,
