@@ -229,6 +229,7 @@
   .overlay.open{display:flex}
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:460px;padding:22px;max-height:90vh;overflow:auto}
   .modal.wide{max-width:620px}
+  .modal.xwide{max-width:900px}
   .modal h3{margin:0 0 16px;font-size:18px}
   label.field{display:block;margin-bottom:13px}
   label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:550}
@@ -1691,6 +1692,22 @@ function strafakteParagraph(kat){
   if(!m) return '';
   return kat.reihenfolge!=null ? `§${m[1]} / ${Math.floor(kat.reihenfolge)}` : `§${m[1]}`;
 }
+// Schreiber-Spalte: offizielle Schreiber (written_by ist dort IMMER gesetzt, siehe EintragenScreen
+// der App) werden unabhängig vom Admin-Schalter gezeigt – das war nie geheim. Geheime Schreiber
+// (is_anonymous, written_by bleibt bei denen absichtlich leer) werden NUR gezeigt, wenn der
+// bestehende "👁️ Schreiber-Namen für mich"-Schalter (adminNamenSichtbar) an ist – exakt dieselbe
+// Regel wie im Forum, nur jetzt zusätzlich hier in der Strafakte als eigene Spalte statt Fußzeile.
+function strafakteSchreiberLabel(s){
+  if(!s.is_anonymous){
+    const w=s.written_by?members.find(x=>x.id===s.written_by):null;
+    return w?esc(w.display_name||w.username):'–';
+  }
+  if(adminNamenSichtbar){
+    const w=s.actual_written_by?members.find(x=>x.id===s.actual_written_by):null;
+    return w?`👁 ${esc(w.display_name||w.username)}`:'Anonym';
+  }
+  return 'Anonym';
+}
 // Hauptzeile ist jetzt IMMER "§X/Y – Vergehen" (Paragraph+Nummer+Text zusammen, keine eigene
 // Spalte mehr, dafür etwas kleiner geschrieben – siehe .ak-paragraph). Die freie Notiz steht bei
 // zugeordnetem Vergehen OHNE Label direkt darunter, dafür deutlich hervorgehoben (.ak-freitext).
@@ -1744,22 +1761,21 @@ function strafakteDoc(memberId){
       +`<span class="ak-cb">${cb(g.ortTyp==='offiziell')}</span> Offiziell</span>`;
     const ortPart=g.ort?` &mdash; ${esc(g.ort)}`:'';
     const folgetag=eventDayFolgetagSuffix(g.eventDay,g.items);
-    tableRows+=`<tr class="ak-eventhead"><td colspan="3"><strong>${g.date}${folgetag}</strong>${ortPart} ${checkboxes}</td></tr>`;
+    tableRows+=`<tr class="ak-eventhead"><td colspan="4"><strong>${g.date}${folgetag}</strong>${ortPart} ${checkboxes}</td></tr>`;
     g.items.forEach(s=>{
       const {text,textClass,subHtml}=strafakteBeschreibung(s);
       const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-      const schreiber=s.written_by?members.find(x=>x.id===s.written_by):null;
-      const metaLine=schreiber?`<br/><span class="ak-meta">Schreiber: ${esc(schreiber.display_name||schreiber.username)}</span>`:'';
       tableRows+=`<tr>
         <td class="ak-col-zeit">${esc(zeit)}</td>
-        <td class="ak-col-straf"><span class="${textClass}">${esc(text)}</span>${subHtml?`<br/>${subHtml}`:''}${metaLine}</td>
+        <td class="ak-col-straf"><span class="${textClass}">${esc(text)}</span>${subHtml?`<br/>${subHtml}`:''}</td>
+        <td class="ak-col-schreiber">${strafakteSchreiberLabel(s)}</td>
         <td class="ak-col-preis">${eur(Number(s.betrag)||0)}</td>
       </tr>`;
       // Foto und/oder gemalte Strafe: eigene Zeile direkt darunter, über die ganze Breite,
       // genau wie im Forum (1:1 dasselbe bild_url/zeichnungen-Feld).
       const zeichnungenHtml=(s.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('');
       if(s.bild_url || zeichnungenHtml){
-        tableRows+=`<tr class="ak-mediarow"><td colspan="3">
+        tableRows+=`<tr class="ak-mediarow"><td colspan="4">
           ${s.bild_url?`<img class="ak-img" src="${esc(s.bild_url)}">`:''}
           ${zeichnungenHtml?`<div class="ak-zeichnung">${zeichnungenHtml}</div>`:''}
         </td></tr>`;
@@ -1770,7 +1786,7 @@ function strafakteDoc(memberId){
     ? `<div class="ak-photo"><img src="${esc(m.avatar_url)}"></div>`
     : `<div class="ak-photo ak-photo-placeholder"></div>`;
   const html=`<style>
-    .ak-doc{font-family:'Times New Roman',Times,serif;color:#000;background:#fff;padding:14mm;max-width:800px;margin:0 auto}
+    .ak-doc{font-family:'Times New Roman',Times,serif;color:#000;background:#fff;padding:14mm;max-width:850px;margin:0 auto}
     .ak-title{text-align:center;font-size:18pt;font-weight:bold;letter-spacing:.5pt;margin-bottom:6pt}
     .ak-topline{border:none;border-top:2.5px solid #000;margin:10pt 0 20pt}
     .ak-header{display:flex;gap:24pt;margin-bottom:20pt;align-items:flex-start}
@@ -1788,9 +1804,9 @@ function strafakteDoc(memberId){
     .ak-doc thead th{background:#1a1a2e;color:#fff;font-size:9pt;font-weight:bold;padding:7pt 9pt;text-align:left;border:1px solid #333}
     .ak-doc thead th:last-child{text-align:right}
     .ak-doc tbody td{padding:7pt 9pt;border:1px solid #ddd;font-size:10pt;vertical-align:top;line-height:1.5}
-    .ak-col-zeit{width:14%} .ak-col-straf{width:64%} .ak-col-preis{width:22%;text-align:right}
+    .ak-col-zeit{width:12%} .ak-col-straf{width:48%} .ak-col-schreiber{width:18%} .ak-col-preis{width:22%;text-align:right}
     .ak-paragraph{font-size:9pt}
-    .ak-freitext{display:inline-block;margin-top:2pt;color:#1a1a2e;font-size:11pt;font-weight:bold;font-style:normal}
+    .ak-freitext{display:inline-block;margin-top:2pt;color:#6b2c2c;font-size:10pt;font-weight:600;font-style:normal}
     .ak-mediarow td{border-top:none;padding-top:2pt}
     .ak-img{display:block;max-width:220pt;max-height:160pt;border:1px solid #ccc;margin-top:4pt}
     .ak-zeichnung{max-width:220pt;margin-top:4pt;border:1px solid #ccc}
@@ -1798,6 +1814,7 @@ function strafakteDoc(memberId){
     .ak-eventhead td{background:#eaeaea;font-size:10pt;padding:7pt 9pt;border:1px solid #ccc}
     .ak-cbgroup{float:right;font-size:8pt;color:#444} .ak-cb{font-size:12pt;vertical-align:-1pt;margin-left:2pt}
     .ak-sub{color:#777;font-size:8pt;font-style:italic} .ak-meta{color:#555;font-size:7pt}
+    .ak-col-schreiber{font-size:9pt;color:#444}
     .ak-total{border-top:2.5px solid #1a1a2e;padding-top:10pt;margin-top:14pt;display:flex;justify-content:space-between;font-size:15pt;font-weight:bold}
     .ak-stamp{text-align:center;margin-top:28pt;font-size:8pt;color:#999;letter-spacing:.3pt}
     /* A4 mit echtem Rand statt randlos-gequetscht – Innenabstand bleibt beim Drucken erhalten statt
@@ -1819,8 +1836,8 @@ function strafakteDoc(memberId){
     </div>
     <hr class="ak-midline">
     <table>
-      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
-      <tbody>${tableRows||`<tr><td colspan="3" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
+      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-schreiber">Schreiber</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
+      <tbody>${tableRows||`<tr><td colspan="4" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
     </table>
     <div class="ak-total"><span>Strafenbeitrag gesamt</span><span>${eur(gesamt)}</span></div>
     <div class="ak-stamp">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} · Kirmes-Strafenbuch Dashboard</div>
@@ -1832,7 +1849,7 @@ function viewStrafakteModal(memberId){
   openModal(`<h3>📁 Strafakte${doc.memberName?` – ${esc(doc.memberName)}`:''}</h3>
     <div style="max-height:60vh;overflow:auto;border-radius:10px;margin-bottom:14px">${doc.html}</div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Schließen</button>
-      <button class="btn" onclick="printStrafakte('${memberId}')">🖨 Als PDF drucken</button></div>`,true);
+      <button class="btn" onclick="printStrafakte('${memberId}')">🖨 Als PDF drucken</button></div>`,'xwide');
 }
 function printStrafakte(memberId){
   const doc=strafakteDoc(memberId);
@@ -6145,7 +6162,7 @@ function renderReport(){
 function setReportJahr(y){ reportJahr = (y==='all')?'all':parseInt(y); renderReport(); }
 
 /* ================= Modal ================= */
-function openModal(html,wide){document.getElementById('modal').className='modal'+(wide?' wide':'');document.getElementById('modal').innerHTML=html;document.getElementById('overlay').classList.add('open');}
+function openModal(html,wide){document.getElementById('modal').className='modal'+(wide?' '+(wide===true?'wide':wide):'');document.getElementById('modal').innerHTML=html;document.getElementById('overlay').classList.add('open');}
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 async function withBtn(btn,fn){const o=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{await fn();}catch(err){alert('Fehler: '+(err.message||err));}btn.disabled=false;btn.textContent=o;}
