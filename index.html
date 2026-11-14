@@ -229,6 +229,7 @@
   .overlay.open{display:flex}
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:460px;padding:22px;max-height:90vh;overflow:auto}
   .modal.wide{max-width:620px}
+  .modal.xwide{max-width:900px}
   .modal h3{margin:0 0 16px;font-size:18px}
   label.field{display:block;margin-bottom:13px}
   label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:5px;font-weight:550}
@@ -299,8 +300,10 @@
   .bingo-win-chip.member.new{animation:bingoPulseMember 1s ease-in-out 3}
   @keyframes bingoPulse{0%,100%{box-shadow:0 0 0 0 rgba(63,178,127,.7)}50%{box-shadow:0 0 0 9px rgba(63,178,127,0)}}
   @keyframes bingoPulseMember{0%,100%{box-shadow:0 0 0 0 rgba(58,134,232,.7)}50%{box-shadow:0 0 0 9px rgba(58,134,232,0)}}
+  @page{size:A4;margin:12mm}
   @media print{
     header,nav,.view-head .actions,.filterbar,.sectionbar .actions,.btn,.icon-btn,.tools,.no-print{display:none !important}
+    .overlay{display:none !important}
     body{background:#fff;color:#000}
     /* Ohne das hier lassen manche Browser (je nach Druckeinstellung „Hintergrundgrafiken") die
        farbigen Flächen der Bingo-Buchstaben beim Drucken weg – dann wäre der weiße Buchstabe
@@ -1666,6 +1669,25 @@ function strafenauswertungStats(){
    direkt im Dashboard ansehbar + über window.print() als PDF speicherbar statt per Share-Sheet.
    "Aktenzeichen" ist bewusst erfunden/augenzwinkernd (kein echtes Rechtsdokument), kombiniert
    Geburtsdatum (falls hinterlegt) mit dem laufenden Kirmesjahr + einer stabilen laufenden Nummer. */
+function strafakteBetroffeneMitglieder(){
+  // Stabile Reihenfolge (alphabetisch) für die laufende Nummer, damit dieselbe Person bei jedem
+  // erneuten Ansehen/Drucken immer dieselbe Nummer bekommt, nicht nur innerhalb einer Sitzung.
+  const ids=new Set(strafenAlle.filter(s=>s.mitglied_id).map(s=>s.mitglied_id));
+  return members.filter(m=>ids.has(m.id)).sort((a,b)=>(a.display_name||a.username||'').localeCompare(b.display_name||b.username||'','de'));
+}
+function strafakteAktenzeichen(memberId){
+  const betroffene=strafakteBetroffeneMitglieder();
+  const idx=betroffene.findIndex(m=>m.id===memberId);
+  const lfd=String(idx+1).padStart(3,'0');
+  const jahr=new Date().getFullYear();
+  const m=members.find(x=>x.id===memberId);
+  if(m&&m.geburtsdatum){
+    const bd=new Date(m.geburtsdatum);
+    const tag=String(bd.getDate()).padStart(2,'0'), monat=String(bd.getMonth()+1).padStart(2,'0');
+    return `AJK-${tag}${monat}/${jahr}-${lfd}`;
+  }
+  return `AJK-${jahr}-${lfd}`;
+}
 function strafakteParagraph(kat){
   if(!kat||!kat.gruppe) return '';
   const m=kat.gruppe.match(/§(\d+)/);
@@ -1697,7 +1719,7 @@ function strafakteBeschreibung(s){
   const freitext=parts[0]||'';
   const aufschlaege=parts.slice(1).filter(p=>p.startsWith('+'));
   const kat=s.katalog_id?strafenkatalog.find(k=>k.id===s.katalog_id):null;
-  let text='', sub=[];
+  let text='', textClass='', subBits=[];
   if(kat){
     let katText=kat.name;
     if(kat.reihenfolge!=null && !Number.isInteger(kat.reihenfolge)){
@@ -1705,22 +1727,23 @@ function strafakteBeschreibung(s){
       katText=parent?`${parent.name} – ${kat.name}`:kat.name;
     }
     const paragraph=strafakteParagraph(kat);
-    text=esc(paragraph?`${paragraph} – ${katText}`:katText);
-    if(freitext) sub.push(`<span style="color:#6b2c2c;font-weight:600">${esc(freitext)}</span>`);
+    text=paragraph?`${paragraph} – ${katText}`:katText;
+    textClass='ak-paragraph';
+    if(freitext) subBits.push(`<span class="ak-freitext">${esc(freitext)}</span>`);
   } else {
-    text=esc(freitext);
+    text=freitext;
   }
-  if(aufschlaege.length) sub.push(`<span style="color:#777;font-size:11px;font-style:italic">${esc(aufschlaege.join(', '))}</span>`);
-  return text+(sub.length?`<br>${sub.join('<br>')}`:'');
+  if(aufschlaege.length) subBits.push(`<span class="ak-sub">${esc(aufschlaege.join(', '))}</span>`);
+  const subHtml=subBits.join('<br/>');
+  return {text, textClass, subHtml};
 }
 // Baut NUR den Inhalt (kein <html>/<head>/<body>) - einsetzbar sowohl in der Vorschau (Modal)
-// als auch in der Druckfläche, beide bekommen exakt dasselbe Dokument zu sehen. Gleiches einfaches
-// Format wie bei Sponsoren/Checkliste (printSponsorenPDF): flacher Kopf, compact-table, kein
-// eigener <style>-Block, keine Akten-Deko.
+// als auch in der Druckfläche, beide bekommen exakt dasselbe Dokument zu sehen.
 function strafakteDoc(memberId){
   const m=members.find(x=>x.id===memberId);
   if(!m) return {html:'<div class="empty">Mitglied nicht gefunden.</div>',count:0};
   const rows=strafenAlle.filter(s=>s.mitglied_id===memberId).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const aktenNr=strafakteAktenzeichen(memberId);
   const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const groups=[]; const groupMap=new Map();
   rows.forEach(s=>{
@@ -1732,35 +1755,100 @@ function strafakteDoc(memberId){
     if(!g.ortTyp && s.ort_typ) g.ortTyp=s.ort_typ;
     g.items.push(s);
   });
-  const body=groups.map(g=>{
+  let tableRows='';
+  groups.forEach(g=>{
+    const cb=(on)=>on?'&#9745;':'&#9744;';
+    const checkboxes=`<span class="ak-cbgroup"><span class="ak-cb">${cb(g.ortTyp==='optional')}</span> Optional `
+      +`<span class="ak-cb">${cb(g.ortTyp==='pflicht')}</span> Pflicht `
+      +`<span class="ak-cb">${cb(g.ortTyp==='offiziell')}</span> Offiziell</span>`;
+    const ortPart=g.ort?` &mdash; ${esc(g.ort)}`:'';
     const folgetag=eventDayFolgetagSuffix(g.eventDay,g.items);
-    const ortPart=g.ort?` – ${esc(g.ort)}`:'';
-    const artPart=g.ortTyp?` <span style="font-weight:400;color:#666">(${ART_LABELS[g.ortTyp]})</span>`:'';
-    const subtotal=g.items.reduce((a,s)=>a+(Number(s.betrag)||0),0);
-    const rowsHtml=g.items.map(s=>{
+    tableRows+=`<tr class="ak-eventhead"><td colspan="4"><strong>${g.date}${folgetag}</strong>${ortPart} ${checkboxes}</td></tr>`;
+    g.items.forEach(s=>{
+      const {text,textClass,subHtml}=strafakteBeschreibung(s);
       const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+      tableRows+=`<tr>
+        <td class="ak-col-zeit">${esc(zeit)}</td>
+        <td class="ak-col-straf"><span class="${textClass}">${esc(text)}</span>${subHtml?`<br/>${subHtml}`:''}</td>
+        <td class="ak-col-schreiber">${strafakteSchreiberLabel(s)}</td>
+        <td class="ak-col-preis">${eur(Number(s.betrag)||0)}</td>
+      </tr>`;
+      // Foto und/oder gemalte Strafe: eigene Zeile direkt darunter, über die ganze Breite,
+      // genau wie im Forum (1:1 dasselbe bild_url/zeichnungen-Feld).
       const zeichnungenHtml=(s.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('');
-      const mediaHtml=(s.bild_url||zeichnungenHtml)?`<tr><td colspan="4" style="border-top:none;padding-top:2px">
-          ${s.bild_url?`<img src="${esc(s.bild_url)}" style="display:block;max-width:220px;max-height:160px;border:1px solid #ccc;margin-top:4px">`:''}
-          ${zeichnungenHtml?`<div style="max-width:220px;margin-top:4px;border:1px solid #ccc">${zeichnungenHtml}</div>`:''}
-        </td></tr>`:'';
-      return `<tr><td>${esc(zeit)}</td><td>${strafakteBeschreibung(s)}</td><td>${strafakteSchreiberLabel(s)}</td><td style="text-align:right">${eur(Number(s.betrag)||0)}</td></tr>${mediaHtml}`;
-    }).join('');
-    return `<h3 style="margin:16px 0 6px;font-size:14px">📅 ${g.date}${folgetag}${ortPart}${artPart}</h3>
-      <table class="compact-table"><thead><tr><th style="background:#ccc">Uhrzeit</th><th style="background:#ccc">Strafbestand</th><th style="background:#ccc">Schreiber</th><th style="background:#ccc">Bußgeld</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr style="font-weight:700"><td colspan="3">Zwischensumme</td><td style="text-align:right">${eur(subtotal)}</td></tr></tfoot></table>`;
-  }).join('');
-  const html=`<div style="display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:8px">
-    <div style="font-size:12.5px">Apfelstädter<br>Jugendkirmesgesellschaft e.V.</div>
-    <div style="text-align:right;white-space:nowrap">
-      <h2 style="margin:0;text-decoration:underline;font-size:19px">Strafakte</h2>
-      <div style="font-size:12.5px;margin-top:2px">${esc(m.display_name||m.username)}</div>
-      <div style="font-size:12.5px">Stand: ${fmtDate(todayISO())}</div>
+      if(s.bild_url || zeichnungenHtml){
+        tableRows+=`<tr class="ak-mediarow"><td colspan="4">
+          ${s.bild_url?`<img class="ak-img" src="${esc(s.bild_url)}">`:''}
+          ${zeichnungenHtml?`<div class="ak-zeichnung">${zeichnungenHtml}</div>`:''}
+        </td></tr>`;
+      }
+    });
+  });
+  const photoHtml=m.avatar_url
+    ? `<div class="ak-photo"><img src="${esc(m.avatar_url)}"></div>`
+    : `<div class="ak-photo ak-photo-placeholder"></div>`;
+  const html=`<style>
+    .ak-doc{font-family:'Times New Roman',Times,serif;color:#000;background:#fff;padding:14mm;max-width:850px;margin:0 auto}
+    .ak-title{text-align:center;font-size:18pt;font-weight:bold;letter-spacing:.5pt;margin-bottom:6pt}
+    .ak-topline{border:none;border-top:2.5px solid #000;margin:10pt 0 20pt}
+    .ak-header{display:flex;gap:24pt;margin-bottom:20pt;align-items:flex-start}
+    .ak-photo{width:100pt;height:130pt;border:2.5px solid #1a1a2e;overflow:hidden;background:#e8e8e8;flex-shrink:0}
+    .ak-photo img{width:100%;height:100%;object-fit:cover}
+    .ak-photo-placeholder{background:#ddd}
+    .ak-info{flex:1;padding-top:2pt}
+    .ak-info .ak-label{font-size:20pt;font-weight:bold;letter-spacing:1pt;color:#1a1a2e}
+    .ak-info .ak-nr{font-size:26pt;font-weight:bold;color:#1a1a2e;margin-bottom:8pt}
+    .ak-info .ak-plabel{font-size:12pt;color:#444;margin-bottom:3pt}
+    .ak-info .ak-pname{font-size:17pt;font-weight:bold}
+    .ak-info .ak-saison{font-size:10pt;color:#888;margin-top:8pt}
+    .ak-midline{border:none;border-top:1.5px solid #1a1a2e;margin:0 0 16pt}
+    .ak-doc table{width:100%;border-collapse:collapse}
+    .ak-doc thead th{background:#1a1a2e;color:#fff;font-size:9pt;font-weight:bold;padding:7pt 9pt;text-align:left;border:1px solid #333}
+    .ak-doc thead th:last-child{text-align:right}
+    .ak-doc tbody td{padding:7pt 9pt;border:1px solid #ddd;font-size:10pt;vertical-align:top;line-height:1.5}
+    .ak-col-zeit{width:12%} .ak-col-straf{width:48%} .ak-col-schreiber{width:18%} .ak-col-preis{width:22%;text-align:right}
+    .ak-paragraph{font-size:9pt}
+    .ak-freitext{display:inline-block;margin-top:2pt;color:#6b2c2c;font-size:10pt;font-weight:600;font-style:normal}
+    .ak-mediarow td{border-top:none;padding-top:2pt}
+    .ak-img{display:block;max-width:220pt;max-height:160pt;border:1px solid #ccc;margin-top:4pt}
+    .ak-zeichnung{max-width:220pt;margin-top:4pt;border:1px solid #ccc}
+    .ak-zeichnung .feedcard-zeichnung{width:100%}
+    .ak-eventhead td{background:#eaeaea;font-size:10pt;padding:7pt 9pt;border:1px solid #ccc}
+    .ak-cbgroup{float:right;font-size:8pt;color:#444} .ak-cb{font-size:12pt;vertical-align:-1pt;margin-left:2pt}
+    .ak-sub{color:#777;font-size:8pt;font-style:italic} .ak-meta{color:#555;font-size:7pt}
+    .ak-col-schreiber{font-size:9pt;color:#444}
+    .ak-total{border-top:2.5px solid #1a1a2e;padding-top:10pt;margin-top:14pt;display:flex;justify-content:space-between;font-size:15pt;font-weight:bold}
+    .ak-stamp{text-align:center;margin-top:28pt;font-size:8pt;color:#999;letter-spacing:.3pt}
+    /* Seitenrand übernimmt beim Drucken die @page-Regel (A4, 12mm) – hier also kein zusätzliches
+       Innenabstand-Polster mehr, sonst wäre der Rand doppelt so groß. Zeilen/Event-Blöcke sollen
+       beim Seitenumbruch nicht mittendrin zerschnitten werden. */
+    @media print{
+      .ak-doc{padding:0;max-width:none;width:100%}
+      .ak-doc tr,.ak-eventhead,.ak-mediarow{break-inside:avoid}
+    }
+  </style>
+  <div class="ak-doc">
+    <div class="ak-title">Apfelstädter Jugendkirmesgesellschaft e.V.</div>
+    <hr class="ak-topline">
+    <div class="ak-header">
+      ${photoHtml}
+      <div class="ak-info">
+        <div class="ak-label">STRAFAKTE</div>
+        <div class="ak-nr">${esc(aktenNr)}</div>
+        <div class="ak-plabel">Beschuldigte Person:</div>
+        <div class="ak-pname">${esc(m.display_name||m.username)}</div>
+        <div class="ak-saison">Kirmessaison ${new Date().getFullYear()}</div>
+      </div>
     </div>
-  </div>${body||'<div class="empty" style="padding:16px;text-align:center;color:#888">Keine Strafen vorhanden.</div>'}
-  <div style="margin-top:14px;font-size:13px;font-weight:700;text-align:right">Gesamt: ${eur(gesamt)}</div>`;
-  return {html,count:rows.length,memberName:m.display_name||m.username};
+    <hr class="ak-midline">
+    <table>
+      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-schreiber">Schreiber</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
+      <tbody>${tableRows||`<tr><td colspan="4" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
+    </table>
+    <div class="ak-total"><span>Strafenbeitrag gesamt</span><span>${eur(gesamt)}</span></div>
+    <div class="ak-stamp">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} · Kirmes-Strafenbuch Dashboard</div>
+  </div>`;
+  return {html,count:rows.length,memberName:m.display_name||m.username,aktenNr};
 }
 function viewStrafakteModal(memberId){
   const doc=strafakteDoc(memberId);
@@ -1771,6 +1859,7 @@ function viewStrafakteModal(memberId){
 }
 function printStrafakte(memberId){
   const doc=strafakteDoc(memberId);
+  closeModal();
   document.getElementById('strafaktePrintArea').innerHTML=doc.html;
   document.getElementById('strafaktePrintArea').classList.add('show');
   printDoc('Strafakte '+(doc.memberName||''));
@@ -1796,7 +1885,7 @@ function viewMemberStrafenModal(memberId){
 // Schreiber-Verzögerungsspiel mit.
 function addStrafeModal(memberId){
   const katTree=computeKatalogTree();
-  const paragraphOptions='<option value="" selected>– Freitext / kein Vergehen –</option>'+buildParagraphSelectHtml(katTree,'');
+  const paragraphOptions='<option value="" selected>– kein Vergehen zugeordnet –</option>'+buildParagraphSelectHtml(katTree,'');
   openModal(`<h3>➕ Neue Strafe</h3>
     <label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(x=>`<option value="${x.id}" ${x.id===memberId?'selected':''}>${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
     <label class="field"><span>Schreiber (frei eintippbar, mit Vorschlägen aus den Mitgliedern)</span>
@@ -1812,7 +1901,7 @@ function addStrafeModal(memberId){
     <label class="field"><span>Betrag (€)</span><input id="sa_betrag" type="number" step="0.01" value="0"></label>
     <label class="field"><span>Datum &amp; Uhrzeit</span><input id="sa_datum" type="datetime-local" value="${toDatetimeLocalValue(new Date().toISOString())}"></label>
     <label class="field"><span>Ort</span><input id="sa_ort" value=""></label>
-    <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2"></textarea></label>
+    <label class="field"><span>Freitext (unabhängig vom Paragraphen, z.B. zusätzliche Beschreibung)</span><textarea id="sa_notiz" rows="2"></textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="createStrafe(this)">Eintragen</button></div>`,true);
 }
@@ -2292,7 +2381,7 @@ function editStrafeModal(idsStr){
   // (meist kurzer) Absatz-Liste - inkl. "+"-Zusatzabsätzen, die vorher ganz ausgeblendet waren.
   const katTree=computeKatalogTree();
   const curParagraph=katalogTreeFindParagraph(katTree,s.katalog_id);
-  const paragraphOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– Freitext / kein Vergehen –</option>'
+  const paragraphOptions='<option value="" '+(s.katalog_id?'':'selected')+'>– kein Vergehen zugeordnet –</option>'
     +buildParagraphSelectHtml(katTree,curParagraph?curParagraph.key:'');
   const absatzOptionsHtml=buildAbsatzSelectHtml(curParagraph,s.katalog_id);
   const mitgliedField = multi
@@ -2310,7 +2399,7 @@ function editStrafeModal(idsStr){
     ${multi?`<div class="submuted" id="betragTotalHintFull" style="margin-top:-6px">${rows.length}× ${eur(Number(s.betrag)||0)} = ${eur((Number(s.betrag)||0)*rows.length)} insgesamt</div>`:''}
     <label class="field"><span>Datum &amp; Uhrzeit</span><input id="sa_datum" type="datetime-local" value="${toDatetimeLocalValue(s.created_at)}"></label>
     <label class="field"><span>Ort</span><input id="sa_ort" value="${esc(s.ort||'')}"></label>
-    <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
+    <label class="field"><span>Freitext (unabhängig vom Paragraphen, z.B. zusätzliche Beschreibung)</span><textarea id="sa_notiz" rows="2">${esc(s.notiz||'')}</textarea></label>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveStrafeEdit('${ids.join(',')}',this)">Speichern</button></div>`,true);
 }
