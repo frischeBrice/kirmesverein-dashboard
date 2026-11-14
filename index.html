@@ -1553,15 +1553,15 @@ function toggleCardMenu(key,ev){
 function groupForumByDayEvent(list,sort){
   const groups=new Map();
   list.forEach(item=>{
-    const d=new Date(item.created_at);
-    const dateKey=d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const eventDay=eventDayStart(item.created_at);
+    const dateKey=eventDay.getTime();
     const ort=item.ort||'';
     const key=dateKey+'|'+ort;
     let g=groups.get(key);
     if(!g){
       g={
-        dateObj:new Date(d.getFullYear(),d.getMonth(),d.getDate()),
-        dateLabel:d.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),
+        dateObj:eventDay,
+        dateLabel:eventDay.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'}),
         ort,
         items:[],
       };
@@ -1725,8 +1725,7 @@ function strafakteDoc(memberId){
   const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const groups=[]; const groupMap=new Map();
   rows.forEach(s=>{
-    const d=new Date(s.created_at);
-    const dateStr=d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const dateStr=eventDayStart(s.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
     const key=dateStr+'_'+(s.ort||'');
     let g=groupMap.get(key);
     if(!g){ g={date:dateStr, ort:s.ort||'', ortTyp:s.ort_typ||null, items:[]}; groupMap.set(key,g); groups.push(g); }
@@ -1832,6 +1831,67 @@ function printStrafakte(memberId){
   document.getElementById('strafaktePrintArea').classList.add('show');
   printDoc('Strafakte '+(doc.memberName||''));
 }
+// Normale, interaktive Ansicht (keine PDF-Optik) der Strafen EINER Person – dieselben Forum-
+// Karten wie im Forum-Tab (inkl. Bearbeiten/Löschen über das ⋮-Menü), plus direkt eine neue
+// Strafe für genau diese Person eintragen können, ohne den Umweg über den Forum-Tab.
+function viewMemberStrafenModal(memberId){
+  const m=members.find(x=>x.id===memberId); if(!m) return;
+  const rows=strafenAlle.filter(s=>s.mitglied_id===memberId);
+  const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
+  const parentMap=strafenParentNameMap();
+  const feedList=groupStrafenForFeed(rows).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  openModal(`<h3>👤 ${esc(m.display_name||m.username)}</h3>
+    <div class="submuted" style="margin-bottom:10px">${rows.length} Strafe${rows.length!==1?'n':''} · Gesamt ${eur(gesamt)}</div>
+    <div style="margin-bottom:12px"><button class="btn sm" onclick="addStrafeModal('${memberId}')">➕ Neue Strafe eintragen</button></div>
+    <div style="max-height:55vh;overflow:auto">${feedList.length?feedList.map(item=>renderStrafeFeedCard(item,parentMap)).join(''):'<div class="empty">Noch keine Strafen.</div>'}</div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Schließen</button></div>`,true);
+}
+// Neue Strafe eintragen (direkt aus dem Dashboard, nicht über die App) – gleiche zweistufige
+// Paragraph→Absatz-Auswahl wie beim Bearbeiten. Schreiber wird auf den eingeloggten Admin
+// gesetzt (nicht anonym, sofort sichtbar) – Dashboard-Einträge spielen nicht das Geheime-
+// Schreiber-Verzögerungsspiel mit.
+function addStrafeModal(memberId){
+  const katTree=computeKatalogTree();
+  const paragraphOptions='<option value="" selected>– Freitext / kein Vergehen –</option>'+buildParagraphSelectHtml(katTree,'');
+  openModal(`<h3>➕ Neue Strafe</h3>
+    <label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(x=>`<option value="${x.id}" ${x.id===memberId?'selected':''}>${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
+    <label class="field"><span>Paragraph</span>
+      <select id="sa_paragraph" onchange="onParagraphChange(this.value,1)">${paragraphOptions}</select>
+    </label>
+    <label class="field" id="sa_absatz_wrap" style="display:none"><span>Absatz</span>
+      <select id="sa_absatz" onchange="const o=this.selectedOptions[0]; if(o&&o.dataset.betrag) document.getElementById('sa_betrag').value=o.dataset.betrag;"></select>
+    </label>
+    <label class="field"><span>Betrag (€)</span><input id="sa_betrag" type="number" step="0.01" value="0"></label>
+    <label class="field"><span>Datum &amp; Uhrzeit</span><input id="sa_datum" type="datetime-local" value="${toDatetimeLocalValue(new Date().toISOString())}"></label>
+    <label class="field"><span>Ort</span><input id="sa_ort" value=""></label>
+    <label class="field"><span>Notiz</span><textarea id="sa_notiz" rows="2"></textarea></label>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="createStrafe(this)">Eintragen</button></div>`,true);
+}
+async function createStrafe(btn){
+  const mitgliedId=val('sa_mitglied')||null;
+  if(!mitgliedId){ alert('Bitte ein Mitglied auswählen.'); return; }
+  const row={
+    mitglied_id: mitgliedId,
+    katalog_id: val('sa_paragraph') ? (val('sa_absatz')||null) : null,
+    betrag: parseFloat(val('sa_betrag'))||0,
+    created_at: new Date(val('sa_datum')).toISOString(),
+    ort: val('sa_ort')||null,
+    ort_typ: null,
+    notiz: val('sa_notiz')||null,
+    written_by: me.id,
+    actual_written_by: me.id,
+    is_anonymous: false,
+    visible_at: new Date().toISOString(),
+    group_id: null,
+  };
+  await withBtn(btn, async()=>{
+    const {error}=await sb.from('strafen').insert(row);
+    if(error) throw error;
+    await loadAll();
+    viewMemberStrafenModal(mitgliedId);
+  });
+}
 // Welcher der drei Unterbereiche gerade offen ist (persistiert nur für die laufende Sitzung,
 // wie die anderen flüchtigen UI-Filter dieser View auch).
 let strafenauswertungTab='forum';
@@ -1915,7 +1975,7 @@ function renderStrafenauswertung(){
     body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📊 Auswertung pro Mitglied</h3></div>
-      ${st.perMemberWithId.length?tbl(['Mitglied','Anzahl','Summe',''],st.perMemberWithId.map(e=>[esc(e.label),e.anzahl,eur(e.summe),e.id?`<button class="btn ghost sm" onclick="viewStrafakteModal('${e.id}')">📁 Akte</button>`:''])):'<div class="empty">Keine Strafen erfasst.</div>'}
+      ${st.perMemberWithId.length?tbl(['Mitglied','Anzahl','Summe',''],st.perMemberWithId.map(e=>[e.id?`<span style="cursor:pointer;text-decoration:underline dotted" title="Strafen ansehen/bearbeiten/eintragen" onclick="viewMemberStrafenModal('${e.id}')">${esc(e.label)}</span>`:esc(e.label),e.anzahl,eur(e.summe),e.id?`<button class="btn ghost sm" onclick="viewStrafakteModal('${e.id}')">📁 Akte</button>`:''])):'<div class="empty">Keine Strafen erfasst.</div>'}
     </div>`;
   } else if(tab==='statistik'){
     const ortEntries=st.perOrt.map(([label,anzahl])=>({label,anzahl}));
@@ -2058,10 +2118,10 @@ function strafenForumOrtDateOptions(){
   const map=new Map();
   strafenAlle.forEach(s=>{
     if(!s.ort) return;
-    const d=new Date(s.created_at);
-    const dayMs=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+    const eventDay=eventDayStart(s.created_at);
+    const dayMs=eventDay.getTime();
     const key=dayMs+'|'+s.ort;
-    if(!map.has(key)) map.set(key,{dayMs,ort:s.ort,dateLabel:d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})});
+    if(!map.has(key)) map.set(key,{dayMs,ort:s.ort,dateLabel:eventDay.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})});
   });
   return [...map.values()].sort((a,b)=>a.dayMs-b.dayMs);
 }
@@ -2073,7 +2133,9 @@ function strafenForumOrtDateOptions(){
 // demselben Veranstaltungsnamen an irgendeinem anderen Tag.
 function renameVeranstaltungModal(ort,dayMs){
   if(!ort || !dayMs) return;
-  const dayStart=new Date(dayMs), dayEnd=new Date(dayMs+86400000);
+  // dayMs ist Mitternacht des EVENT-Tages (eventDayStart) – die echte Strafen-Zeitspanne dafür
+  // ist 6 Uhr dieses Tages bis 6 Uhr des nächsten Tages (Nächte über Mitternacht zählen mit).
+  const dayStart=new Date(dayMs+EVENT_DAY_CUTOFF_HOUR*3600000), dayEnd=new Date(dayMs+(24+EVENT_DAY_CUTOFF_HOUR)*3600000);
   const inDay=s=>s.ort===ort && new Date(s.created_at)>=dayStart && new Date(s.created_at)<dayEnd;
   const count=strafenAlle.filter(inDay).length;
   openModal(`<h3>Veranstaltung umbenennen</h3>
@@ -2090,7 +2152,7 @@ function saveVeranstaltungRename(btn){
   const dayMs=Number(val('ren_ort_day'));
   if(!alt||!neu){ alert('Bitte einen neuen Namen eingeben.'); return; }
   if(alt===neu){ closeModal(); return; }
-  const dayStart=new Date(dayMs).toISOString(), dayEnd=new Date(dayMs+86400000).toISOString();
+  const dayStart=new Date(dayMs+EVENT_DAY_CUTOFF_HOUR*3600000).toISOString(), dayEnd=new Date(dayMs+(24+EVENT_DAY_CUTOFF_HOUR)*3600000).toISOString();
   withBtn(btn, async()=>{
     const {error}=await sb.from('strafen').update({ort:neu}).eq('ort',alt).gte('created_at',dayStart).lt('created_at',dayEnd);
     if(error) throw error;
@@ -2123,8 +2185,7 @@ function renderForumList(){
   let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
     if(nurFoto && !item.bild_url) return false;
     if(ortFilterRaw){
-      const d=new Date(item.created_at);
-      const dayMs=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+      const dayMs=eventDayStart(item.created_at).getTime();
       if(dayMs!==ortFilterDay || item.ort!==ortFilterName) return false;
     }
     if(schreiberFilter && item.actual_written_by!==schreiberFilter) return false;
@@ -2142,6 +2203,18 @@ function renderForumList(){
   });
   const dayGroups=groupForumByDayEvent(feedList,sort);
   container.innerHTML = dayGroups.length?dayGroups.map(g=>renderForumDayGroup(g,parentMap)).join(''):'<div class="empty">Keine Strafen gefunden.</div>';
+}
+// Nächte, die über Mitternacht gehen, sollen als EINE Veranstaltung zählen (z.B. ein Fest am
+// 25.09, das bis 3 Uhr nachts am 26.09 läuft, soll komplett unter "25.09" einsortiert werden) –
+// alles vor 6 Uhr morgens zählt noch zum Vortag. Gilt für JEDE Tages-Gruppierung rund um
+// Veranstaltungen (Forum-Tagesgruppen, Konfiguration, Strafakte, Umbenennen) – bewusst NICHT für
+// die reine "nach Wochentag"-Statistik, die den tatsächlichen Kalendertag meint.
+const EVENT_DAY_CUTOFF_HOUR=6;
+function eventDayStart(dateInput){
+  const d=new Date(dateInput);
+  const day=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  if(d.getHours()<EVENT_DAY_CUTOFF_HOUR) day.setDate(day.getDate()-1);
+  return day;
 }
 // Lokale (nicht UTC-)Darstellung für <input type="datetime-local">, passend zur Anzeige überall
 // sonst im Dashboard (toLocaleString ohne Zeitzonen-Optionen = Browser-Zeitzone).
