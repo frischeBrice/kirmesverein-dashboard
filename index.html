@@ -139,6 +139,14 @@
   .feedcard-menu button{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:var(--text);font-size:13.5px;padding:8px 10px;border-radius:7px;cursor:pointer;text-align:left}
   .feedcard-menu button:hover{background:#2a333d}
   .feedcard-menu button.danger{color:#f87171}
+  /* Gestrichene Strafe: Inhalt durchgestrichen/abgedunkelt, Betrag zählt nicht mehr zum Gesamtbetrag
+     (siehe viewMemberStrafenModal/strafakteDoc) – zusätzlich ein roter "Stempel" quer über die Karte,
+     wie bei einem amtlichen Dokument. */
+  .feedcard.gestrichen .feedcard-content{opacity:.55}
+  .feedcard.gestrichen .feedcard-content,.feedcard.gestrichen .feedcard-betragcol{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:2px}
+  .feedcard-stempel{position:absolute;top:14px;left:16px;color:var(--red);border:3px solid var(--red);border-radius:6px;
+    padding:3px 10px;font-weight:800;font-size:13px;letter-spacing:1px;text-transform:uppercase;
+    transform:rotate(-9deg);opacity:.9;pointer-events:none;z-index:5;background:rgba(0,0,0,.03)}
   /* Kalender-Tagesansicht: eine Überschrift pro Tag+Veranstaltung, darunter die Strafen als
      Zeitstrahl-Zeilen mit der Uhrzeit leicht abgesetzt ganz links (siehe groupForumByDayEvent). */
   .forumDayGroup{margin-bottom:28px}
@@ -1467,6 +1475,7 @@ function groupStrafenForFeed(list){
       ort: first.ort||null,
       actual_written_by: first.actual_written_by||null,
       zeit_unbekannt: !!first.zeit_unbekannt,
+      gestrichen: !!first.gestrichen,
     });
   });
   return items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -1510,11 +1519,15 @@ function renderStrafeFeedCard(item,parentMap){
   const menuKey=item.strafeIds.join('_'); // reine DOM-id, Kommas sind dort nicht erlaubt
   return `<div class="timelineRow">
     <div class="timelineTime${item.zeit_unbekannt?' unbekannt':''}" title="Uhrzeit ändern oder auf unbekannt stellen" onclick="editZeitModal('${item.strafeIds.join(',')}')">${timeLabel}</div>
-    <div class="feedcard">
+    <div class="feedcard${item.gestrichen?' gestrichen':''}">
       <div class="feedcard-content">
-        <button class="feedcard-menu-btn" title="Bearbeiten/Löschen" onclick="toggleCardMenu('${menuKey}',event)">⋮</button>
+        ${item.gestrichen?`<div class="feedcard-stempel">Gestrichen</div>`:''}
+        <button class="feedcard-menu-btn" title="Bearbeiten/Löschen/Streichen" onclick="toggleCardMenu('${menuKey}',event)">⋮</button>
         <div class="feedcard-menu" id="cardmenu_${menuKey}">
           <button onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️ Bearbeiten</button>
+          ${item.gestrichen
+            ?`<button onclick="toggleStrafeGestrichen('${item.strafeIds.join(',')}')">↩️ Streichung aufheben</button>`
+            :`<button onclick="toggleStrafeGestrichen('${item.strafeIds.join(',')}')">🚫 Streichen</button>`}
           <button class="danger" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑 Löschen</button>
         </div>
         ${pending?`<div style="margin-bottom:10px"><span class="pill warn" style="cursor:pointer" title="Klicken, um diese Strafe sofort zu veröffentlichen" onclick="revealSingleStrafe('${item.strafeIds.join(',')}')">⏳ noch nicht veröffentlicht – jetzt zeigen</span></div>`:''}
@@ -1744,7 +1757,7 @@ function strafakteDoc(memberId){
   if(!m) return {html:'<div class="empty">Mitglied nicht gefunden.</div>',count:0};
   const rows=strafenAlle.filter(s=>s.mitglied_id===memberId).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   const aktenNr=strafakteAktenzeichen(memberId);
-  const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
+  const gesamt=rows.filter(s=>!s.gestrichen).reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const groups=[]; const groupMap=new Map();
   rows.forEach(s=>{
     const eventDay=eventDayStart(s.created_at);
@@ -1767,9 +1780,12 @@ function strafakteDoc(memberId){
     g.items.forEach(s=>{
       const {text,textClass,subHtml}=strafakteBeschreibung(s);
       const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-      tableRows+=`<tr>
+      // Gestrichene Strafe bleibt sichtbar (durchgestrichen + roter Stempel), zählt aber nicht mehr
+      // zum Gesamtbetrag (siehe gesamt oben) – dieselbe Logik wie in der Mitglieds-Ansicht/Karte.
+      const gestempelt=s.gestrichen?'<span class="ak-gestempelt">Gestrichen</span>':'';
+      tableRows+=`<tr${s.gestrichen?' class="ak-row-gestrichen"':''}>
         <td class="ak-col-zeit">${esc(zeit)}</td>
-        <td class="ak-col-straf"><span class="${textClass}">${esc(text)}</span>${subHtml?`<br/>${subHtml}`:''}</td>
+        <td class="ak-col-straf"><span class="${textClass}">${esc(text)}</span>${subHtml?`<br/>${subHtml}`:''}${gestempelt}</td>
         <td class="ak-col-schreiber">${strafakteSchreiberLabel(s)}</td>
         <td class="ak-col-preis">${eur(Number(s.betrag)||0)}</td>
       </tr>`;
@@ -1817,6 +1833,10 @@ function strafakteDoc(memberId){
     .ak-cbgroup{float:right;font-size:8pt;color:#444} .ak-cb{font-size:12pt;vertical-align:-1pt;margin-left:2pt}
     .ak-sub{color:#777;font-size:8pt;font-style:italic} .ak-meta{color:#555;font-size:7pt}
     .ak-col-schreiber{font-size:9pt;color:#444}
+    .ak-row-gestrichen td{text-decoration:line-through;opacity:.6}
+    .ak-gestempelt{display:inline-block;margin-left:8pt;border:2px solid #c0392b;color:#c0392b;font-weight:800;
+      font-size:8pt;letter-spacing:.5pt;text-transform:uppercase;padding:1pt 7pt;border-radius:4pt;
+      transform:rotate(-8deg);text-decoration:none}
     .ak-total{border-top:2.5px solid #1a1a2e;padding-top:10pt;margin-top:14pt;display:flex;justify-content:space-between;font-size:15pt;font-weight:bold}
     .ak-stamp{text-align:center;margin-top:28pt;font-size:8pt;color:#999;letter-spacing:.3pt}
     /* Seitenrand übernimmt beim Drucken die @page-Regel (A4, 12mm) – hier also kein zusätzliches
@@ -1870,7 +1890,7 @@ function printStrafakte(memberId){
 function viewMemberStrafenModal(memberId){
   const m=members.find(x=>x.id===memberId); if(!m) return;
   const rows=strafenAlle.filter(s=>s.mitglied_id===memberId);
-  const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
+  const gesamt=rows.filter(s=>!s.gestrichen).reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const parentMap=strafenParentNameMap();
   const feedList=groupStrafenForFeed(rows).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   openModal(`<h3>👤 ${esc(m.display_name||m.username)}</h3>
@@ -1970,6 +1990,25 @@ function revealSingleStrafe(idsStr){
     strafenAlle.forEach(s=>{ if(ids.includes(s.id)) s.visible_at=nowIso; });
     renderStrafenauswertung();
   });
+}
+// Eine Strafe "streichen" (annullieren) statt sie zu löschen – bleibt sichtbar (durchgestrichen,
+// mit rotem Stempel), zählt aber nicht mehr zum Gesamtbetrag (Mitglieds-Ansicht + Strafakte-PDF).
+// Bewusst über den ⋮-Menüpunkt statt Klick auf die ganze Karte, da Karte/Avatar/Betrag/Uhrzeit dort
+// schon eigene Klick-Ziele (Bearbeiten/Betrag/Uhrzeit ändern) haben.
+async function toggleStrafeGestrichen(idsStr){
+  const ids=idsStr.split(',');
+  const first=strafenAlle.find(s=>ids.includes(s.id));
+  if(!first) return;
+  const neu=!first.gestrichen;
+  if(!confirm(neu
+    ?'Diese Strafe streichen? Sie wird durchgestrichen angezeigt (auch in der Strafakte-PDF) und zählt nicht mehr zum Gesamtbetrag.'
+    :'Streichung dieser Strafe aufheben?')) return;
+  const {error}=await sb.from('strafen').update({gestrichen:neu}).in('id',ids);
+  if(error){ alert('Fehler: '+error.message); return; }
+  strafenAlle.forEach(s=>{ if(ids.includes(s.id)) s.gestrichen=neu; });
+  const memberId=first.mitglied_id;
+  if(memberId && document.getElementById('overlay').classList.contains('open')) viewMemberStrafenModal(memberId);
+  else renderStrafenauswertung();
 }
 async function toggleAdminNamenSichtbar(){
   const neu=!adminNamenSichtbar;
