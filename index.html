@@ -1631,6 +1631,9 @@ function statMonthlyChart(byMonth,jahr){
 function strafenauswertungStats(){
   const byMember={};
   strafenAlle.forEach(s=>{
+    // Gestrichene Strafen zählen in der Auswertung pro Mitglied weder zur Anzahl noch zur Summe –
+    // dieselbe Regel wie in der Mitglieds-Ansicht (viewMemberStrafenModal) und der Strafakte-PDF.
+    if(s.gestrichen) return;
     const key=s.mitglied_id||('gast:'+(s.gast_name||'?'));
     const label=s.mitglied_id?memberName(s.mitglied_id):((s.gast_name||'Unbekannt')+' (Gast)');
     const e=byMember[key]||(byMember[key]={label,anzahl:0,summe:0,id:s.mitglied_id||null});
