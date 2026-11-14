@@ -1570,6 +1570,7 @@ function groupForumByDayEvent(list,sort){
     g.items.push(item);
   });
   const arr=[...groups.values()];
+  arr.forEach(g=>{ g.dateLabel+=eventDayFolgetagSuffix(g.dateObj,g.items); });
   arr.sort((a,b)=> sort==='asc' ? a.dateObj-b.dateObj : b.dateObj-a.dateObj);
   return arr;
 }
@@ -1725,10 +1726,11 @@ function strafakteDoc(memberId){
   const gesamt=rows.reduce((a,s)=>a+(Number(s.betrag)||0),0);
   const groups=[]; const groupMap=new Map();
   rows.forEach(s=>{
-    const dateStr=eventDayStart(s.created_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const eventDay=eventDayStart(s.created_at);
+    const dateStr=eventDay.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
     const key=dateStr+'_'+(s.ort||'');
     let g=groupMap.get(key);
-    if(!g){ g={date:dateStr, ort:s.ort||'', ortTyp:s.ort_typ||null, items:[]}; groupMap.set(key,g); groups.push(g); }
+    if(!g){ g={date:dateStr, eventDay, ort:s.ort||'', ortTyp:s.ort_typ||null, items:[]}; groupMap.set(key,g); groups.push(g); }
     if(!g.ortTyp && s.ort_typ) g.ortTyp=s.ort_typ;
     g.items.push(s);
   });
@@ -1739,7 +1741,8 @@ function strafakteDoc(memberId){
       +`<span class="ak-cb">${cb(g.ortTyp==='pflicht')}</span> Pflicht `
       +`<span class="ak-cb">${cb(g.ortTyp==='offiziell')}</span> Offiziell</span>`;
     const ortPart=g.ort?` &mdash; ${esc(g.ort)}`:'';
-    tableRows+=`<tr class="ak-eventhead"><td colspan="3"><strong>${g.date}</strong>${ortPart} ${checkboxes}</td></tr>`;
+    const folgetag=eventDayFolgetagSuffix(g.eventDay,g.items);
+    tableRows+=`<tr class="ak-eventhead"><td colspan="3"><strong>${g.date}${folgetag}</strong>${ortPart} ${checkboxes}</td></tr>`;
     g.items.forEach(s=>{
       const {text,subHtml}=strafakteBeschreibung(s);
       const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
@@ -2121,9 +2124,11 @@ function strafenForumOrtDateOptions(){
     const eventDay=eventDayStart(s.created_at);
     const dayMs=eventDay.getTime();
     const key=dayMs+'|'+s.ort;
-    if(!map.has(key)) map.set(key,{dayMs,ort:s.ort,dateLabel:eventDay.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})});
+    let g=map.get(key);
+    if(!g){ g={dayMs,ort:s.ort,eventDay,items:[]}; map.set(key,g); }
+    g.items.push(s);
   });
-  return [...map.values()].sort((a,b)=>a.dayMs-b.dayMs);
+  return [...map.values()].map(g=>({dayMs:g.dayMs,ort:g.ort,dateLabel:g.eventDay.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})+eventDayFolgetagSuffix(g.eventDay,g.items)})).sort((a,b)=>a.dayMs-b.dayMs);
 }
 // Veranstaltung gesammelt umbenennen: Klick auf den Veranstaltungsnamen in der Tagesüberschrift
 // (siehe renderForumDayGroup) übergibt direkt den aktuellen Namen – kein Auswahl-Umweg über die
@@ -2215,6 +2220,17 @@ function eventDayStart(dateInput){
   const day=new Date(d.getFullYear(),d.getMonth(),d.getDate());
   if(d.getHours()<EVENT_DAY_CUTOFF_HOUR) day.setDate(day.getDate()-1);
   return day;
+}
+// Zeigt den Folgetag in Klammern an, falls diese Veranstaltung wirklich über Mitternacht
+// gegangen ist (mind. eine Strafe liegt am echten Kalendertag NACH dem Event-Tag) – reine
+// Anzeige-Hilfe, ändert nichts an der Gruppierung selbst.
+function eventDayFolgetagSuffix(eventDay,items){
+  const nextDay=new Date(eventDay.getFullYear(),eventDay.getMonth(),eventDay.getDate()+1);
+  const crosses=(items||[]).some(it=>{
+    const d=new Date(it.created_at);
+    return d.getFullYear()===nextDay.getFullYear() && d.getMonth()===nextDay.getMonth() && d.getDate()===nextDay.getDate();
+  });
+  return crosses?` (– ${nextDay.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})})`:'';
 }
 // Lokale (nicht UTC-)Darstellung für <input type="datetime-local">, passend zur Anzeige überall
 // sonst im Dashboard (toLocaleString ohne Zeitzonen-Optionen = Browser-Zeitzone).
