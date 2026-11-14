@@ -2057,7 +2057,15 @@ function renderStrafenauswertung(){
     // nur noch renderForumList() auf, das lediglich #forumCardsList ersetzt – so verliert das
     // Suchfeld beim Tippen nicht ständig den Fokus (kompletter innerHTML-Ersatz würde das Input
     // jedes Mal neu erzeugen).
-    const ortOptionsHtml=strafenForumOrtDateOptions().map(o=>`<option value="${o.dayMs}|${esc(o.ort)}">${o.dateLabel} – ${esc(o.ort)}</option>`).join('');
+    // Gleiche Intern/Extern-Farben wie im Konfiguration-Tab (veranstaltungKategorien ist nach
+    // Veranstaltungsname keyed, nicht nach Tag) – als Textfarbe + Icon auf der Option, damit man
+    // beim Filtern sofort sieht, ob eine Veranstaltung intern oder extern ist.
+    const ortOptionsHtml=strafenForumOrtDateOptions().map(o=>{
+      const kat=veranstaltungKategorien[o.ort]||'';
+      const icon=kat==='intern'?'🏠 ':kat==='extern'?'🌐 ':'';
+      const color=kat==='intern'?'var(--accent2)':kat==='extern'?'var(--accent)':'';
+      return `<option value="${o.dayMs}|${esc(o.ort)}"${color?` style="color:${color}"`:''}>${icon}${o.dateLabel} – ${esc(o.ort)}</option>`;
+    }).join('');
     const schreiberOptionsHtml = adminNamenSichtbar ? `
         <select id="strafenauswertungSchreiber" onchange="renderForumList()" style="min-width:170px">
           <option value="">👁 Alle Schreiber</option>
