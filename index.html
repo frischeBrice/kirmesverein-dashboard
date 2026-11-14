@@ -1881,6 +1881,7 @@ function addStrafeModal(memberId){
   const paragraphOptions='<option value="" selected>– Freitext / kein Vergehen –</option>'+buildParagraphSelectHtml(katTree,'');
   openModal(`<h3>➕ Neue Strafe</h3>
     <label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(x=>`<option value="${x.id}" ${x.id===memberId?'selected':''}>${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
+    <label class="field"><span>Schreiber (wer hat's wirklich eingetragen?)</span><select id="sa_schreiber"><option value="">– nicht angegeben –</option>${members.map(x=>`<option value="${x.id}">${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
     <label class="field"><span>Paragraph</span>
       <select id="sa_paragraph" onchange="onParagraphChange(this.value,1)">${paragraphOptions}</select>
     </label>
@@ -1897,6 +1898,10 @@ function addStrafeModal(memberId){
 async function createStrafe(btn){
   const mitgliedId=val('sa_mitglied')||null;
   if(!mitgliedId){ alert('Bitte ein Mitglied auswählen.'); return; }
+  // Wer den Eintrag im Dashboard tatsächlich angelegt hat (me.id = das eingeloggte, oft geteilte
+  // Vorstands-/"Gericht"-Konto) ist NICHT automatisch der Schreiber – der wird stattdessen frei
+  // ausgewählt (oder bleibt leer), sonst stünde bei jeder Dashboard-Strafe fälschlich "Gericht".
+  const schreiberId=val('sa_schreiber')||null;
   const row={
     mitglied_id: mitgliedId,
     katalog_id: val('sa_paragraph') ? (val('sa_absatz')||null) : null,
@@ -1905,8 +1910,8 @@ async function createStrafe(btn){
     ort: val('sa_ort')||null,
     ort_typ: null,
     notiz: val('sa_notiz')||null,
-    written_by: me.id,
-    actual_written_by: me.id,
+    written_by: schreiberId,
+    actual_written_by: schreiberId,
     is_anonymous: false,
     visible_at: new Date().toISOString(),
     group_id: null,
