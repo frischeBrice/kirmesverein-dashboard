@@ -1514,7 +1514,7 @@ function renderStrafeFeedCard(item,parentMap){
           <button onclick="editStrafeModal('${item.strafeIds.join(',')}')">✏️ Bearbeiten</button>
           <button class="danger" onclick="delStrafe('${item.strafeIds.join(',')}')">🗑 Löschen</button>
         </div>
-        ${pending?`<div style="margin-bottom:10px"><span class="pill warn">⏳ noch nicht veröffentlicht</span></div>`:''}
+        ${pending?`<div style="margin-bottom:10px"><span class="pill warn" style="cursor:pointer" title="Klicken, um diese Strafe sofort zu veröffentlichen" onclick="revealSingleStrafe('${item.strafeIds.join(',')}')">⏳ noch nicht veröffentlicht – jetzt zeigen</span></div>`:''}
         <div class="feedcard-main">
           <div class="feedcard-avatars">${avatars}</div>
           <div style="flex:1;min-width:0">
@@ -1817,6 +1817,30 @@ function setStrafenauswertungTab(tab){ strafenauswertungTab=tab; renderStrafenau
 // Dieselbe Einstellung wie im Admin-Tab der App (SaisonTab) – gemeinsamer thron_config-Key,
 // deckt NUR für den Admin die echten Schreiber-Namen auf (App + Dashboard), ändert nichts an
 // den Daten und nichts daran, was normale Mitglieder in der App sehen (immer "Anonym").
+// "Decke alle Bilder auf": Strafen, die (sekundärer Schreiber-Delay) noch nicht im Forum
+// sichtbar sind, sofort für alle veröffentlichen – setzt visible_at auf jetzt. Bewusst NUR
+// dieser eine Schritt (kein Saisonende!), ändert nichts an Schreiber-Rollen/Votes/Best-Of.
+async function revealAllPendingStrafen(){
+  const pendingIds=strafenAlle.filter(s=>new Date(s.visible_at).getTime()>Date.now()).map(s=>s.id);
+  if(!pendingIds.length){ alert('Keine verzögerten Strafen vorhanden – es ist schon alles veröffentlicht.'); return; }
+  if(!confirm(`${pendingIds.length} noch nicht veröffentlichte Strafe(n) (inkl. Bilder) jetzt sofort für alle sichtbar machen?`)) return;
+  const nowIso=new Date().toISOString();
+  const {error}=await sb.from('strafen').update({visible_at:nowIso}).in('id',pendingIds);
+  if(error){ alert('Fehler: '+error.message); return; }
+  strafenAlle.forEach(s=>{ if(pendingIds.includes(s.id)) s.visible_at=nowIso; });
+  renderStrafenauswertung();
+  alert(`✅ ${pendingIds.length} Strafe(n) sind jetzt sichtbar.`);
+}
+function revealSingleStrafe(idsStr){
+  const ids=idsStr.split(',');
+  if(!confirm('Diese Strafe jetzt sofort für alle sichtbar machen?')) return;
+  const nowIso=new Date().toISOString();
+  sb.from('strafen').update({visible_at:nowIso}).in('id',ids).then(({error})=>{
+    if(error){ alert('Fehler: '+error.message); return; }
+    strafenAlle.forEach(s=>{ if(ids.includes(s.id)) s.visible_at=nowIso; });
+    renderStrafenauswertung();
+  });
+}
 async function toggleAdminNamenSichtbar(){
   const neu=!adminNamenSichtbar;
   const {error}=await sb.from('thron_config').upsert({key:'admin_schreiber_sichtbar',value:neu?'true':'false'},{onConflict:'key'});
@@ -1832,7 +1856,21 @@ async function setVeranstaltungKategorie(ort,kategorie){
   const {error}=await sb.from('thron_config').upsert({key:'veranstaltung_kategorien',value:JSON.stringify(next)},{onConflict:'key'});
   if(error){ alert('Fehler: '+error.message); return; }
   veranstaltungKategorien=next;
+  renderStrafenauswertung();
 }
+// Optional/Pflicht/Offiziell ist (anders als Intern/Extern) schon ein echtes Feld direkt auf
+// jeder einzelnen Strafe (ort_typ, kommt beim Eintragen in der App), siehe strafakteDoc() weiter
+// oben, das es genau so pro Veranstaltungs-Gruppe anzeigt. Hier deshalb bewusst kein eigener
+// thron_config-Schlüssel, sondern ein echtes Bulk-Update aller Strafen mit diesem Veranstaltungs-
+// namen – damit Konfiguration UND Strafakte garantiert denselben Wert zeigen, nie zwei Quellen.
+async function setVeranstaltungArt(ort,art){
+  if(!confirm(`"${art?ART_LABELS[art]:'– nicht gesetzt –'}" für ALLE Strafen der Veranstaltung "${ort}" setzen?`)) { renderStrafenauswertung(); return; }
+  const {error}=await sb.from('strafen').update({ort_typ:art||null}).eq('ort',ort);
+  if(error){ alert('Fehler: '+error.message); return; }
+  strafenAlle.forEach(s=>{ if(s.ort===ort) s.ort_typ=art||null; });
+  renderStrafenauswertung();
+}
+const ART_LABELS={optional:'Optional',pflicht:'❗ Pflicht',offiziell:'🏛 Offiziell'};
 function renderStrafenauswertung(){
   const el=document.getElementById('strafenauswertungBody'); if(!el) return;
   if(!canSeeStrafen()){ el.innerHTML='<div class="panel"><div class="empty">Nur für Admin sichtbar.</div></div>'; return; }
@@ -1896,19 +1934,29 @@ function renderStrafenauswertung(){
       ${st.topEinzelstrafen.length?tbl(['Mitglied','Vergehen','Datum','Betrag'],st.topEinzelstrafen.map(e=>[e.member,esc(e.vergehen),e.datum,eur(e.betrag)])):'<div class="empty">Keine Daten.</div>'}
     </div>`;
   } else if(tab==='konfiguration'){
-    const orte=strafenForumOrtOptions();
+    const ortDates=strafenForumOrtDateOptions(); // je Tag+Name, chronologisch – fürs Datum davor
+    const ortTypVon=(ort)=>{ const row=strafenAlle.find(s=>s.ort===ort && s.ort_typ); return row?row.ort_typ:''; };
     body=`
     <div class="panel">
-      <div class="sectionbar"><h3 style="font-size:15px">📍 Veranstaltungen: Intern/Extern</h3></div>
-      <div class="submuted" style="margin:-4px 0 12px">Ordnet jede Veranstaltung einmalig Intern oder Extern zu – wird überall im Forum/der Statistik mitgeführt.</div>
-      ${orte.length?orte.map(o=>{
-        const kat=veranstaltungKategorien[o]||'';
-        return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)">
-          <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o)}">${esc(o)}</div>
-          <select data-ort="${esc(o)}" onchange="setVeranstaltungKategorie(this.dataset.ort,this.value)" style="width:auto;min-width:130px">
+      <div class="sectionbar"><h3 style="font-size:15px">📍 Veranstaltungen: Intern/Extern & Art</h3></div>
+      <div class="submuted" style="margin:-4px 0 12px">Intern/Extern gilt gesammelt für den Veranstaltungs-Namen (wird überall im Forum/der Statistik mitgeführt). Optional/Pflicht/Offiziell setzt direkt das Feld an jeder einzelnen Strafe dieser Veranstaltung (dasselbe Feld, das auch in der 📁 Strafakte angezeigt wird).</div>
+      ${ortDates.length?ortDates.map(o=>{
+        const kat=veranstaltungKategorien[o.ort]||'';
+        const art=ortTypVon(o.ort);
+        const katColor=kat==='intern'?'var(--accent2)':kat==='extern'?'var(--accent)':'var(--line)';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:9px 10px;margin-bottom:6px;border-radius:8px;border-left:4px solid ${katColor};background:${kat?'var(--panel2)':'transparent'}">
+          <div style="flex:none;font-size:12px;color:var(--muted);white-space:nowrap">${o.dateLabel}</div>
+          <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.ort)}">${esc(o.ort)}</div>
+          <select data-ort="${esc(o.ort)}" onchange="setVeranstaltungKategorie(this.dataset.ort,this.value)" style="width:auto;min-width:120px">
             <option value="" ${kat?'':'selected'}>– nicht gesetzt –</option>
             <option value="intern" ${kat==='intern'?'selected':''}>🏠 Intern</option>
             <option value="extern" ${kat==='extern'?'selected':''}>🌐 Extern</option>
+          </select>
+          <select data-ort="${esc(o.ort)}" onchange="setVeranstaltungArt(this.dataset.ort,this.value)" style="width:auto;min-width:130px">
+            <option value="" ${art?'':'selected'}>– nicht gesetzt –</option>
+            <option value="optional" ${art==='optional'?'selected':''}>Optional</option>
+            <option value="pflicht" ${art==='pflicht'?'selected':''}>❗ Pflicht</option>
+            <option value="offiziell" ${art==='offiziell'?'selected':''}>🏛 Offiziell</option>
           </select>
         </div>`;
       }).join(''):'<div class="empty">Noch keine Veranstaltungen vorhanden.</div>'}
@@ -1924,10 +1972,12 @@ function renderStrafenauswertung(){
           <option value="">👁 Alle Schreiber</option>
           ${strafenForumWriters().map(m=>`<option value="${m.id}">${esc(m.display_name||m.username)}</option>`).join('')}
         </select>` : '';
+    const pendingCount=strafenAlle.filter(s=>new Date(s.visible_at).getTime()>Date.now()).length;
     body=`
     <div class="panel">
       <div class="sectionbar"><h3 style="font-size:15px">📋 Forum (1:1 wie in der App)</h3>
         <div class="actions">
+          ${pendingCount?`<button class="btn ghost sm" onclick="revealAllPendingStrafen()" title="Macht alle noch verzögerten Strafen (inkl. Bilder) sofort für alle sichtbar">👁 Alle verzögerten jetzt veröffentlichen (${pendingCount})</button>`:''}
           <button class="btn ghost sm${adminNamenSichtbar?' active':''}" onclick="toggleAdminNamenSichtbar()" title="Deckt nur für dich als Admin die echten Schreiber-Namen auf – Mitglieder sehen weiterhin Anonym">👁️ Schreiber-Namen für mich: ${adminNamenSichtbar?'AN':'aus'}</button>
         </div>
       </div>
