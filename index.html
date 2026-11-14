@@ -1881,7 +1881,10 @@ function addStrafeModal(memberId){
   const paragraphOptions='<option value="" selected>– Freitext / kein Vergehen –</option>'+buildParagraphSelectHtml(katTree,'');
   openModal(`<h3>➕ Neue Strafe</h3>
     <label class="field"><span>Mitglied</span><select id="sa_mitglied"><option value="">– kein Mitglied (Gast) –</option>${members.map(x=>`<option value="${x.id}" ${x.id===memberId?'selected':''}>${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
-    <label class="field"><span>Schreiber (wer hat's wirklich eingetragen?)</span><select id="sa_schreiber"><option value="">– nicht angegeben –</option>${members.map(x=>`<option value="${x.id}">${esc(x.display_name||x.username)}</option>`).join('')}</select></label>
+    <label class="field"><span>Schreiber (frei eintippbar, mit Vorschlägen aus den Mitgliedern)</span>
+      <input id="sa_schreiber" list="sa_schreiber_list" value="Kirmesgericht">
+      <datalist id="sa_schreiber_list">${members.map(x=>`<option value="${esc(x.display_name||x.username)}">`).join('')}</datalist>
+    </label>
     <label class="field"><span>Paragraph</span>
       <select id="sa_paragraph" onchange="onParagraphChange(this.value,1)">${paragraphOptions}</select>
     </label>
@@ -1898,10 +1901,17 @@ function addStrafeModal(memberId){
 async function createStrafe(btn){
   const mitgliedId=val('sa_mitglied')||null;
   if(!mitgliedId){ alert('Bitte ein Mitglied auswählen.'); return; }
-  // Wer den Eintrag im Dashboard tatsächlich angelegt hat (me.id = das eingeloggte, oft geteilte
-  // Vorstands-/"Gericht"-Konto) ist NICHT automatisch der Schreiber – der wird stattdessen frei
-  // ausgewählt (oder bleibt leer), sonst stünde bei jeder Dashboard-Strafe fälschlich "Gericht".
-  const schreiberId=val('sa_schreiber')||null;
+  // Schreiber ist ein freies Textfeld (mit Vorschlägen), standardmäßig "Kirmesgericht" – written_by/
+  // actual_written_by sind aber feste Verweise auf ein echtes Mitgliedsprofil (gleiche Spalten wie
+  // in der App). Der eingetippte Name wird deshalb auf ein Mitglied mit genau diesem Namen
+  // aufgelöst; "Kirmesgericht" muss also selbst als Mitglied/Kirmeshelfer-Profil existieren.
+  const schreiberName=(val('sa_schreiber')||'').trim();
+  let schreiberId=null;
+  if(schreiberName){
+    const match=members.find(x=>(x.display_name||x.username||'').trim().toLowerCase()===schreiberName.toLowerCase());
+    if(!match){ alert(`Kein Mitglied namens "${schreiberName}" gefunden. Bitte einen Namen aus den Vorschlägen übernehmen oder das Feld leeren.`); return; }
+    schreiberId=match.id;
+  }
   const row={
     mitglied_id: mitgliedId,
     katalog_id: val('sa_paragraph') ? (val('sa_absatz')||null) : null,
