@@ -2128,8 +2128,8 @@ function renderStrafenauswertung(){
         </select>
         ${schreiberOptionsHtml}
         <select id="strafenauswertungSort" onchange="renderForumList()" style="min-width:160px">
+          <option value="asc" selected>⬆️ Älteste zuerst</option>
           <option value="desc">⬇️ Neueste zuerst</option>
-          <option value="asc">⬆️ Älteste zuerst</option>
           <option value="betrag_desc">💰 Höchster Betrag zuerst</option>
           <option value="betrag_asc">💶 Niedrigster Betrag zuerst</option>
         </select>
@@ -2238,7 +2238,7 @@ function renderForumList(){
   const von=val('strafenauswertungVon')||'';
   const bis=val('strafenauswertungBis')||'';
   const nurFoto=document.getElementById('strafenauswertungNurFoto')?.checked;
-  const sort=val('strafenauswertungSort')||'desc';
+  const sort=val('strafenauswertungSort')||'asc';
   const parentMap=strafenParentNameMap();
   let feedList=groupStrafenForFeed(strafenAlle).filter(item=>{
     if(nurFoto && !item.bild_url) return false;
