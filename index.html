@@ -1690,18 +1690,30 @@ function strafakteParagraph(kat){
   if(!m) return '';
   return kat.reihenfolge!=null ? `§${m[1]} / ${Math.floor(kat.reihenfolge)}` : `§${m[1]}`;
 }
+// Hauptzeile ist jetzt IMMER "§X/Y – Vergehen" (Paragraph+Nummer+Text zusammen, keine eigene
+// Spalte mehr), die freie Notiz steht bei zugeordnetem Vergehen als "Freie Strafe: ..." darunter.
+// Nur wenn GAR kein Vergehen zugeordnet ist, wird die freie Notiz selbst zur Hauptzeile.
 function strafakteBeschreibung(s){
   const parts=(s.notiz||'').split('|').map(p=>p.trim());
-  const text0=parts[0]||'';
+  const freitext=parts[0]||'';
   const aufschlaege=parts.slice(1).filter(p=>p.startsWith('+'));
-  if(text0) return {text:text0, sub:aufschlaege.join(', ')};
   const kat=s.katalog_id?strafenkatalog.find(k=>k.id===s.katalog_id):null;
-  if(!kat) return {text:'',sub:''};
-  if(kat.reihenfolge!=null && !Number.isInteger(kat.reihenfolge)){
-    const parent=strafenkatalog.find(k=>k.gruppe===kat.gruppe && k.reihenfolge===Math.floor(kat.reihenfolge));
-    return {text:parent?parent.name:'', sub:kat.name};
+  let text='', subParts=[];
+  if(kat){
+    let katText=kat.name;
+    if(kat.reihenfolge!=null && !Number.isInteger(kat.reihenfolge)){
+      const parent=strafenkatalog.find(k=>k.gruppe===kat.gruppe && k.reihenfolge===Math.floor(kat.reihenfolge));
+      katText=parent?`${parent.name} – ${kat.name}`:kat.name;
+    }
+    const paragraph=strafakteParagraph(kat);
+    text=paragraph?`${paragraph} – ${katText}`:katText;
+    if(freitext) subParts.push(`Freie Strafe: ${freitext}`);
+  } else {
+    text=freitext;
   }
-  return {text:kat.name, sub:''};
+  if(aufschlaege.length) subParts.push(aufschlaege.join(', '));
+  const subHtml=subParts.map(p=>esc(p)).join('<br/>');
+  return {text, subHtml};
 }
 // Baut NUR den Inhalt (kein <html>/<head>/<body>) - einsetzbar sowohl in der Vorschau (Modal)
 // als auch in der Druckfläche, beide bekommen exakt dasselbe Dokument zu sehen.
@@ -1728,19 +1740,26 @@ function strafakteDoc(memberId){
       +`<span class="ak-cb">${cb(g.ortTyp==='pflicht')}</span> Pflicht `
       +`<span class="ak-cb">${cb(g.ortTyp==='offiziell')}</span> Offiziell</span>`;
     const ortPart=g.ort?` &mdash; ${esc(g.ort)}`:'';
-    tableRows+=`<tr class="ak-eventhead"><td colspan="4"><strong>${g.date}</strong>${ortPart} ${checkboxes}</td></tr>`;
+    tableRows+=`<tr class="ak-eventhead"><td colspan="3"><strong>${g.date}</strong>${ortPart} ${checkboxes}</td></tr>`;
     g.items.forEach(s=>{
-      const {text,sub}=strafakteBeschreibung(s);
-      const paragraph=strafakteParagraph(s.katalog_id?strafenkatalog.find(k=>k.id===s.katalog_id):null);
+      const {text,subHtml}=strafakteBeschreibung(s);
       const zeit=s.zeit_unbekannt?'unbekannt':new Date(s.created_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
       const schreiber=s.written_by?members.find(x=>x.id===s.written_by):null;
       const metaLine=schreiber?`<br/><span class="ak-meta">Schreiber: ${esc(schreiber.display_name||schreiber.username)}</span>`:'';
       tableRows+=`<tr>
         <td class="ak-col-zeit">${esc(zeit)}</td>
-        <td class="ak-col-para">${esc(paragraph)}</td>
-        <td class="ak-col-straf">${esc(text)}${sub?`<br/><span class="ak-sub">${esc(sub)}</span>`:''}${metaLine}</td>
+        <td class="ak-col-straf">${esc(text)}${subHtml?`<br/><span class="ak-sub">${subHtml}</span>`:''}${metaLine}</td>
         <td class="ak-col-preis">${eur(Number(s.betrag)||0)}</td>
       </tr>`;
+      // Foto und/oder gemalte Strafe: eigene Zeile direkt darunter, über die ganze Breite,
+      // genau wie im Forum (1:1 dasselbe bild_url/zeichnungen-Feld).
+      const zeichnungenHtml=(s.zeichnungen||[]).filter(z=>z&&z.strokes).map(z=>strafeZeichnungSvg(z)).join('');
+      if(s.bild_url || zeichnungenHtml){
+        tableRows+=`<tr class="ak-mediarow"><td colspan="3">
+          ${s.bild_url?`<img class="ak-img" src="${esc(s.bild_url)}">`:''}
+          ${zeichnungenHtml?`<div class="ak-zeichnung">${zeichnungenHtml}</div>`:''}
+        </td></tr>`;
+      }
     });
   });
   const photoHtml=m.avatar_url
@@ -1764,9 +1783,12 @@ function strafakteDoc(memberId){
     .ak-doc table{width:100%;border-collapse:collapse}
     .ak-doc thead th{background:#1a1a2e;color:#fff;font-size:9pt;font-weight:bold;padding:5pt 8pt;text-align:left;border:1px solid #333}
     .ak-doc thead th:last-child{text-align:right}
-    .ak-doc thead th.ak-th-para{text-align:center}
     .ak-doc tbody td{padding:4pt 8pt;border:1px solid #ddd;font-size:10pt;vertical-align:top;line-height:1.3}
-    .ak-col-zeit{width:14%} .ak-col-para{width:14%;text-align:center} .ak-col-straf{width:50%} .ak-col-preis{width:22%;text-align:right}
+    .ak-col-zeit{width:14%} .ak-col-straf{width:64%} .ak-col-preis{width:22%;text-align:right}
+    .ak-mediarow td{border-top:none;padding-top:0}
+    .ak-img{display:block;max-width:220pt;max-height:160pt;border:1px solid #ccc;margin-top:4pt}
+    .ak-zeichnung{max-width:220pt;margin-top:4pt;border:1px solid #ccc}
+    .ak-zeichnung .feedcard-zeichnung{width:100%}
     .ak-eventhead td{background:#eaeaea;font-size:10pt;padding:5pt 8pt;border:1px solid #ccc}
     .ak-cbgroup{float:right;font-size:8pt;color:#444} .ak-cb{font-size:12pt;vertical-align:-1pt;margin-left:2pt}
     .ak-sub{color:#777;font-size:8pt;font-style:italic} .ak-meta{color:#555;font-size:7pt}
@@ -1789,8 +1811,8 @@ function strafakteDoc(memberId){
     </div>
     <hr class="ak-midline">
     <table>
-      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-th-para ak-col-para">§ / Abs.</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
-      <tbody>${tableRows||`<tr><td colspan="4" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
+      <thead><tr><th class="ak-col-zeit">Uhrzeit</th><th class="ak-col-straf">Strafbestand</th><th class="ak-col-preis">Bußgeld</th></tr></thead>
+      <tbody>${tableRows||`<tr><td colspan="3" style="text-align:center;padding:16pt;color:#888">Keine Strafen vorhanden.</td></tr>`}</tbody>
     </table>
     <div class="ak-total"><span>Strafenbeitrag gesamt</span><span>${eur(gesamt)}</span></div>
     <div class="ak-stamp">Erstellt am ${new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'})} · Kirmes-Strafenbuch Dashboard</div>
